@@ -1,14 +1,14 @@
 niveau:
-	git clone git@github.com:propensive/niveau niveau
+	git clone git@github.com:propensive/niveau niveau --recursive
 
 tmp:
 	mkdir -p tmp
 
 tmp/sbt.tgz:
-	curl -Lo sbt.tgz https://github.com/sbt/sbt/releases/download/v1.5.5/sbt-1.5.5.tgz
+	curl -Lo tmp/sbt.tgz https://github.com/sbt/sbt/releases/download/v1.5.5/sbt-1.5.5.tgz
 
 tmp/scli.gz:
-	curl -Lo scli.gz https://github.com/VirtusLab/scala-cli/releases/download/v0.0.9/scala-cli-x86_64-pc-linux-static.gz
+	curl -Lo tmp/scli.gz https://github.com/VirtusLab/scala-cli/releases/download/v0.0.9/scala-cli-x86_64-pc-linux-static.gz
 
 scli: tmp/scli.gz
 	gunzip tmp/scli.gz
