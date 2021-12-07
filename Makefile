@@ -24,6 +24,6 @@ sbt/bin/sbt: tmp/sbt.tgz
 scala:
 	git clone git@github.com:dotty-staging/dotty --branch=fix-13691 scala
 
-tmp/.publish: sbt scala
+tmp/.publish: sbt/bin/sbt scala
 	cd scala && ../sbt/bin/sbt publishLocal
 	touch tmp/.publish
