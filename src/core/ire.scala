@@ -21,9 +21,9 @@ import scala.annotation.*
 
 given Env = envs.enclosing
 
-val scliRealm = Realm(t"scli")
+val scalacliRealm = Realm(t"scalacli")
 given LogFormat[Stdout.type, AnsiString] = LogFormat.timed
-given Log = Log(scliRealm |-> Stdout, realm |-> Stdout)
+given Log = Log(scalacliRealm |-> Stdout, realm |-> Stdout)
 
 erased given CanThrow[RootParentError] = compiletime.erasedValue
 
@@ -174,7 +174,7 @@ case class Step(path: Unix.File, config: Config, publishing: Option[Publishing],
       val extraJars = build.transitive(_.jars)(this).map(_.show).flatMap(List(t"--jar", _))
       val deps = build.transitive(_.dependencies)(this).map(_.show).flatMap(List(t"-d", _))
       
-      val cmd = sh"scli package --library -o $pkg -f $classpath $resourceArgs $extraJars $deps -S ${config.scalac.version} --progress ${config.scalac.options} $srcs"
+      val cmd = sh"scala-cli package --library -o $pkg -f $classpath $resourceArgs $extraJars $deps -S ${config.scalac.version} --progress ${config.scalac.options} $srcs"
 
       val t0 = System.currentTimeMillis
       
@@ -201,17 +201,17 @@ case class Step(path: Unix.File, config: Config, publishing: Option[Publishing],
           build.updateCache(this, binDigest)
           
           locally:
-            given Realm = scliRealm
+            given Realm = scalacliRealm
             val stderr: Text = process.stderr(1.mb).slurp(1.mb).uString
             val stdout: Text = process.stdout(1.mb).slurp(1.mb).uString
             stdout.cut(t"\n").filter(!_.isEmpty).foreach(Log.info(_))
             stderr.cut(t"\n").filter(!_.isEmpty).foreach(Log.info(_))
           
           main.foreach:
-            mainClass => sh"scli run -M $mainClass $classpath $resourceArgs $extraJars $deps -S ${config.scalac.version} --progress ${config.scalac.options} $srcs".exec[LazyList[Text]]().foreach(Log.info(_))
+            mainClass => sh"scala-cli run -M $mainClass $classpath $resourceArgs $extraJars $deps -S ${config.scalac.version} --progress ${config.scalac.options} $srcs".exec[LazyList[Text]]().foreach(Log.info(_))
 
         case ExitStatus.Fail(n) =>
-          given Realm = scliRealm
+          given Realm = scalacliRealm
           val stderr: Text = process.stderr(1.mb).slurp(1.mb).uString
           val stdout: Text = process.stdout(1.mb).slurp(1.mb).uString
           stdout.cut(t"\n").filter(!_.isEmpty).foreach(Log.info(_))
@@ -278,7 +278,7 @@ case class BuildfileError() extends Exception
 
 object Ire:
   
-  private lazy val fileHashes: FileCache[Bytes] = FileCache()
+  private lazy val fileHashes: FileCache[Bytes] = new FileCache()
 
   val pwd: Unix.Directory =
     try Unix.Pwd.directory
