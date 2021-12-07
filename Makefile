@@ -8,10 +8,10 @@ tmp:
 	mkdir -p tmp
 
 tmp/sbt.tgz: tmp
-	curl -Lo tmp/sbt.tgz https://github.com/sbt/sbt/releases/download/v1.5.5/sbt-1.5.5.tgz && touch tmp/sbt.tgz
+	wget -nc -q -O tmp/sbt.tgz https://github.com/sbt/sbt/releases/download/v1.5.5/sbt-1.5.5.tgz || true
 
 tmp/scli.gz: tmp
-	curl -Lo tmp/scli.gz https://github.com/VirtusLab/scala-cli/releases/download/v0.0.9/scala-cli-x86_64-pc-linux-static.gz && touch tmp/scli.gz
+	wget -nc -q -O tmp/scli.gz https://github.com/VirtusLab/scala-cli/releases/download/v0.0.9/scala-cli-x86_64-pc-linux-static.gz || true
 
 scli: tmp/scli.gz
 	gunzip -k tmp/scli.gz
