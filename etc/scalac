@@ -1,0 +1,59 @@
+#!/bin/bash
+
+mkdir -p cls
+rm -rf cls/*
+CP="$(ls lib/*.jar | tr '\n' ':')"
+../niveau/scala/bin/scalac \
+    -language:experimental.erasedDefinitions \
+    -language:experimental.fewerBraces \
+    -language:experimental.saferExceptions \
+    -classpath "$CP" \
+    -deprecation \
+    -feature \
+    -new-syntax \
+    -Yrequire-targetName \
+    -Ysafe-init \
+    -Ycheck-all-patmat \
+    -Yexplicit-nulls \
+    -d cls \
+    $@ \
+    src/core/*.scala \
+    ../niveau/mod/acyclicity/src/core/*.scala \
+    ../niveau/mod/adversaria/src/core/*.scala \
+    ../niveau/mod/caesura/src/core/*.scala \
+    ../niveau/mod/cataract/src/core/*.scala \
+    ../niveau/mod/clairvoyant/src/css/*.scala \
+    ../niveau/mod/clairvoyant/src/html/*.scala \
+    ../niveau/mod/clairvoyant/src/http/*.scala \
+    ../niveau/mod/contextual/src/core/*.scala \
+    ../niveau/mod/cosmopolite/src/core/*.scala \
+    ../niveau/mod/escapade/src/core/*.scala \
+    ../niveau/mod/escritoire/src/core/*.scala \
+    ../niveau/mod/eucalyptus/src/core/*.scala \
+    ../niveau/mod/euphemism/src/core/*.scala \
+    ../niveau/mod/exoskeleton/src/core/*.scala \
+    ../niveau/mod/gastronomy/src/core/*.scala \
+    ../niveau/mod/gesticulate/src/core/*.scala \
+    ../niveau/mod/gossamer/src/core/*.scala \
+    ../niveau/mod/guillotine/src/core/*.scala \
+    ../niveau/mod/harlequin/src/core/*.scala \
+    ../niveau/mod/honeycomb/src/core/*.scala \
+    ../niveau/mod/iridescence/src/core/*.scala \
+    ../niveau/mod/jovian/src/core/*.scala \
+    ../niveau/mod/kaleidoscope/src/core/*.scala \
+    ../niveau/mod/probably/src/core/*.scala \
+    ../niveau/mod/probably/src/cli/*.scala \
+    ../niveau/mod/probably/src/tolerance/*.scala \
+    ../niveau/mod/punctuation/src/core/*.scala \
+    ../niveau/mod/punctuation/src/ansi/*.scala \
+    ../niveau/mod/punctuation/src/html/*.scala \
+    ../niveau/mod/profanity/src/java/**/*.java \
+    ../niveau/mod/profanity/src/core/*.scala \
+    ../niveau/mod/rudiments/src/core/*.scala \
+    ../niveau/mod/scintillate/src/core/*.scala \
+    ../niveau/mod/scintillate/src/server/*.scala \
+    ../niveau/mod/scintillate/src/servlet/*.scala \
+    ../niveau/mod/slalom/src/core/*.scala \
+    ../niveau/mod/tarantula/src/core/*.scala \
+    ../niveau/mod/wisteria/src/core/*.scala \
+    ../niveau/mod/xylophone/src/core/*.scala

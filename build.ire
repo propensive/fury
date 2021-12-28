@@ -4,7 +4,7 @@
   ],
   "config": {
     "scalac": {
-      "version": "3.1.1-RC1-bin-SNAPSHOT",
+      "version": "3.1.2-RC1-bin-SNAPSHOT",
       "options": [
         "-language:experimental.erasedDefinitions",
         "-language:experimental.fewerBraces",
@@ -16,7 +16,8 @@
         "-Yrequire-targetName",
         "-Ysafe-init",
         "-Ycheck-all-patmat",
-        "-Yexplicit-nulls"
+        "-Yexplicit-nulls",
+	"-Yno-predef"
       ]
     }
   },
@@ -41,12 +42,11 @@
     {
       "name": "Ire",
       "id": "ire/core",
-      "links": ["gossamer/core", "xylophone/core", "profanity/core", "guillotine/core", "acyclicity/core", "jovian/core", "scintillate/core", "euphemism/core", "honeycomb/core"],
+      "links": ["gossamer/core", "xylophone/core", "profanity/core", "guillotine/core", "acyclicity/core", "jovian/core", "scintillate/core", "euphemism/core", "honeycomb/core", "exoskeleton/core"],
       "sources": ["src/core"],
       "version": "0.1.0",
       "docs": ["doc"],
-      "artifact": "ire.jar",
-      "main": "rudiments.Tests"
+      "artifact": "ire.jar"
     }
   ]
 }
