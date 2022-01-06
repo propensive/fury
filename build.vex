@@ -1,6 +1,6 @@
 {
   "imports": [
-    "../niveau/build.ire"
+    "../niveau/build.vex"
   ],
   "config": {
     "scalac": {
@@ -40,13 +40,13 @@
   },
   "modules": [
     {
-      "name": "Ire",
-      "id": "ire/core",
+      "name": "Vex",
+      "id": "vex/core",
       "links": ["gossamer/core", "xylophone/core", "profanity/core", "guillotine/core", "acyclicity/core", "jovian/core", "scintillate/core", "euphemism/core", "honeycomb/core", "exoskeleton/core"],
       "sources": ["src/core"],
       "version": "0.1.0",
       "docs": ["doc"],
-      "artifact": "ire.jar"
+      "artifact": "vex.jar"
     }
   ]
 }
