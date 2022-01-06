@@ -1,4 +1,4 @@
-package ire
+package vex
 
 import gossamer.*
 import rudiments.*
@@ -28,12 +28,9 @@ val scalacliRealm = Realm(t"scalacli")
 given LogFormat[Stdout.type, AnsiString] = LogFormat.timed
 given Log()
 
-erased given CanThrow[RootParentError] = compiletime.erasedValue
+erased given throwables: CanThrow[AppError | RootParentError] = compiletime.erasedValue
 
-object Build:
-  def empty(pwd: Unix.Directory): Build = Build(Map(), pwd)
-
-case class Build(index: Map[Text, Step], pwd: Unix.Directory):
+case class Build(pwd: Unix.Directory, index: Map[Text, Step] = Map()):
   val steps: Set[Step] = index.values.to(Set)
   
   lazy val graph: Dag[Step] throws BrokenLinkError =
@@ -45,19 +42,19 @@ case class Build(index: Map[Text, Step], pwd: Unix.Directory):
   lazy val linearization: List[Step] throws BrokenLinkError = graph.sorted
   def sourceDirs: List[Unix.Directory] = steps.flatMap(_.sources).to(List)
 
-  lazy val hashes: Map[Step, Text] throws BrokenLinkError | IoError | StreamCutError | AppError |
+  lazy val hashes: Map[Step, Text] throws BrokenLinkError | IoError | StreamCutError |
       ExcessDataError =
     def recur(todo: List[Step], hashes: Map[Step, Text])
-             : Map[Step, Text] throws BrokenLinkError | StreamCutError | ExcessDataError | AppError =
+             : Map[Step, Text] throws BrokenLinkError | StreamCutError | ExcessDataError =
       if todo.isEmpty then hashes
       else try
         val step = todo.head
-        val inputsHash: List[Bytes] = (step.srcFiles.to(List) ++ step.jars.to(List)).map(Ire.hashFile)
+        val inputsHash: List[Bytes] = (step.srcFiles.to(List) ++ step.jars.to(List)).map(Vex.hashFile)
         val linksHash: List[Bytes] = step.links.to(List).map(index(_)).map(hashes(_).bytes)
         val newHash = (inputsHash ++ linksHash).digest[Crc32].encode[Base64]
         
         recur(todo.tail, hashes.updated(step, newHash))
-      catch case err: Exception => throw AppError(t"An unknown error occurred: ${err.toString.show}")
+      catch case err: Error => throw AppError(t"An unknown error occurred", err)
     val t0 = System.currentTimeMillis
     val result = recur(linearization, Map())
     val time = System.currentTimeMillis - t0
@@ -65,7 +62,7 @@ case class Build(index: Map[Text, Step], pwd: Unix.Directory):
     result
 
   @targetName("addAll")
-  infix def ++(build: Build): Build = Build(index ++ build.index, build.pwd)
+  infix def ++(build: Build): Build = Build(build.pwd, index ++ build.index)
   
   def resolve(id: Text): Step throws BrokenLinkError = index.get(id).getOrElse:
     throw BrokenLinkError(id)
@@ -78,26 +75,26 @@ case class Build(index: Map[Text, Step], pwd: Unix.Directory):
 
   def bases: Set[Unix.Directory] = steps.map(_.pwd).to(Set)
 
-  def cache: Map[Step, Text] throws AppError =
+  def cache: Map[Step, Text] =
     try
-      val caches = bases.map(_.path / t".ire").filter(_.exists()).map:
+      val caches = bases.map(_.path / t".vex").filter(_.exists()).map:
         cacheFile => Json.parse(cacheFile.file.read[Text](64.kb)).as[Cache].hashes
       
       caches.flatten.flatMap:
         case Hash(id, hash, _) => try Set(resolve(id) -> hash) catch case e: BrokenLinkError => Set()
       .to(Map)
     catch
-      case err: JsonParseError  => throw AppError(t"The cache file is not in the correct format")
-      case err: StreamCutError  => throw AppError(t"The stream was cut while reading the cache file")
-      case err: IoError         => throw AppError(t"There was an IO error while reading the cache")
-      case err: JsonTypeError   => throw AppError(t"The cache file did not contain the correct JSON format")
-      case err: JsonAccessError => throw AppError(t"The cache file did not contain the correct JSON format")
-      case err: Exception       => throw AppError(t"The cache file could not be read: ${err.toString.show}")
+      case err: JsonParseError  => throw AppError(t"The cache file is not in the correct format", err)
+      case err: StreamCutError  => throw AppError(t"The stream was cut while reading the cache file", err)
+      case err: IoError         => throw AppError(t"There was an IO error while reading the cache",err)
+      case err: JsonTypeError   => throw AppError(t"The cache file did not contain the correct JSON format", err)
+      case err: JsonAccessError => throw AppError(t"The cache file did not contain the correct JSON format", err)
+      case err: Error           => throw AppError(t"An unexpected error occurred", err)
   
-  def updateCache(step: Step, binDigest: Text): Unit throws AppError =
+  def updateCache(step: Step, binDigest: Text): Unit =
     synchronized:
       try
-        val cacheFile = (step.pwd / t".ire")
+        val cacheFile = (step.pwd / t".vex")
         val cache =
           if cacheFile.exists()
           then Cache:
@@ -109,12 +106,12 @@ case class Build(index: Map[Text, Step], pwd: Unix.Directory):
         val newCache = cache.copy(hashes = cache.hashes.filter(_.id != step.id) + newHash)
         newCache.json.show.bytes.writeTo(cacheFile.createFile(overwrite = true))
       catch
-        case err: JsonParseError  => throw AppError(t"The cache file is not in the correct format")
-        case err: StreamCutError  => throw AppError(t"The stream was cut while reading the cache file")
-        case err: IoError         => throw AppError(t"There was an IO error while reading the cache")
-        case err: JsonTypeError   => throw AppError(t"The cache file did not contain the correct JSON format")
-        case err: JsonAccessError => throw AppError(t"The cache file did not contain the correct JSON format")
-        case err: Exception       => throw AppError(t"The cache file could not be read: ${err.toString.show}")
+        case err: JsonParseError  => throw AppError(t"The cache file is not in the correct format", err)
+        case err: StreamCutError  => throw AppError(t"The stream was cut while reading the cache file", err)
+        case err: IoError         => throw AppError(t"There was an IO error while reading the cache", err)
+        case err: JsonTypeError   => throw AppError(t"The cache file did not contain the correct JSON format", err)
+        case err: JsonAccessError => throw AppError(t"The cache file did not contain the correct JSON format", err)
+        case err: Error           => throw AppError(t"An unexpected error occurred", err)
 
 case class Step(path: Unix.File, config: Config, publishing: Option[Publishing], name: Text,
                     id: Text, links: Set[Text], resources: Set[Unix.Directory],
@@ -125,16 +122,16 @@ case class Step(path: Unix.File, config: Config, publishing: Option[Publishing],
   def moduleId: Text = id.cut(t"/").last
   def dashed: Text = t"$projectId-$moduleId"
   def pwd: Unix.Directory = path.parent
-  
-  def group: Text throws AppError =
+
+  def group: Text =
     publishing.getOrElse:
       throw AppError(t"Publishing details have not been specified")
     .group
 
-  def pkg: Unix.IoPath throws AppError = output(t".jar")
-  def docFile: Unix.IoPath throws AppError = output(t"-javadoc.jar")
-  def srcsPkg: Unix.IoPath throws AppError = output(t"-sources.jar")
-  def pomFile: Unix.IoPath throws AppError = output(t".pom")
+  def pkg: Unix.IoPath = output(t".jar")
+  def docFile: Unix.IoPath = output(t"-javadoc.jar")
+  def srcsPkg: Unix.IoPath = output(t"-sources.jar")
+  def pomFile: Unix.IoPath = output(t".pom")
 
   private def output(extension: Text): Unix.IoPath =
     pwd / t"bin" / t"$dashed-$version$extension"
@@ -144,59 +141,76 @@ case class Step(path: Unix.File, config: Config, publishing: Option[Publishing],
   def srcFiles: Set[Unix.File] throws IoError =
     sources.flatMap(_.path.descendantFiles(!_.name.startsWith(t"."))).filter(compilable)
 
+  def dependencySteps(build: Build): Set[Step] throws BrokenLinkError =
+    dependencies.map(build.resolve(_))
+
   def classpath(build: Build): Set[Unix.IoPath] throws IoError | BrokenLinkError | AppError =
-    (build.graph.reachable(this) - this).flatMap:
-      step => step.jars.map(_.path) + step.pkg
+    build.graph.reachable(this).flatMap:
+      step => step.jars.map(_.path) + step.cacheDir.path
   
+  def compileClasspath(build: Build): Set[Unix.IoPath] throws IoError | BrokenLinkError | AppError =
+    classpath(build) - cacheDir.path
+
+  def cacheDir: Unix.Directory =
+    try
+      val homeDir = Unix.parse(Sys.user.home()).get.directory(Expect)
+      (homeDir / t".cache" / t"vex" / projectId / moduleId).directory(Ensure)
+    catch
+      case err: KeyNotFoundError =>
+        throw AppError(t"The user's home directory could not be determined", err)
+      
+      case err: IoError =>
+        throw AppError(t"Could not write to the user's home directory", err)
+
   def runClasspath(build: Build): Set[Unix.IoPath] throws IoError | BrokenLinkError | AppError =
     build.graph.reachable(this).flatMap:
       step => step.jars.map(_.path) + step.pkg
 
-  def pomDependency(build: Build): Dependency throws AppError = Dependency(group, dashed, version)
+  def pomDependency(build: Build): Dependency = Dependency(group, dashed, version)
 
-  def pomDependencies(build: Build): List[Dependency] throws AppError =
+  def pomDependencies(build: Build): List[Dependency] =
     try links.map(build.resolve(_)).map(_.pomDependency(build)).to(List)
-    catch case err: BrokenLinkError => throw AppError(t"Couldn't resolve dependencies")
+    catch case err: BrokenLinkError => throw AppError(t"Couldn't resolve dependencies", err)
 
   def compile(hashes: Map[Step, Text], oldHashes: Map[Step, Text], build: Build)(using Drain)
-             : Unit throws AppError =
+             : Unit =
     try
       //val srcs = srcFiles.map(_.path.relativeTo(build.pwd.path).show).to(List)
-      if !pkg.parent.exists() then pkg.parent.createDirectory()
+      if !pkg.parent.exists() then pkg.parent.directory(Create)
       //val classpath = build.transitive(_.classpath(build))(this).to(List).map(_.relativeTo(build.pwd.path).show).flatMap(List(t"--jar", _))
       val resourceArgs = build.transitive(_.resources)(this).map(_.path.relativeTo(build.pwd.path).show).to(List).flatMap(List(t"--resource", _))
       val extraJars = build.transitive(_.jars)(this).map(_.path.relativeTo(build.pwd.path).show).to(List).flatMap(List(t"--jar", _))
       val deps = build.transitive(_.dependencies)(this).map(_.show).to(List).flatMap(List(t"-d", _))
       val relativePkg = pkg.relativeTo(build.pwd.path).show
       
-      //val cmd = sh"scala-cli package --library -o $relativePkg -f $classpath $resourceArgs $extraJars $deps -S ${config.scalac.version} --progress ${config.scalac.options} $srcs"
       val t0 = System.currentTimeMillis
-      val diagnostics = Compiler.compile(srcFiles.to(List), classpath(build).map(_.file)).map("ERROR: "+_.toString.show)
-      diagnostics.foreach(Out.println)
+      val diagnostics = Compiler.compile(srcFiles.to(List), compileClasspath(build), cacheDir)
+      diagnostics.map(_.toString.show).foreach(Out.println)
 
       
       //val process = cmd.fork[ExitStatus]()
       
+      val time = System.currentTimeMillis - t0
+      
       //process.await() match
-      if diagnostics.isEmpty then
+      if diagnostics.filter(_.level == 2).isEmpty then
         //case ExitStatus.Ok =>
-          val time = System.currentTimeMillis - t0
           Out.println(ansi"Compilation of ${Green}[${name}] succeeded in ${Yellow}[${time}ms]")
           
-          if !resources.isEmpty then
-            val resourceArgs = resources.to(List).flatMap:
-              dir =>
-                Out.println(t"Adding resource dir $dir")
-                t"-C" :: dir.show :: dir.path.descendantFiles(!_.name.startsWith(t".")).to(List).map(_.path.relativeTo(dir.path).show)
+          // if !resources.isEmpty then
+          //   val resourceArgs = resources.to(List).flatMap:
+          //     dir =>
+          //       Out.println(t"Adding resource dir $dir")
+          //       t"-C" :: dir.show :: dir.path.descendantFiles(!_.name.startsWith(t".")).to(List).map(_.path.relativeTo(dir.path).show)
             
-            sh"jar uf $pkg $resourceArgs".exec[ExitStatus]() match
-              case ExitStatus.Ok      => Out.println(t"Added files to $pkg")
-              case ExitStatus.Fail(n) => Out.println(t"Failed to add files to $pkg")
+          //   sh"jar uf $pkg $resourceArgs".exec[ExitStatus]() match
+          //     case ExitStatus.Ok      => Out.println(t"Added files to $pkg")
+          //     case ExitStatus.Fail(n) => Out.println(t"Failed to add files to $pkg")
           
-          val stream = pkg.file.read[DataStream]().map:
-            chunk => try chunk catch case err: StreamCutError => Bytes()
-          val binDigest = stream.digest[Crc32].encode[Base64]
-          build.updateCache(this, binDigest)
+          // val stream = pkg.file.read[DataStream]().map:
+          //   chunk => try chunk catch case err: StreamCutError => Bytes()
+          // val binDigest = stream.digest[Crc32].encode[Base64]
+          // build.updateCache(this, binDigest)
           
           //locally:
             //given Realm = scalacliRealm
@@ -209,7 +223,8 @@ case class Step(path: Unix.File, config: Config, publishing: Option[Publishing],
           //  mainClass => sh"scala-cli run -M $mainClass $classpath $resourceArgs $extraJars $deps -S ${config.scalac.version} --progress ${config.scalac.options} $srcs".exec[LazyList[Text]]().foreach(Out.println(_))
 
         //case ExitStatus.Fail(n) =>
-      //else
+      else
+        Out.println(ansi"Compilation of ${Green}[${name}] failed in ${Yellow}[${time}ms]")
           //given Realm = scalacliRealm
           //val stderr: Text = process.stderr(1.mb).slurp(1.mb).uString
           //val stdout: Text = process.stdout(1.mb).slurp(1.mb).uString
@@ -218,17 +233,20 @@ case class Step(path: Unix.File, config: Config, publishing: Option[Publishing],
     
     catch
       case err: IoError =>
-        throw AppError(t"Could not read the source files: ${err.toString.show}")
+        throw AppError(t"Could not read the source files", err)
       
       case err: StreamCutError =>
-        throw AppError(t"The stream from scala-cli was broken before it completed")
-      
+        throw AppError(t"The stream from scala-cli was broken before it completed", err)
+
       case err: ExcessDataError =>
-        throw AppError(t"The scala-cli process returned too much data")
-      
+        throw AppError(t"The scala-cli process returned too much data", err)
+
       case err: BrokenLinkError => err match
         case BrokenLinkError(ref) =>
-          throw AppError(t"There was an unsatisfied reference to $ref")
+          throw AppError(t"There was an unsatisfied reference to $ref", err)
+
+      case err: Error =>
+        throw AppError(t"An unexpected error occurred", err)
 
 case class BuildConfig(imports: Option[List[Text]], config: Config, publishing: Option[Publishing],
                            modules: List[Module]):
@@ -245,8 +263,8 @@ case class BuildConfig(imports: Option[List[Text]], config: Config, publishing: 
           module =>
             def relativize(text: Text): Unix.IoPath = file.parent.path ++ Relative.parse(text)
             val links = module.links.getOrElse(Set())
-            val resources = module.resources.getOrElse(Set()).map(relativize).map(_.directory)
-            val sources = module.sources.map(relativize).map(_.directory)
+            val resources = module.resources.getOrElse(Set()).map(relativize).map(_.directory(Expect))
+            val sources = module.sources.map(relativize).map(_.directory(Expect))
             val jars = module.jars.getOrElse(Set()).map(relativize).map(_.file)
             val dependencies = module.dependencies.getOrElse(Set())
             val docs = module.docs.getOrElse(Nil).map(relativize)
@@ -260,7 +278,7 @@ case class BuildConfig(imports: Option[List[Text]], config: Config, publishing: 
         val importFiles = imports.getOrElse(Nil).map:
           path => (file.parent.path ++ Relative.parse(path)).file
         
-        Ire.readBuilds(build ++ Build(steps, build.pwd), seen, (importFiles ++ tail)*)
+        Vex.readBuilds(build ++ Build(build.pwd, steps), seen, (importFiles ++ tail)*)
 
 case class Publishing(username: Text, group: Text, url: Text, organization: Organization,
                           developers: List[Developer])
@@ -273,12 +291,15 @@ case class Module(name: Text, id: Text, links: Option[Set[Text]], resources: Opt
                       dependencies: Option[Set[Text]], version: Option[Text],
                       artifact: Option[Text], main: Option[Text])
 
-case class AppError(message: Text) extends Exception
-case class BuildfileError() extends Exception
-case class BrokenLinkError(link: Text)
-extends Exception(s"The reference to $link cannot be resolved")
+case class AppError(message: Text, cause: Maybe[Error] = Unset) extends Error(cause)
 
-object Ire extends ServerApp():
+case class BuildfileError() extends Error:
+  def message: Text = t"There was an error in the buildfile"
+
+case class BrokenLinkError(link: Text) extends Error:
+  def message: Text = t"The reference to $link cannot be resolved"
+
+object Vex extends ServerApp():
   def main(using cli: CommandLine): ExitStatus = try
     //Out.println(cli.scriptName)
     //Out.println(cli.scriptDir.option.fold(t"nothing")(_.fullname))
@@ -286,23 +307,25 @@ object Ire extends ServerApp():
     //Zip.read(file, 1247).map(_.toString.show).foreach(Out.println(_))
 
     cli.args match
-      case t"compile" :: params => Ire.build(false, params.headOption.map(_.show), false, None, cli.pwd)
-      case t"publish" :: params => Ire.build(true, params.headOption.map(_.show), false, None, cli.pwd)
-      case t"watch" :: params   => Ire.build(false, params.headOption.map(_.show), true, None, cli.pwd)
-      case params              => Ire.build(false, params.headOption.map(_.show), false, None, cli.pwd)
+      case t"compile" :: params => Vex.build(false, params.headOption.map(_.show), false, None, cli.pwd)
+      case t"publish" :: params => Vex.build(true, params.headOption.map(_.show), false, None, cli.pwd)
+      case t"watch" :: params   => Vex.build(false, params.headOption.map(_.show), true, None, cli.pwd)
+      case t"stop" :: params    => Vex.stop()
+      case params               => Vex.build(false, params.headOption.map(_.show), false, None, cli.pwd)
   
-  catch case err: Exception =>
-    Out.println(err.toString)
+  catch case err: AppError =>
+    Out.println(err.stackTrace.ansi)
+
+
     ExitStatus.Fail(1)
-  
   
   private lazy val fileHashes: FileCache[Bytes] = new FileCache()
 
   private def init(target: Option[Text], pwd: Unix.Directory)(using Drain)
-                  : Build throws AppError | IoError | BuildfileError =
-    val path = pwd / (target.getOrElse(t"build")+t".ire")
+                  : Build throws IoError | BuildfileError =
+    val path = pwd / (target.getOrElse(t"build")+t".vex")
     
-    try readBuilds(Build.empty(pwd), Set(), path.file)
+    try readBuilds(Build(pwd), Set(), path.file)
     catch case err: IoError =>
       Out.println(ansi"Configuration file $Violet(${path.show})")
       sys.exit(1)
@@ -311,12 +334,12 @@ object Ire extends ServerApp():
     try fileHashes(file.path.show, file.modified):
       file.read[Bytes](1.mb).digest[Crc32].bytes
     catch
-      case err: StreamCutError  => throw AppError(t"The stream was cut while hashing a file")
-      case err: ExcessDataError => throw AppError(t"The file was too big to hash")
-      case err: Exception       => throw AppError(t"An unexpected error occurred")
+      case err: StreamCutError  => throw AppError(t"The stream was cut while hashing a file", err)
+      case err: ExcessDataError => throw AppError(t"The file was too big to hash", err)
+      case err: Error           => throw AppError(t"An unexpected error occurred", err)
   
   def readBuilds(build: Build, seen: Set[Text], files: Unix.File*)(using Drain)
-                : Build throws AppError | BuildfileError =
+                : Build throws BuildfileError =
     try
       files.to(List) match
         case Nil =>
@@ -338,7 +361,7 @@ object Ire extends ServerApp():
         throw BuildfileError()
       
       case err: StreamCutError =>
-        abort(t"The configuration file could not be read completely")
+        throw AppError(t"The configuration file could not be read completely", err)
       
       case err: JsonParseError =>
         Out.println(t"The configuration file was not valid JSON")
@@ -348,12 +371,10 @@ object Ire extends ServerApp():
         throw err
 
       case err: BuildfileError =>
-        throw err
+        throw AppError(t"There was an error in the buildfile", err)
 
-      case err: Exception =>
-        Out.println(t"An unexpected error occurred: ${err.toString.show}")
-        err.printStackTrace()
-        abort(t"An unexpected error occurred: ${err.toString.show}")
+      case err: Error =>
+        throw AppError(t"An unexpected error occurred", err)
 
   def readImports(seen: Map[Text, Unix.File], files: Unix.File*): Set[Unix.File] =
     case class Imports(imports: Option[List[Text]]):
@@ -379,11 +400,11 @@ object Ire extends ServerApp():
           if !seen.contains(digest)
           then Json.parse(file.read[Text](1.mb)).as[Imports].gen(seen.updated(digest, file), files*)
           else readImports(seen, tail*)
-        catch case err: Exception => readImports(seen, tail*)
+        catch case err: Error => readImports(seen, tail*)
 
   def build(publishSonatype: Boolean, target: Option[Text], watch: Boolean = false,
                 oldBuild: Option[Build], pwd: Unix.Directory)(using Drain)
-           : ExitStatus throws AppError =
+           : ExitStatus =
     try
       import unsafeExceptions.canThrowAny
       val build = oldBuild.getOrElse(init(target, pwd))
@@ -413,18 +434,18 @@ object Ire extends ServerApp():
         step =>
           step.artifact.foreach:
             artifact =>
-              val tmp = if !tmpPath.exists() then tmpPath.createDirectory() else tmpPath.directory
+              val tmp = tmpPath.directory(Ensure)
               Out.println(ansi"Building $Violet(${artifact.show}) artifact")
               step.runClasspath(build).filter(_.name.endsWith(t".jar")).foreach:
                 jarFile =>
                   try sh"unzip -o -d $tmp $jarFile".exec[Unit]()
-                  catch case err: Exception => err.printStackTrace()
+                  catch case err: Error => throw AppError(t"Could not unzip files", err)
               val includes = tmp.children.map(_.name).flatMap(List(t"-C", tmp.name, _))
               try 
                 val subCmd: List[Text] =
                   step.main.fold(List(t"cf", artifact.show))(List(t"cfe", artifact.show, _))
                 sh"jar $subCmd $includes".exec[Unit]()
-              catch case err: Exception => err.printStackTrace()
+              catch case err: Error => throw AppError(t"Could not execute `jar` command", err)
 
       if publishSonatype then
         val password = Tty.capture:
@@ -437,7 +458,7 @@ object Ire extends ServerApp():
         build.linearization.groupBy(_.publishing).foreach:
           case (publishing, steps) =>
             val publish: Publishing = publishing.getOrElse:
-              throw AppError(t"Publishing settings have not been specified in ire.json")
+              throw AppError(t"Publishing settings have not been specified in vex.json")
 
             val sonatype = Sonatype(publish.username, password, publish.group)
             Out.println(t"Using Sonatype settings ${sonatype.toString}")
@@ -497,7 +518,7 @@ object Ire extends ServerApp():
       
       if watch then
         val dirs = build.sourceDirs.to(List) ++ build.bases.to(List)
-        Ire.build(false, target, true, if waitForChange(dirs) then None else Some(build), build.pwd)
+        Vex.build(false, target, true, if waitForChange(dirs) then None else Some(build), build.pwd)
       else ExitStatus.Ok
     catch
       case err: BrokenLinkError => err match
@@ -505,11 +526,11 @@ object Ire extends ServerApp():
           Out.println(t"The reference to $ref could not be resolved")
           if watch then
             try
-              val path = pwd / (target.getOrElse(t"build")+t".ire")
+              val path = pwd / (target.getOrElse(t"build")+t".vex")
               val dirs = readImports(Map(), path.file).map(_.parent).to(List)
               waitForChange(dirs)
-              Ire.build(false, target, true, None, pwd)
-            catch case err: Exception =>
+              Vex.build(false, target, true, None, pwd)
+            catch case err: Error =>
               Out.println(err.toString.show)
               ExitStatus.Fail(1)
           else ExitStatus.Ok
@@ -517,53 +538,58 @@ object Ire extends ServerApp():
         Out.println(err.toString.show)
         if watch then
           try
-            val path = pwd / (target.getOrElse(t"build")+t".ire")
+            val path = pwd / (target.getOrElse(t"build")+t".vex")
             val dirs = readImports(Map(), path.file).map(_.parent).to(List)
             waitForChange(dirs)
-            Ire.build(false, target, true, None, pwd)
-          catch case err: Exception =>
+            Vex.build(false, target, true, None, pwd)
+          catch case err: Error =>
             Out.println(err.toString.show)
             ExitStatus.Fail(1)
         else ExitStatus.Ok
+      
       case err: TtyError =>
         Out.println(t"Could not capture TTY")
         ExitStatus.Fail(1)
+      
       case err: InotifyError =>
         Out.println(t"The limit of the number if inotify instances has been exceeded")
         ExitStatus.Fail(1)
+      
       case err: StreamCutError =>
         Out.println(t"The stream was cut")
         if watch then
           try
-            val path = pwd / (target.getOrElse(t"build")+t".ire")
+            val path = pwd / (target.getOrElse(t"build")+t".vex")
             val dirs = readImports(Map(), path.file).map(_.parent).to(List)
             waitForChange(dirs)
-            Ire.build(false, target, true, None, pwd)
-          catch case err: Exception =>
+            Vex.build(false, target, true, None, pwd)
+          catch case err: Error =>
             Out.println(err.toString.show)
             ExitStatus.Fail(1)
         else ExitStatus.Ok
+      
       case err: ExcessDataError =>
         Out.println(t"Too much data")
         if watch then
           try
-            val path = pwd / (target.getOrElse(t"build")+t".ire")
+            val path = pwd / (target.getOrElse(t"build")+t".vex")
             val dirs = readImports(Map(), path.file).map(_.parent).to(List)
             waitForChange(dirs)
-            Ire.build(false, target, true, None, pwd)
-          catch case err: Exception =>
+            Vex.build(false, target, true, None, pwd)
+          catch case err: Error =>
             Out.println(err.toString.show)
             ExitStatus.Fail(1)
         else ExitStatus.Ok
+      
       case err: BuildfileError =>
         Out.println(t"There was an error with the build file")
         if watch then
           try
-            val path = pwd / (target.getOrElse(t"build")+t".ire")
+            val path = pwd / (target.getOrElse(t"build")+t".vex")
             val dirs = readImports(Map(), path.file).map(_.parent).to(List)
             waitForChange(dirs)
-            Ire.build(false, target, true, None, pwd)
-          catch case err: Exception =>
+            Vex.build(false, target, true, None, pwd)
+          catch case err: Error =>
             Out.println(err.toString.show)
             ExitStatus.Fail(1)
         else ExitStatus.Ok
@@ -580,15 +606,15 @@ object Ire extends ServerApp():
       stream.head match
         case Unix.FileEvent.Modify(file) =>
           Out.println(ansi"The file $Violet(${file.path.show}) was modified")
-          file.path.name.endsWith(t".ire")
+          !file.path.name.startsWith(t".") && file.path.name.endsWith(t".vex")
         
         case Unix.FileEvent.Delete(path) =>
           Out.println(ansi"The file $Violet(${path.show}) was deleted")
-          path.name.endsWith(t".ire")
+          !path.name.startsWith(t".") && path.name.endsWith(t".vex")
         
         case Unix.FileEvent.NewFile(file) =>
           Out.println(ansi"The file $Violet(${file.path.show}) was created")
-          file.path.name.endsWith(t".ire")
+          !file.path.name.startsWith(t".") && file.path.name.endsWith(t".vex")
         
         case Unix.FileEvent.NewDirectory(dir) =>
           Out.println(ansi"The directory $Violet(${dir.path.show}) was created")
@@ -596,8 +622,6 @@ object Ire extends ServerApp():
         
         case _ =>
           false
-
-  private def abort(message: Text): Nothing throws AppError = throw AppError(message)
 
 case class Hash(id: Text, digest: Text, bin: Text)
 case class Cache(hashes: Set[Hash])
@@ -629,7 +653,7 @@ case class Project(modelVersion: Text, groupId: Text, artifactId: Text, version:
 
 object Pom:
   def apply(build: Build, step: Step, year: Int, url: Text, git: Text, publishing: Publishing)
-           : Project throws AppError =
+           : Project =
     Project(
       modelVersion = t"4.0.0",
       groupId = step.group,
@@ -652,7 +676,8 @@ class FileCache[T]:
   def apply(filename: Text, modified: Long)(calc: => T): T throws IoError =
     if !files.get(filename).fold(false)(_(0) == modified) then files(filename) = modified -> calc
     files(filename)(1)
-given realm: Realm = Realm(t"ire")
+given realm: Realm = Realm(t"vex")
+
 
 object Compiler:
   import dotty.tools.dotc.*, reporting.*
@@ -662,32 +687,60 @@ object Compiler:
     def doReport(diagnostic: Diagnostic)(using core.Contexts.Context): Unit =
       errors += diagnostic
 
-  val compiler = Driver()
+  val Scala3 = new dotty.tools.dotc.Compiler()
 
-  def compile(files: List[Unix.File], inputs: Set[Unix.File])(using Drain): List[Diagnostic] =
-    erased given CanThrow[IoError] = compiletime.erasedValue
+  def compile(files: List[Unix.File], inputs: Set[Unix.IoPath], out: Unix.Directory)
+             (using Drain)
+             : List[Diagnostic] =
+    import unsafeExceptions.canThrowAny
+    import dotty.tools.*, repl.*, dotc.core.*
+    
     val reporter = CustomReporter()
-    val opts = List(
-      t"-d", t"out",
-      t"-language:experimental.erasedDefinitions",
-      t"-language:experimental.fewerBraces",
-      t"-language:experimental.saferExceptions",
-      t"-Wunused:all",
-      t"-deprecation",
-      t"-feature",
-      t"-new-syntax",
-      t"-Yrequire-targetName",
-      t"-Ysafe-init",
-      t"-Ycheck-all-patmat",
-      t"-Yexplicit-nulls",
-      t"-Yno-predef"
-    )
-    val classpath = Unix.parse(t"/home/propensive/niveau/scala/dist/target/pack/lib").get.directory.children.map(_.fullname)
-    val classpath2: List[Text] = inputs.map(_.fullname).to(List)
-    val cmd = List(t"-classpath", (classpath ++ classpath2).join(t":")) ++ opts ++ files.map(_.path.show)
-    Out.println(cmd.join(t"scalac ", t" ", t""))
-    compiler.process(cmd.map(_.s).to(Array), reporter)
-    reporter.errors.to(List)
+    try
+      val separator: Text = try Sys.path.separator() catch case err: KeyNotFoundError => t":"
+      val classpath = Unix.parse(t"/home/propensive/niveau/scala/dist/target/pack/lib").get.directory(Expect).children.map(_.fullname)
+      val classpath2: List[Text] = inputs.map(_.fullname).to(List)
+      //Out.println(t"Extra classpath = ${classpath2.join(t",")}")
+      val fullClasspath = (classpath2 ++ classpath).join(separator)
+      
+      val callbackApi = new interfaces.CompilerCallback:
+        override def onClassGenerated(source: interfaces.SourceFile,
+                                          generatedClass: interfaces.AbstractFile,
+                                          className: String): Unit =
+          ()//Out.println(t"Generated class ${className}")
+  
+        override def onSourceCompiled(source: interfaces.SourceFile): Unit =
+          ()//Out.println(t"Compiled source ${source.toString}")
+      
+      object driver extends dotty.tools.dotc.Driver:
+        val currentCtx =
+          val ctx = initCtx.fresh
+          setup(Array[String]("-d", out.fullname.s, ""), ctx) match
+            case Some((_, ctx)) => ctx
+            case None           => ctx
+        
+        def run(files: List[Unix.File], classpath: Text): List[Diagnostic] =
+          val ctx = currentCtx.fresh
+          val newCtx = ctx
+            .setReporter(reporter)
+            .setCompilerCallback(callbackApi)
+            .setSetting(ctx.settings.language, List("experimental.fewerBraces", "experimental.erasedDefinitions", "experimental.saferExceptions"))
+            .setSetting(ctx.settings.classpath, classpath.s)
+          
+          val sources = files.to(List).map:
+            file => dotty.tools.io.PlainFile(dotty.tools.io.Path(file.fullname.s))
+          
+          val run = Scala3.newRun(using newCtx)
+          run.compile(sources)
+          finish(Scala3, run)(using newCtx)
+          reporter.errors.to(List)
+
+      driver.run(files, fullClasspath)
+
+    catch case err: Throwable =>
+      Out.println(err.toString.show)
+      if err.getCause != null then Out.println(err.getCause.toString.show)
+      reporter.errors.to(List)
 
 object Zip:
   import java.io.*
