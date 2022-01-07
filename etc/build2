@@ -9,7 +9,7 @@ for JAR in $(cs fetch \
     com.vladsch.flexmark:flexmark-ext-tables:0.62.2 \
     com.vladsch.flexmark:flexmark-ext-typographic:0.62.2 \
     javax.servlet:javax.servlet-api:3.0.1 \
-    net.java.dev.jna:jna:5.10.0)
+    net.java.dev.jna:jna:5.10.0 | grep -v scala)
 do
   unzip -n -d classes $JAR
 done
@@ -26,7 +26,7 @@ CLASSPATH="$(cs fetch \
     com.vladsch.flexmark:flexmark-ext-tables:0.62.2 \
     com.vladsch.flexmark:flexmark-ext-typographic:0.62.2 \
     javax.servlet:javax.servlet-api:3.0.1 \
-    net.java.dev.jna:jna:5.10.0 | tr '\n' ':')"
+    net.java.dev.jna:jna:5.10.0 | grep -v scala | tr '\n' ':')"
 
 /home/propensive/niveau/scala/bin/scalac \
     -d classes \
@@ -83,6 +83,6 @@ CLASSPATH="$(cs fetch \
     ../niveau/mod/wisteria/src/core/*.scala \
     ../niveau/mod/xylophone/src/core/*.scala
 
-cd classes && jar cfe ../ire.jar ire.Ire * && cd ..
-cat ../niveau/mod/exoskeleton/etc/invoke ire.jar > ire
-chmod +x ire
+cd classes && jar cfe ../vex.jar vex.Vex * && cd ..
+cat ../niveau/mod/exoskeleton/etc/invoke vex.jar > vex
+chmod +x vex

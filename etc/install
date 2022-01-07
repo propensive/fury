@@ -1,2 +1,2 @@
 #!/bin/sh
-sudo cp ire /usr/local/bin/ire
+sudo cp vex /usr/local/bin/vex

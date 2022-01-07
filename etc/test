@@ -1,10 +1,10 @@
 #!/bin/bash
 
 scli package \
-    -M ire.run \
-    -o ire --force \
+    -M vex.run \
+    -o vex --force \
     --standalone \
-    -S 3.1.1-RC1-bin-SNAPSHOT \
+    -S 3.1.2-RC1-bin-SNAPSHOT \
     -d org.typelevel:jawn-parser_3:1.2.0 \
     -d org.typelevel:jawn-ast_3:1.2.0 \
     -d com.vladsch.flexmark:flexmark:0.62.2 \

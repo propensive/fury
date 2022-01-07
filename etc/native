@@ -1,3 +1,0 @@
-#!/bin/sh
-etc/build --library && cp ire lib/ire.jar
-native-image -classpath $(ls lib/* | tr '\n' :) ire.run && mv ire.run ire

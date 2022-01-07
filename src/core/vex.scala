@@ -8,6 +8,7 @@ import jovian.*
 import guillotine.*
 import escapade.*
 import gastronomy.*
+import harlequin.*
 import iridescence.*, solarized.*
 import eucalyptus.*
 import slalom.*
@@ -24,13 +25,15 @@ import encodings.Utf8
 given Env = envs.enclosing
 import rendering.ansi
 
-val scalacliRealm = Realm(t"scalacli")
 given LogFormat[Stdout.type, AnsiString] = LogFormat.timed
 given Log()
 
 erased given throwables: CanThrow[AppError | RootParentError] = compiletime.erasedValue
 
-case class Build(pwd: Unix.Directory, index: Map[Text, Step] = Map()):
+case class Message(module: Text, path: Text, line: Int, from: Int, to: Int, message: Text,
+                       content: IArray[Char])
+
+case class Build(pwd: Unix.Directory, publishing: Option[Publishing], index: Map[Text, Step] = Map()):
   val steps: Set[Step] = index.values.to(Set)
   
   lazy val graph: Dag[Step] throws BrokenLinkError =
@@ -62,7 +65,8 @@ case class Build(pwd: Unix.Directory, index: Map[Text, Step] = Map()):
     result
 
   @targetName("addAll")
-  infix def ++(build: Build): Build = Build(build.pwd, index ++ build.index)
+  infix def ++(build: Build): Build =
+    Build(build.pwd, publishing.orElse(build.publishing), index ++ build.index)
   
   def resolve(id: Text): Step throws BrokenLinkError = index.get(id).getOrElse:
     throw BrokenLinkError(id)
@@ -118,16 +122,14 @@ case class Step(path: Unix.File, config: Config, publishing: Option[Publishing],
                     sources: Set[Unix.Directory], jars: Set[Unix.File],
                     dependencies: Set[Text], version: Text, docs: List[Unix.IoPath],
                     artifact: Option[Unix.IoPath], main: Option[Text]):
+  def publish(build: Build): Publishing = publishing.orElse(build.publishing).getOrElse:
+    throw AppError(t"There are no publishing details for $id")
+
   def projectId: Text = id.cut(t"/").head
   def moduleId: Text = id.cut(t"/").last
   def dashed: Text = t"$projectId-$moduleId"
   def pwd: Unix.Directory = path.parent
-
-  def group: Text =
-    publishing.getOrElse:
-      throw AppError(t"Publishing details have not been specified")
-    .group
-
+  def group(build: Build): Text = publish(build).group
   def pkg: Unix.IoPath = output(t".jar")
   def docFile: Unix.IoPath = output(t"-javadoc.jar")
   def srcsPkg: Unix.IoPath = output(t"-sources.jar")
@@ -166,70 +168,59 @@ case class Step(path: Unix.File, config: Config, publishing: Option[Publishing],
     build.graph.reachable(this).flatMap:
       step => step.jars.map(_.path) + step.pkg
 
-  def pomDependency(build: Build): Dependency = Dependency(group, dashed, version)
+  def pomDependency(build: Build): Dependency = Dependency(group(build), dashed, version)
 
   def pomDependencies(build: Build): List[Dependency] =
     try links.map(build.resolve(_)).map(_.pomDependency(build)).to(List)
     catch case err: BrokenLinkError => throw AppError(t"Couldn't resolve dependencies", err)
 
   def compile(hashes: Map[Step, Text], oldHashes: Map[Step, Text], build: Build)(using Drain)
-             : Unit =
+             : List[Message] =
     try
       //val srcs = srcFiles.map(_.path.relativeTo(build.pwd.path).show).to(List)
       if !pkg.parent.exists() then pkg.parent.directory(Create)
       //val classpath = build.transitive(_.classpath(build))(this).to(List).map(_.relativeTo(build.pwd.path).show).flatMap(List(t"--jar", _))
-      val resourceArgs = build.transitive(_.resources)(this).map(_.path.relativeTo(build.pwd.path).show).to(List).flatMap(List(t"--resource", _))
-      val extraJars = build.transitive(_.jars)(this).map(_.path.relativeTo(build.pwd.path).show).to(List).flatMap(List(t"--jar", _))
-      val deps = build.transitive(_.dependencies)(this).map(_.show).to(List).flatMap(List(t"-d", _))
-      val relativePkg = pkg.relativeTo(build.pwd.path).show
+      //val resourceArgs = build.transitive(_.resources)(this).map(_.path.relativeTo(build.pwd.path).show).to(List).flatMap(List(t"--resource", _))
+      //val extraJars = build.transitive(_.jars)(this).map(_.path.relativeTo(build.pwd.path).show).to(List).flatMap(List(t"--jar", _))
+      //val deps = build.transitive(_.dependencies)(this).map(_.show).to(List).flatMap(List(t"-d", _))
       
       val t0 = System.currentTimeMillis
       val diagnostics = Compiler.compile(srcFiles.to(List), compileClasspath(build), cacheDir)
-      diagnostics.map(_.toString.show).foreach(Out.println)
-
       
-      //val process = cmd.fork[ExitStatus]()
+      val messages = diagnostics.filter(_.level == 2).flatMap:
+        diagnostic =>
+          if !diagnostic.position.isEmpty then
+            val pos = diagnostic.position.get.nn
+            val line = pos.line
+            val file = pos.source.nn.name.nn
+            val content = pos.source.nn.content.nn
+            List(Message(id, file.show, line, pos.startColumn, pos.endColumn, diagnostic.message.show, content.unsafeImmutable))
+          else Nil
       
       val time = System.currentTimeMillis - t0
       
-      //process.await() match
-      if diagnostics.filter(_.level == 2).isEmpty then
-        //case ExitStatus.Ok =>
-          Out.println(ansi"Compilation of ${Green}[${name}] succeeded in ${Yellow}[${time}ms]")
+      if messages.isEmpty then
+        Out.println(ansi"Compilation of ${Green}[${name}] succeeded in ${Yellow}[${time}ms]")
+        try 
+          val includes = cacheDir.children.map(_.name).flatMap(List(t"-C", cacheDir.fullname, _))
+          val subCmd: List[Text] = main.fold(List(t"cf", pkg.fullname))(List(t"cfe", pkg.fullname, _))
+          pkg.parent.directory(Ensure)
+          val t0 = System.currentTimeMillis
+          sh"jar $subCmd $includes".exec[Unit]()
+          val time = System.currentTimeMillis - t0
+          Out.println(ansi"Built ${Violet}(${pkg.relativeTo(pwd.path).show}) in ${Yellow}[${time}ms]")
           
-          // if !resources.isEmpty then
-          //   val resourceArgs = resources.to(List).flatMap:
-          //     dir =>
-          //       Out.println(t"Adding resource dir $dir")
-          //       t"-C" :: dir.show :: dir.path.descendantFiles(!_.name.startsWith(t".")).to(List).map(_.path.relativeTo(dir.path).show)
-            
-          //   sh"jar uf $pkg $resourceArgs".exec[ExitStatus]() match
-          //     case ExitStatus.Ok      => Out.println(t"Added files to $pkg")
-          //     case ExitStatus.Fail(n) => Out.println(t"Failed to add files to $pkg")
+          val digest = pkg.file.read[DataStream]().map:
+            chunk => try chunk catch case err: StreamCutError => Bytes()
+          .digest[Crc32].encode[Base64]
           
-          // val stream = pkg.file.read[DataStream]().map:
-          //   chunk => try chunk catch case err: StreamCutError => Bytes()
-          // val binDigest = stream.digest[Crc32].encode[Base64]
-          // build.updateCache(this, binDigest)
-          
-          //locally:
-            //given Realm = scalacliRealm
-            //val stderr: Text = process.stderr(1.mb).slurp(1.mb).uString
-            //val stdout: Text = process.stdout(1.mb).slurp(1.mb).uString
-            //stdout.cut(t"\n").filter(!_.isEmpty).foreach(Out.println(_))
-            //stderr.cut(t"\n").filter(!_.isEmpty).foreach(Out.println(_))
-          
-          //main.foreach:
-          //  mainClass => sh"scala-cli run -M $mainClass $classpath $resourceArgs $extraJars $deps -S ${config.scalac.version} --progress ${config.scalac.options} $srcs".exec[LazyList[Text]]().foreach(Out.println(_))
-
-        //case ExitStatus.Fail(n) =>
+          build.updateCache(this, digest)
+        catch case err: Error => throw AppError(t"Could not execute `jar` command", err)
+        Out.println(t"Wrote ${pkg.relativeTo(pwd.path).show}")
+        Nil
       else
         Out.println(ansi"Compilation of ${Green}[${name}] failed in ${Yellow}[${time}ms]")
-          //given Realm = scalacliRealm
-          //val stderr: Text = process.stderr(1.mb).slurp(1.mb).uString
-          //val stdout: Text = process.stdout(1.mb).slurp(1.mb).uString
-          //stdout.cut(t"\n").filter(!_.isEmpty).foreach(Out.println(_))
-          //stderr.cut(t"\n").filter(!_.isEmpty).foreach(Out.println(_))
+        messages
     
     catch
       case err: IoError =>
@@ -270,7 +261,6 @@ case class BuildConfig(imports: Option[List[Text]], config: Config, publishing: 
             val docs = module.docs.getOrElse(Nil).map(relativize)
             val version = module.version.getOrElse(t"1.0.0")
             val artifactPath = module.artifact.map(file.parent.path ++ Relative.parse(_))
-            
             Step(file, config, publishing, module.name, module.id, links, resources, sources, jars,
                 dependencies, version, docs, artifactPath, module.main)
         .mtwin.map(_.id -> _).to(Map)
@@ -278,7 +268,7 @@ case class BuildConfig(imports: Option[List[Text]], config: Config, publishing: 
         val importFiles = imports.getOrElse(Nil).map:
           path => (file.parent.path ++ Relative.parse(path)).file
         
-        Vex.readBuilds(build ++ Build(build.pwd, steps), seen, (importFiles ++ tail)*)
+        Vex.readBuilds(build ++ Build(build.pwd, build.publishing, steps), seen, (importFiles ++ tail)*)
 
 case class Publishing(username: Text, group: Text, url: Text, organization: Organization,
                           developers: List[Developer])
@@ -301,17 +291,12 @@ case class BrokenLinkError(link: Text) extends Error:
 
 object Vex extends ServerApp():
   def main(using cli: CommandLine): ExitStatus = try
-    //Out.println(cli.scriptName)
-    //Out.println(cli.scriptDir.option.fold(t"nothing")(_.fullname))
-    //val file = (cli.scriptDir.option.get / cli.scriptName).file
-    //Zip.read(file, 1247).map(_.toString.show).foreach(Out.println(_))
-
     cli.args match
-      case t"compile" :: params => Vex.build(false, params.headOption.map(_.show), false, None, cli.pwd)
-      case t"publish" :: params => Vex.build(true, params.headOption.map(_.show), false, None, cli.pwd)
-      case t"watch" :: params   => Vex.build(false, params.headOption.map(_.show), true, None, cli.pwd)
-      case t"stop" :: params    => Vex.stop()
-      case params               => Vex.build(false, params.headOption.map(_.show), false, None, cli.pwd)
+      case t"compile" :: params => Vex.build(false, params.headOption.map(_.show), false, None, cli.pwd, cli.env)
+      case t"publish" :: params => Vex.build(true, params.headOption.map(_.show), false, None, cli.pwd, cli.env)
+      case t"watch" :: params   => Vex.build(false, params.headOption.map(_.show), true, None, cli.pwd, cli.env)
+      case t"stop" :: params    => Vex.stop(cli)
+      case params               => Vex.build(false, params.headOption.map(_.show), false, None, cli.pwd, cli.env)
   
   catch case err: AppError =>
     Out.println(err.stackTrace.ansi)
@@ -325,7 +310,7 @@ object Vex extends ServerApp():
                   : Build throws IoError | BuildfileError =
     val path = pwd / (target.getOrElse(t"build")+t".vex")
     
-    try readBuilds(Build(pwd), Set(), path.file)
+    try readBuilds(Build(pwd, None), Set(), path.file)
     catch case err: IoError =>
       Out.println(ansi"Configuration file $Violet(${path.show})")
       sys.exit(1)
@@ -402,37 +387,90 @@ object Vex extends ServerApp():
           else readImports(seen, tail*)
         catch case err: Error => readImports(seen, tail*)
 
+  def stop(cli: CommandLine)(using Drain): ExitStatus =
+    Out.println(t"Shutting down Vex")
+    cli.shutdown()
+    ExitStatus.Ok
+
   def build(publishSonatype: Boolean, target: Option[Text], watch: Boolean = false,
-                oldBuild: Option[Build], pwd: Unix.Directory)(using Drain)
+                oldBuild: Option[Build], pwd: Unix.Directory, env: Map[Text, Text])(using Drain)
            : ExitStatus =
     try
       import unsafeExceptions.canThrowAny
-      val build = oldBuild.getOrElse(init(target, pwd))
+      val build = init(target, pwd)
       val oldHashes = build.cache
       given ExecutionContext = ExecutionContext.global
-      Out.println("Starting a build")
+      Out.println("Starting build")
 
-      val futures = build.graph.traversal[Future[Unit]]:
+      val futures = build.graph.traversal[Future[Set[Message]]]:
         (set, step) => Future.sequence(set).flatMap:
-          units => Future:
+          results => Future:
+            val messages = results.flatten
             try
-              if oldHashes.get(step) != build.hashes.get(step) || !step.pkg.exists() ||
-                  step.main.isDefined
-              then
+              if oldHashes.get(step) != build.hashes.get(step) || !step.pkg.exists() || step.main.isDefined then
                 Out.println(ansi"Compiling ${Green}[${step.name}]...")
-                step.compile(build.hashes, oldHashes, build)
+                messages ++ step.compile(build.hashes, oldHashes, build)
+              else messages
             catch
-              case err: ExcessDataError => Out.println(t"Too much data")
-              case err: StreamCutError  => Out.println(t"The stream was cut prematurely")
+              case err: ExcessDataError =>
+                messages + Message(step.id, t"<unknown>", 0, 0, 0, t"too much data was received", IArray())
+
+              case err: StreamCutError =>
+                messages + Message(step.id, t"<unknown>", 0, 0, 0, t"the stream was cut prematurely", IArray())
       .values
-      
-      Future.sequence(futures).await()
-      Out.println(t"Compilation complete")
+
+      val messages: List[Message] = Future.sequence(futures).await().to(Set).flatten.to(List)
+      val success = messages.isEmpty
+
+      if success then Out.println(t"Compilation completed successfully")
+      else Out.println(t"Compilation failed\n")
+      messages.groupBy(_.path).foreach:
+        case (path, messages) =>
+          val syntax = ScalaSyntax.highlight(String(messages.head.content.unsafeMutable).show)
+          messages.sortBy(-_.line).foreach:
+            case Message(module, path, line, from, to, message, _) =>
+              Out.println(ansi"${colors.Black}(${Bg(colors.Purple)}( $module ))${colors.Purple}(${Bg(colors.Crimson)}( ${colors.Black}($path:${line + 1}:$from) ))${colors.Crimson}()")
+              Out.println(ansi"${Bold}(${message})")
+              
+              def format(line: Int) = syntax(line).map:
+                case Token.Code(code, flair) => flair match
+                  case Flair.Type              => ansi"${colors.YellowGreen}(${code.trim})"
+                  case Flair.Term              => ansi"${colors.CadetBlue}(${code.trim})"
+                  case Flair.Symbol            => ansi"${colors.Turquoise}(${code.trim})"
+                  case Flair.Keyword           => ansi"${colors.DarkOrange}(${code.trim})"
+                  case Flair.Modifier          => ansi"${colors.Linen}(${code.trim})"
+                  case Flair.Ident             => ansi"${colors.BurlyWood}(${code.trim})"
+                  case Flair.Error             => ansi"${colors.OrangeRed}($Underline(${code.trim}))"
+                  case Flair.Number            => ansi"${colors.Gold}(${code.trim})"
+                  case Flair.String            => ansi"${colors.Plum}(${code.trim})"
+                  case other                   => ansi"${code.trim}"
+                case Token.Space(n)          => ansi" "*n
+                case Token.Newline           => throw Impossible("Should not have a newline")
+              .join
+              val margin = (line + 2).show.length
+              val bg = Bg(Srgb(0.16, 0.06, 0.03))
+              if line > 1 then
+                Out.print(ansi"$bg${colors.Orange}(${line.show.pad(margin, Rtl)})${colors.Gray}(│) ")
+                Out.println(ansi"${format(line - 1)}${escapes.EraseLine}")
+              val code = format(line)
+              Out.print(ansi"$bg${colors.Orange}(${(line + 1).show.pad(margin, Rtl)})${colors.Gray}(│) ")
+              Out.print(ansi"${code.take(from)}")
+              Out.print(ansi"${Underline}(${colors.OrangeRed}(${code.plain.slice(from, to)}))")
+              Out.println(ansi"${code.drop(to)}${escapes.EraseLine}")
+              
+              if line + 1 < syntax.length
+              then
+                Out.print(ansi"$bg${colors.Orange}(${(line + 2).show.pad(margin, Rtl)})${colors.Gray}(│) ")
+                Out.println(ansi"${format(line + 1)}${escapes.EraseLine}${escapes.Reset}")
+              
+              Out.println(ansi"${escapes.Reset}")
+
       val tmpPath: Unix.IoPath = pwd / t".tmp"
 
-      build.linearization.foreach:
-        step =>
-          step.artifact.foreach:
+      if messages.isEmpty
+      then
+        build.linearization.foreach:
+          step => step.artifact.foreach:
             artifact =>
               val tmp = tmpPath.directory(Ensure)
               Out.println(ansi"Building $Violet(${artifact.show}) artifact")
@@ -444,81 +482,74 @@ object Vex extends ServerApp():
               try 
                 val subCmd: List[Text] =
                   step.main.fold(List(t"cf", artifact.show))(List(t"cfe", artifact.show, _))
+                
                 sh"jar $subCmd $includes".exec[Unit]()
               catch case err: Error => throw AppError(t"Could not execute `jar` command", err)
 
-      if publishSonatype then
-        val password = Tty.capture:
-          Thread.sleep(1000)
-          Tty.print(t"Password: ")
-          val pw = LineEditor.ask(t"", LineEditor.concealed)
-          Tty.print(t"\n")
-          pw
-        
-        build.linearization.groupBy(_.publishing).foreach:
-          case (publishing, steps) =>
-            val publish: Publishing = publishing.getOrElse:
-              throw AppError(t"Publishing settings have not been specified in vex.json")
-
-            val sonatype = Sonatype(publish.username, password, publish.group)
-            Out.println(t"Using Sonatype settings ${sonatype.toString}")
-            val profileId = sonatype.profile()
-            val repoId = sonatype.start(profileId)
-                
-            steps.foreach:
-              step =>
-                Out.println(t"Generating POM file for ${step.id}")
-                
-                val pomXml = Pom(build, step, 2021,
-                    t"https://propensive.com/opensource/${step.projectId}",
-                    t"github.com/${step.projectId}", publish).xml
-                
-                pomXml.show.bytes.writeTo(step.pomFile.createFile())
-                
-                val srcFiles: List[Text] = step.sources.to(List).flatMap:
-                  dir =>
-                    Out.println(t"Adding source dir $dir")
-                    dir.path.descendantFiles(!_.name.startsWith(t".")).filter:
-                      file => file.name.endsWith(t".scala") || file.name.endsWith(t".java")
-                    .flatMap:
-                      file => List(t"-C", dir.show, dir.path.relativeTo(file.path).show)
-                
-                sh"jar cf ${step.srcsPkg} $srcFiles".exec[ExitStatus]()
-                
-                val docFiles: List[Text] = step.docs.to(List).flatMap:
-                  dir =>
-                    Out.println(t"Adding doc dir $dir")
-                    dir.descendantFiles(!_.name.startsWith(t".")).flatMap:
-                      file => List(t"-C", dir.show, dir.relativeTo(file.path).show)
-                
-                sh"jar cf ${step.docFile} $docFiles".exec[ExitStatus]()
-    
-                List(step.docFile, step.pomFile, step.pkg, step.srcsPkg).foreach:
-                  file => sh"gpg -ab $file".exec[ExitStatus]()
-    
-                Out.println(t"Publishing ${step.id}")
-                val dir = t"${step.id.sub(t"/", t"-")}/${step.version}"
-    
-                val uploads = List(step.pkg.file, step.pomFile.file, step.docFile.file,
-                    step.srcsPkg.file)
-                
-                val signedUploads = uploads ++ uploads.map(_.path.rename(_+t".asc").file)
-    
-                val checksums =
-                  signedUploads.map:
-                    file =>
-                      val checksum = file.path.rename(_+t".sha1")
-                      sh"sha1sum $file".exec[Text]().take(40).bytes.writeTo(checksum.createFile())
-                      checksum.file
-    
-                sonatype.deploy(repoId, dir, signedUploads ++ checksums)
-            
-            sonatype.finish(profileId, repoId)
-            sonatype.activity(repoId)
+        if publishSonatype then
+          val password = env.get(t"SONATYPE_PASSWORD").getOrElse:
+            throw AppError(t"The environment variable SONATYPE_PASSWORD is not set")
+          
+          build.linearization.groupBy(_.publish(build)).foreach:
+            case (pub, steps) =>
+              val sonatype = Sonatype(pub.username, password, pub.group)
+              Out.println(t"Using Sonatype settings ${sonatype.toString}")
+              val profileId = sonatype.profile()
+              val repoId = sonatype.start(profileId)
+                  
+              steps.foreach:
+                step =>
+                  Out.println(t"Generating POM file for ${step.id}")
+                  
+                  val pomXml = Pom(build, step, 2021,
+                      t"https://propensive.com/opensource/${step.projectId}",
+                      t"github.com/${step.projectId}", pub).xml
+                  
+                  pomXml.show.bytes.writeTo(step.pomFile.createFile())
+                  
+                  val srcFiles: List[Text] = step.sources.to(List).flatMap:
+                    dir =>
+                      Out.println(t"Adding source dir $dir")
+                      dir.path.descendantFiles(!_.name.startsWith(t".")).filter:
+                        file => file.name.endsWith(t".scala") || file.name.endsWith(t".java")
+                      .flatMap:
+                        file => List(t"-C", dir.show, file.path.relativeTo(dir.path).show)
+                  
+                  sh"jar cf ${step.srcsPkg} $srcFiles".exec[ExitStatus]()
+                  
+                  val docFiles: List[Text] = step.docs.to(List).flatMap:
+                    dir =>
+                      Out.println(t"Adding doc dir $dir")
+                      dir.descendantFiles(!_.name.startsWith(t".")).flatMap:
+                        file => List(t"-C", dir.show, file.path.relativeTo(dir).show)
+                  
+                  sh"jar cf ${step.docFile} $docFiles".exec[ExitStatus]()
+      
+                  List(step.docFile, step.pomFile, step.pkg, step.srcsPkg).foreach:
+                    file => sh"gpg -ab $file".exec[ExitStatus]()
+      
+                  Out.println(t"Publishing ${step.id}")
+                  val dir = t"${step.id.sub(t"/", t"-")}/${step.version}"
+      
+                  val uploads = List(step.pkg, step.pomFile, step.docFile, step.srcsPkg).map(_.file)
+                  val signedUploads = uploads ++ uploads.map(_.path.rename(_+t".asc").file)
+      
+                  val checksums =
+                    signedUploads.map:
+                      file =>
+                        val checksum = file.path.rename(_+t".sha1")
+                        sh"sha1sum $file".exec[Text]().take(40).bytes.writeTo(checksum.createFile())
+                        checksum.file
+      
+                  sonatype.deploy(repoId, dir, signedUploads ++ checksums)
+              
+              Out.println(t"Abandoning for now")
+              //sonatype.finish(profileId, repoId)
+              //sonatype.activity(repoId)
       
       if watch then
         val dirs = build.sourceDirs.to(List) ++ build.bases.to(List)
-        Vex.build(false, target, true, if waitForChange(dirs) then None else Some(build), build.pwd)
+        Vex.build(false, target, true, if waitForChange(dirs) then None else Some(build), build.pwd, env)
       else ExitStatus.Ok
     catch
       case err: BrokenLinkError => err match
@@ -529,7 +560,7 @@ object Vex extends ServerApp():
               val path = pwd / (target.getOrElse(t"build")+t".vex")
               val dirs = readImports(Map(), path.file).map(_.parent).to(List)
               waitForChange(dirs)
-              Vex.build(false, target, true, None, pwd)
+              Vex.build(false, target, true, None, pwd, env)
             catch case err: Error =>
               Out.println(err.toString.show)
               ExitStatus.Fail(1)
@@ -541,7 +572,7 @@ object Vex extends ServerApp():
             val path = pwd / (target.getOrElse(t"build")+t".vex")
             val dirs = readImports(Map(), path.file).map(_.parent).to(List)
             waitForChange(dirs)
-            Vex.build(false, target, true, None, pwd)
+            Vex.build(false, target, true, None, pwd, env)
           catch case err: Error =>
             Out.println(err.toString.show)
             ExitStatus.Fail(1)
@@ -562,7 +593,7 @@ object Vex extends ServerApp():
             val path = pwd / (target.getOrElse(t"build")+t".vex")
             val dirs = readImports(Map(), path.file).map(_.parent).to(List)
             waitForChange(dirs)
-            Vex.build(false, target, true, None, pwd)
+            Vex.build(false, target, true, None, pwd, env)
           catch case err: Error =>
             Out.println(err.toString.show)
             ExitStatus.Fail(1)
@@ -575,7 +606,7 @@ object Vex extends ServerApp():
             val path = pwd / (target.getOrElse(t"build")+t".vex")
             val dirs = readImports(Map(), path.file).map(_.parent).to(List)
             waitForChange(dirs)
-            Vex.build(false, target, true, None, pwd)
+            Vex.build(false, target, true, None, pwd, env)
           catch case err: Error =>
             Out.println(err.toString.show)
             ExitStatus.Fail(1)
@@ -588,7 +619,7 @@ object Vex extends ServerApp():
             val path = pwd / (target.getOrElse(t"build")+t".vex")
             val dirs = readImports(Map(), path.file).map(_.parent).to(List)
             waitForChange(dirs)
-            Vex.build(false, target, true, None, pwd)
+            Vex.build(false, target, true, None, pwd, env)
           catch case err: Error =>
             Out.println(err.toString.show)
             ExitStatus.Fail(1)
@@ -626,6 +657,7 @@ object Vex extends ServerApp():
 case class Hash(id: Text, digest: Text, bin: Text)
 case class Cache(hashes: Set[Hash])
 case class Versioning(versions: List[Version])
+
 case class Version(digest: Text, major: Int, minor: Int):
   def version: Text = t"$major.$minor"
 
@@ -656,7 +688,7 @@ object Pom:
            : Project =
     Project(
       modelVersion = t"4.0.0",
-      groupId = step.group,
+      groupId = step.group(build),
       artifactId = step.dashed,
       version = step.version,
       licenses = List(License(t"Apache 2", t"http://www.apache.org/licenses/LICENSE-2.0.txt", t"repo")),
@@ -693,7 +725,7 @@ object Compiler:
              (using Drain)
              : List[Diagnostic] =
     import unsafeExceptions.canThrowAny
-    import dotty.tools.*, repl.*, dotc.core.*
+    import dotty.tools.*, io.*, repl.*, dotc.core.*
     
     val reporter = CustomReporter()
     try
@@ -712,12 +744,10 @@ object Compiler:
         override def onSourceCompiled(source: interfaces.SourceFile): Unit =
           ()//Out.println(t"Compiled source ${source.toString}")
       
-      object driver extends dotty.tools.dotc.Driver:
+      object driver extends dotc.Driver:
         val currentCtx =
           val ctx = initCtx.fresh
-          setup(Array[String]("-d", out.fullname.s, ""), ctx) match
-            case Some((_, ctx)) => ctx
-            case None           => ctx
+          setup(Array[String]("-d", out.fullname.s, ""), ctx).map(_(1)).getOrElse(ctx)
         
         def run(files: List[Unix.File], classpath: Text): List[Diagnostic] =
           val ctx = currentCtx.fresh
@@ -728,7 +758,7 @@ object Compiler:
             .setSetting(ctx.settings.classpath, classpath.s)
           
           val sources = files.to(List).map:
-            file => dotty.tools.io.PlainFile(dotty.tools.io.Path(file.fullname.s))
+            file => PlainFile(Path(file.fullname.s))
           
           val run = Scala3.newRun(using newCtx)
           run.compile(sources)
@@ -752,5 +782,13 @@ object Zip:
     val in = ZipInputStream(BufferedInputStream(fis).nn)
     LazyList.continually(Option(in.getNextEntry)).takeWhile(_ != None).map(_.get.nn)
   
-  def write(file: Unix.File, inputs: ListMap[Text, InputStream]): Unit =
-    val fos = FileOutputStream(file.javaFile).nn
+  def write(file: Unix.File, inputs: ListMap[Text, Bytes]): Unit =
+    val fileOut = FileOutputStream(file.javaFile).nn
+    val zipOut = ZipOutputStream(fileOut).nn
+    
+    for case (name, bytes) <- inputs do
+      zipOut.putNextEntry(ZipEntry(name.s))
+      zipOut.write(bytes.unsafeMutable, 0, bytes.length)
+
+    zipOut.close()
+    fileOut.close()

@@ -47,7 +47,7 @@ case class Sonatype(username: Text, password: Text, profileName: Text,
     val output = json.data.stagedRepositoryId.as[Text]
     Log.info(t"Got repository ID $output")
     RepoId(output)
- 
+  
   def deploy(repoId: RepoId, dir: Text, files: List[Unix.File])(using Log): Unit =
     val futures = for file <- files yield Future {
       val uri = uri"https://$domain/$servicePath/deployByRepositoryId/${repoId.id}/${profileName.sub(t".", t"/").nn}/$dir/${file.name}"
