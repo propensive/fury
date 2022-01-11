@@ -42,7 +42,7 @@
     {
       "name": "Vex",
       "id": "vex/core",
-      "links": ["gossamer/core", "xylophone/core", "profanity/core", "guillotine/core", "acyclicity/core", "jovian/core", "scintillate/core", "euphemism/core", "honeycomb/core", "exoskeleton/core"],
+      "links": ["harlequin/core", "xylophone/core", "profanity/core", "guillotine/core", "acyclicity/core", "jovian/core", "scintillate/core", "euphemism/core", "honeycomb/core", "exoskeleton/core"],
       "sources": ["src/core"],
       "version": "0.1.0",
       "docs": ["doc"],
