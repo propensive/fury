@@ -8,9 +8,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - name: Build
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+    - name: Checkout Niveau
+      run: git clone https://github.com/propensive/niveau niveau --recurse-submodules
+    - name: Docker Build
+      run: docker build --tag=vex .
+    - name: Docker Run
       run: |
-        make scala-cli
-        cp scala-cli /usr/local/bin/
-        make ire
+        docker run --name vex vex /bin/true
+        docker cp vex:/vex/vex vex
+        docker rm vex

@@ -183,17 +183,7 @@ case class Step(path: File, publishing: Option[Publishing], name: Text,
       
       val t0 = System.currentTimeMillis
       cacheDir.children.foreach(_.delete())
-      val diagnostics = Compiler.compile(srcFiles.to(List), compileClasspath(build), cacheDir, scriptFile)
-      
-      val messages = diagnostics.filter(_.level == 2).flatMap:
-        diagnostic =>
-          if diagnostic.position.isPresent then
-            val pos = diagnostic.position.get.nn
-            val line = pos.line
-            val file = pos.source.nn.name.nn
-            val content = pos.source.nn.content.nn
-            List(Message(id, file.show, line, pos.startColumn, pos.endColumn, diagnostic.message.show, content.unsafeImmutable))
-          else Nil
+      val messages = Compiler.compile(id, srcFiles.to(List), compileClasspath(build), cacheDir, scriptFile)
       
       val time = System.currentTimeMillis - t0
       
@@ -503,17 +493,21 @@ object Vex extends Daemon():
             Future.sequence(step.jars.map(Vex.fetchFileAsync(_))).flatMap:
               downloads => Future:
                 val messages = results.flatten
-                try
-                  if oldHashes.get(step) != build.hashes.get(step) || !step.pkg.exists() || step.main.isDefined then
-                    Out.println(ansi"Compiling ${Green}[${step.name}]...")
-                    messages ++ step.compile(build.hashes, oldHashes, build, scriptFile)
-                  else messages
-                catch
-                  case err: ExcessDataError =>
-                    messages + Message(step.id, t"<unknown>", 0, 0, 0, t"too much data was received", IArray())
-  
-                  case err: StreamCutError =>
-                    messages + Message(step.id, t"<unknown>", 0, 0, 0, t"the stream was cut prematurely", IArray())
+                if messages.isEmpty then
+                  try
+                    if oldHashes.get(step) != build.hashes.get(step) || !step.pkg.exists() || step.main.isDefined then
+                      Out.println(ansi"Compiling ${Green}[${step.name}]...")
+                      messages ++ step.compile(build.hashes, oldHashes, build, scriptFile)
+                    else messages
+                  catch
+                    case err: ExcessDataError =>
+                      messages + Message(step.id, t"<unknown>", 0, 0, 0, t"too much data was received", IArray())
+    
+                    case err: StreamCutError =>
+                      messages + Message(step.id, t"<unknown>", 0, 0, 0, t"the stream was cut prematurely", IArray())
+                else
+                  Out.println(t"Skipping compilation of ${step.name}")
+                  messages
       .values
 
       val messages: List[Message] = Future.sequence(futures).await().to(Set).flatten.to(List)
@@ -720,9 +714,9 @@ object Compiler:
 
   val Scala3 = new dotty.tools.dotc.Compiler()
 
-  def compile(files: List[File], inputs: Set[DiskPath], out: Directory, script: File)
+  def compile(id: Text, files: List[File], inputs: Set[DiskPath], out: Directory, script: File)
              (using Stdout)
-             : List[Diagnostic] =
+             : List[vex.Message] =
     import unsafeExceptions.canThrowAny
     import dotty.tools.*, io.{File as _, *}, repl.*, dotc.core.*
     
@@ -730,7 +724,7 @@ object Compiler:
     try
       val separator: Text = try Sys.path.separator() catch case err: KeyNotFoundError => t":"
       //val classpath = Unix.parse(t"/home/propensive/niveau/scala/dist/target/pack/lib").get.directory(Expect).children.map(_.fullname)
-      val classpath: List[Text] = Vex.vexJar(script).fullname :: inputs.map(_.fullname).to(List)
+      val classpath: List[Text] = inputs.map(_.fullname).to(List) :+ Vex.vexJar(script).fullname
       val classpathText = classpath.join(separator)
       
       val callbackApi = new interfaces.CompilerCallback:
@@ -752,7 +746,7 @@ object Compiler:
           val newCtx = ctx
             .setReporter(reporter)
             .setCompilerCallback(callbackApi)
-            .setSetting(ctx.settings.language, List("experimental.fewerBraces"))
+            .setSetting(ctx.settings.language, List("experimental.fewerBraces", "experimental.saferExceptions", "experimental.erasedDefinitions"))
             .setSetting(ctx.settings.classpath, classpath.s)
           
           val sources = files.to(List).map:
@@ -763,12 +757,19 @@ object Compiler:
           finish(Scala3, run)(using newCtx)
           reporter.errors.to(List)
 
-      driver.run(files, classpathText)
+      driver.run(files, classpathText).flatMap:
+        diagnostic =>
+          if diagnostic.level == 2 && diagnostic.position.isPresent then
+            val pos = diagnostic.position.get.nn
+            val line = pos.line
+            val file = pos.source.nn.name.nn
+            val content = pos.source.nn.content.nn
+            List(vex.Message(id, file.show, line, pos.startColumn, pos.endColumn, diagnostic.message.show, content.unsafeImmutable))
+          else Nil
 
     catch case err: Throwable =>
-      Out.println(err.toString.show)
-      if err.getCause != null then Out.println(err.getCause.toString.show)
-      reporter.errors.to(List)
+      Out.println(StackTrace(err).ansi)
+      List(vex.Message(id, t"", 0, 0, 0, t"The compiler crashed", IArray()))
 
 object Zip:
   import java.io.*
