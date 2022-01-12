@@ -83,5 +83,5 @@ CLASSPATH="classes:$(cs fetch \
     ../niveau/mod/xylophone/src/core/*.scala
 
 cd classes && jar cfe ../vex.jar vex.Vex * && cd ..
-cat ../niveau/mod/exoskeleton/etc/invoke vex.jar > vex-0.2.0
-chmod +x vex-0.2.0
+cat ../niveau/mod/exoskeleton/etc/invoke vex.jar > vex-${VERSION}
+chmod +x "vex-${VERSION}"

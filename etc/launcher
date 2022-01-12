@@ -1,6 +1,6 @@
 #!/bin/sh
 # --------------------------
-# Vex Launcher version 0.2.0
+# Vex Launcher version ${VERSION}
 # --------------------------
 #
 # Vex is a simplistic build tool for Scala. This launcher script will download and run Vex, replacing this
@@ -8,7 +8,7 @@
 #
 # For more information, see https://github.com/propensive/vex/
 #
-# Vex, version 0.2.0. Copyright 2021 Jon Pretty, Propensive OÜ.
+# Vex, version ${VERSION}. Copyright 2021 Jon Pretty, Propensive OÜ.
 
 if [ ! "$(command -v java)" ]
 then
@@ -20,8 +20,8 @@ elif [ ! "$(command -v curl)" ]
 then
   echo "The 'curl' command must be available to download Vex. Please install Curl and try again."
 else
-  echo "Downloading Vex 0.2.0..."
-  curl -Lso "$0.tmp" "https://github.com/propensive/vex/releases/download/v0.2.0/vex-0.2.0"
+  echo "Downloading Vex ${VERSION}..."
+  curl -Lso "$0.tmp" "https://github.com/propensive/vex/releases/download/v${VERSION}/vex-${VERSION}"
   echo "Downloaded $(du -sh "$0.tmp" | cut -d'	' -f1)"
   echo 'Launching Vex for the first time...'
   chmod +x "$0.tmp"
