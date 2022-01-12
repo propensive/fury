@@ -46,7 +46,8 @@
       "sources": ["src/core"],
       "version": "0.1.0",
       "docs": ["doc"],
-      "artifact": "vex.jar"
+      "artifact": "vex",
+      "main": "vex.Vex"
     }
   ]
 }

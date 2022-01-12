@@ -1,2 +1,2 @@
 #!/bin/sh
-sudo cp vex-0.2.0 /usr/local/bin/vex
+sudo cp dist/vex-0.2.0 /usr/local/bin/vex

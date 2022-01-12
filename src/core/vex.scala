@@ -295,12 +295,20 @@ object Vex extends Daemon():
     catch case err: IoError =>
       throw AppError(t"The user's cache directory could not be created", err)
   
-  def vexJar(scriptFile: File): File = synchronized:
-    val jarFile = cacheDir.path / t"lib" / t"vex.jar"
+  private val prefixes = Set(t"scala/", t"dotty/", t"org/", t"com/", t"compiler.properties", t"incrementalcompiler.version.properties", t"library.properties", t"NOTICE", t"scala-asm.properties")
+  
+  def vexJar(scriptFile: File)(using Stdout): File throws StreamCutError = synchronized:
+    val jarFile = cacheDir.path / t"lib" / t"base.jar"
     
-    try if jarFile.exists() then jarFile.file else 
+    try if jarFile.exists() then jarFile.file else
       jarFile.parent.directory()
-      scriptFile.copyTo(jarFile)
+      
+      val entries = Zip.read(scriptFile).filter { e => prefixes.exists(e.path.show.startsWith(_)) }
+      
+      Zip.write(jarFile, entries)
+
+      jarFile.file
+
     catch case err: IoError =>
       throw AppError(t"The Vex binary could not be copied to the user's cache directory")
 
@@ -559,26 +567,22 @@ object Vex extends Daemon():
               
               Out.println(ansi"${escapes.Reset}")
 
-      val tmpPath: DiskPath = pwd / t".tmp"
-
       if success then
         build.linearization.foreach:
           step => step.artifact.foreach:
             artifact =>
-              val tmp = tmpPath.directory(Ensure)
-              Out.println(ansi"Building $Violet(${artifact.show}) artifact")
-              step.runClasspath(build).filter(_.name.endsWith(t".jar")).foreach:
-                jarFile =>
-                  try sh"unzip -o -d $tmp $jarFile".exec[Unit]()
-                  catch case err: Error => throw AppError(t"Could not unzip files", err)
-              val includes = tmp.children.map(_.name).flatMap(List(t"-C", tmp.name, _))
-              try 
-                val subCmd: List[Text] =
-                  step.main.fold(List(t"cf", artifact.show))(List(t"cfe", artifact.show, _))
-                
-                sh"jar $subCmd $includes".exec[Unit]()
-              catch case err: Error => throw AppError(t"Could not execute `jar` command", err)
-
+              Out.println(ansi"Building $Violet(${artifact.show}) artifact...")
+              val inputJars = step.runClasspath(build).map(_.file) + vexJar(scriptFile)
+              val zipStreams = inputJars.filter(_.name.endsWith(t".jar")).to(LazyList).flatMap:
+                jarFile => Zip.read(jarFile).filter(_.path.parts.last != t"MANIFEST.MF")
+              
+              val basicMf = ListMap(t"Manifest-Version" -> t"1.0", t"Created-By" -> t"Vex 0.2.0")
+              val manifest = step.main.fold(basicMf)(basicMf.updated(t"Main-Class", _))
+              def manifestStream(): DataStream = LazyList(manifest.map(_+t": "+_).join(t"", t"\n", t"\n").bytes)
+              val mfEntry = Zip.Entry(Relative.parse(t"META-INF/MANIFEST.MF"), manifestStream)
+              val header = (Classpath() / t"exoskeleton" / t"invoke").resource.read[Text](100.kb)
+              Zip.write(artifact, mfEntry #:: zipStreams, header.bytes)
+              
         if publishSonatype then Sonatype.publish(build, env.get(t"SONATYPE_PASSWORD"))
       
       if watch then
@@ -775,19 +779,41 @@ object Zip:
   import java.io.*
   import java.util.zip.*
   
-  def read(file: jovian.File, skipBytes: Int = 0): LazyList[java.util.zip.ZipEntry] =
-    val fis = FileInputStream(file.javaFile).nn
-    fis.skip(skipBytes)
-    val in = ZipInputStream(BufferedInputStream(fis).nn)
-    LazyList.continually(Option(in.getNextEntry)).takeWhile(_ != None).map(_.get.nn)
+  case class Entry(path: Relative, get: () => DataStream):
+    def apply(): DataStream = get()
+
+  def read(file: jovian.File): LazyList[Entry] =
+    val zipFile = ZipFile(file.javaFile).nn
+    zipFile.entries.nn.asScala.to(LazyList).filter(!_.getName.nn.endsWith("/")).map:
+      entry =>
+        def getEntry(): DataStream = Util.readInputStream(zipFile.getInputStream(entry).nn, 1.mb)
+        Entry(Relative.parse(entry.getName.nn.show), getEntry)
   
-  def write(file: jovian.File, inputs: ListMap[Text, Bytes]): Unit =
-    val fileOut = FileOutputStream(file.javaFile).nn
+  def write(path: jovian.DiskPath, inputs: LazyList[Entry], prefix: Maybe[Bytes] = Unset)
+           (using Stdout)
+           : Unit throws StreamCutError =
+    val fileOut = FileOutputStream(path.javaFile).nn
+    prefix.option.foreach:
+      bytes =>
+        fileOut.write(bytes.unsafeMutable)
+        fileOut.flush()
+    
     val zipOut = ZipOutputStream(fileOut).nn
     
-    for case (name, bytes) <- inputs do
-      zipOut.putNextEntry(ZipEntry(name.s))
-      zipOut.write(bytes.unsafeMutable, 0, bytes.length)
+    val dirs = inputs.map(_.path).map(_.parent).to(Set).flatMap:
+      dir => (0 to dir.parts.length).map { n => Relative(0, dir.parts.take(n)) }.to(Set)
+    .to(List).map(_.show+t"/").sorted
+    
+    for dir <- dirs do
+      zipOut.putNextEntry(ZipEntry(dir.s))
+      zipOut.closeEntry()
+    
+    val entries = inputs.to(List).distinctBy(_.path.show).sortBy(_.path.show)
+    Out.println(t"Writing $path...")
+    for entry <- entries do
+      zipOut.putNextEntry(ZipEntry(entry.path.show.s))
+      Util.write(entry(), zipOut)
+      zipOut.closeEntry()
 
     zipOut.close()
     fileOut.close()

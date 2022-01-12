@@ -4,16 +4,27 @@ RUN apt install -y make
 RUN mkdir /vex
 RUN git clone https://github.com/propensive/dotty /vex/scala
 RUN mkdir -p /vex/bin
-ADD https://github.com/sbt/sbt/releases/download/v1.6.1/sbt-1.6.1.tgz /vex/sbt.tgz
+RUN curl -Lo /vex/sbt.tgz https://github.com/sbt/sbt/releases/download/v1.6.1/sbt-1.6.1.tgz
 RUN tar xvf /vex/sbt.tgz -C /vex
 ENV PATH="/vex/sbt/bin:${PATH}"
 RUN /vex/scala/bin/scalac -version
 RUN mkdir /vex/lib
-ADD https://repo1.maven.org/maven2/org/typelevel/jawn-parser_3/1.2.0/jawn-parser_3-1.2.0.jar /vex/lib/jawn-parser.jar
-ADD https://repo1.maven.org/maven2/org/typelevel/jawn-ast_3/1.2.0/jawn-ast_3-1.2.0.jar /vex/lib/jawn-ast.jar
-ADD https://repo1.maven.org/maven2/org/typelevel/jawn-util_3/1.2.0/jawn-util_3-1.2.0.jar /vex/lib/jawn-util.jar
-ADD https://repo1.maven.org/maven2/javax/servlet/javax.servlet-api/3.0.1/javax.servlet-api-3.0.1.jar /vex/lib/servlet-api.jar
-ADD https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.3.1/jna-5.3.1.jar /vex/lib/jna.jar
+
+RUN curl -Lo /vex/lib/jawn-parser.jar \
+  https://repo1.maven.org/maven2/org/typelevel/jawn-parser_3/1.2.0/jawn-parser_3-1.2.0.jar
+
+RUN curl -Lo /vex/lib/jawn-ast.jar \
+  https://repo1.maven.org/maven2/org/typelevel/jawn-ast_3/1.2.0/jawn-ast_3-1.2.0.jar
+
+RUN curl -Lo /vex/lib/jawn-util.jar \
+  https://repo1.maven.org/maven2/org/typelevel/jawn-util_3/1.2.0/jawn-util_3-1.2.0.jar
+
+RUN curl -Lo /vex/lib/servlet-api.jar \
+  https://repo1.maven.org/maven2/javax/servlet/javax.servlet-api/3.0.1/javax.servlet-api-3.0.1.jar
+
+RUN curl -Lo /vex/lib/jna.jar \
+  https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.3.1/jna-5.3.1.jar
+
 RUN unzip -q -o -d /vex/bin /vex/lib/jawn-parser.jar
 RUN unzip -q -o -d /vex/bin /vex/lib/jawn-ast.jar
 RUN unzip -q -o -d /vex/bin /vex/lib/jawn-util.jar
@@ -26,9 +37,11 @@ RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/flexmark-ext-tables-
 RUN rm -r /vex/bin/META-INF
 ADD niveau /vex/niveau
 ADD src /vex/src
+
 RUN javac -classpath /vex/lib/jna.jar \
   -d /vex/bin \
   /vex/niveau/mod/profanity/src/java/profanity/Termios.java
+
 RUN cd /vex && scala/bin/scalac \
   -classpath bin \
   -language:experimental.fewerBraces \
@@ -84,7 +97,8 @@ RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/scala3-staging*.jar
 RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/scala3-interfaces*.jar
 RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/scala3-tasty-inspector*.jar
 RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/scala-asm*.jar
-RUN ls /vex/bin
+RUN cp /vex/niveau/mod/exoskeleton/etc/invoke /vex/bin/exoskeleton/invoke
+
 RUN jar cfe /vex/vex.jar vex.Vex \
   -C /vex/bin NOTICE \
   -C /vex/bin compiler.properties \
@@ -127,6 +141,7 @@ RUN jar cfe /vex/vex.jar vex.Vex \
   -C /vex/bin vex \
   -C /vex/bin wisteria \
   -C /vex/bin xylophone
+
 RUN cat /vex/niveau/mod/exoskeleton/etc/invoke /vex/vex.jar > /vex/vex
 RUN chmod +x /vex/vex
 RUN rm /vex/vex.jar
