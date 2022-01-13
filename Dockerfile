@@ -35,7 +35,6 @@ RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/flexmark-util-0.42.1
 RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/flexmark-formatter-0.42.12.jar
 RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/flexmark-ext-tables-0.42.12.jar
 RUN rm -r /vex/bin/META-INF
-ADD niveau /vex/niveau
 ADD src /vex/src
 
 RUN javac -classpath /vex/lib/jna.jar \

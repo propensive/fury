@@ -208,31 +208,16 @@ case class Step(path: File, publishing: Option[Publishing], name: Text,
       cacheDir.children.foreach(_.delete())
       val cp = compileClasspath(build)
       val messages = Compiler.compile(id, srcFiles.to(List), cp, cacheDir, scriptFile)
-      
       val time = System.currentTimeMillis - t0
       
       if messages.isEmpty then
         Out.println(ansi"Compilation of ${Green}[${name}] succeeded in ${Yellow}[${time}ms]")
-        try 
-          //val includes = cacheDir.children.map(_.name).flatMap(List(t"-C", cacheDir.fullname, _))
-          //val subCmd: List[Text] = main.fold(List(t"cf", pkg.fullname))(List(t"cfe", pkg.fullname, _))
-          //pkg.parent.directory(Ensure)
-          //val t0 = System.currentTimeMillis
-          //sh"jar $subCmd $includes".exec[Unit]()
-          //val time = System.currentTimeMillis - t0
-          //Out.println(ansi"Built ${Violet}(${pkg.relativeTo(pwd.path).get.show}) in ${Yellow}[${time}ms]")
-          
-          //val digest = pkg.file.read[DataStream]().map:
-            //chunk => try chunk catch case err: StreamCutError => Bytes()
-          //.digest[Crc32].encode[Base64]
-          val digestFiles = cacheDir.path.descendantFiles().to(List).sortBy(_.name).to(LazyList)
-          val digest = digestFiles.map(_.read[Bytes](1.mb).digest[Crc32]).to(List).digest[Crc32]
-          build.updateCache(this, digest.encode[Base64])
-        catch case err: Error => throw AppError(t"Could not execute `jar` command", err)
-        Nil
-      else
-        Out.println(ansi"Compilation of ${Green}[${name}] failed in ${Yellow}[${time}ms]")
-        messages
+        val digestFiles = cacheDir.path.descendantFiles().to(List).sortBy(_.name).to(LazyList)
+        val digest = digestFiles.map(_.read[Bytes](1.mb).digest[Crc32]).to(List).digest[Crc32]
+        build.updateCache(this, digest.encode[Base64])
+      else Out.println(ansi"Compilation of ${Green}[${name}] failed in ${Yellow}[${time}ms]")
+      
+      messages
     
     catch
       case err: IoError =>
@@ -598,23 +583,24 @@ object Vex extends Daemon():
         build.linearization.foreach:
           step => step.artifact.foreach:
             artifact =>
-              Out.println(ansi"Building $Violet(${artifact.show}) artifact...")
-              val inputJars = step.runClasspath(build).map(_.file) + vexJar(scriptFile)
-              val zipStreams = inputJars.filter(_.name.endsWith(t".jar")).to(LazyList).flatMap:
-                jarFile => Zip.read(jarFile).filter(_.path.parts.last != t"MANIFEST.MF")
-              
-              val resourceStreams = step.allResources(build).flatMap:
-                dir => dir.path.descendantFiles().map:
-                  file =>
-                    Zip.Entry(file.path.relativeTo(dir.path).get, () => file.read[DataStream](1.mb))
-              .to(LazyList)
-              
-              val basicMf = ListMap(t"Manifest-Version" -> t"1.0", t"Created-By" -> t"Vex 0.2.0")
-              val manifest = step.main.fold(basicMf)(basicMf.updated(t"Main-Class", _))
-              def manifestStream(): DataStream = LazyList(manifest.map(_+t": "+_).join(t"", t"\n", t"\n").bytes)
-              val mfEntry = Zip.Entry(Relative.parse(t"META-INF/MANIFEST.MF"), manifestStream)
-              val header = (Classpath() / t"exoskeleton" / t"invoke").resource.read[Text](100.kb)
-              Zip.write(artifact, mfEntry #:: resourceStreams #::: zipStreams, header.bytes)
+              if !watch then
+                Out.println(ansi"Building $Violet(${artifact.show}) artifact...")
+                val inputJars = step.runClasspath(build).map(_.file) + vexJar(scriptFile)
+                val zipStreams = inputJars.filter(_.name.endsWith(t".jar")).to(LazyList).flatMap:
+                  jarFile => Zip.read(jarFile).filter(_.path.parts.last != t"MANIFEST.MF")
+                
+                val resourceStreams = step.allResources(build).flatMap:
+                  dir => dir.path.descendantFiles().map:
+                    file =>
+                      Zip.Entry(file.path.relativeTo(dir.path).get, () => file.read[DataStream](1.mb))
+                .to(LazyList)
+                
+                val basicMf = ListMap(t"Manifest-Version" -> t"1.0", t"Created-By" -> t"Vex 0.2.0")
+                val manifest = step.main.fold(basicMf)(basicMf.updated(t"Main-Class", _))
+                def manifestStream(): DataStream = LazyList(manifest.map(_+t": "+_).join(t"", t"\n", t"\n").bytes)
+                val mfEntry = Zip.Entry(Relative.parse(t"META-INF/MANIFEST.MF"), manifestStream)
+                val header = (Classpath() / t"exoskeleton" / t"invoke").resource.read[Text](1.mb)
+                Zip.write(artifact, mfEntry #:: resourceStreams #::: zipStreams, header.bytes)
               
         if publishSonatype then Sonatype.publish(build, env.get(t"SONATYPE_PASSWORD"))
       
