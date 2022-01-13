@@ -2,7 +2,7 @@ VERSION = 0.2.0
 
 niveau:
 	mkdir -p niveau/mod
-	rsync --delete -a ../niveau/mod/* niveau/mod/
+	rsync --delete -a ../niveau/* niveau/
 
 .image: niveau src/*/*.scala Dockerfile
 	docker build --tag=vex .

@@ -82,7 +82,7 @@ CLASSPATH="classes:$(cs fetch \
     ../niveau/mod/wisteria/src/core/*.scala \
     ../niveau/mod/xylophone/src/core/*.scala
 
-cp ~/niveau/mod/exoskeleton/etc/invoke classes/exoskeleton/invoke
+cp ~/niveau/mod/exoskeleton/res/exoskeleton/invoke classes/exoskeleton/invoke
 cd classes && jar cfe ../vex.jar vex.Vex * && cd ..
-cat ../niveau/mod/exoskeleton/etc/invoke vex.jar > vex-${VERSION}
+cat ../niveau/mod/exoskeleton/res/exoskeleton/invoke vex.jar > vex-${VERSION}
 chmod +x "vex-${VERSION}"

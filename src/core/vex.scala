@@ -35,7 +35,8 @@ given Log()
 case class Message(module: Text, path: Text, line: Int, from: Int, to: Int, message: Text,
                        content: IArray[Char])
 
-case class Build(pwd: Directory, repos: Map[DiskPath, Text], publishing: Option[Publishing], index: Map[Text, Step] = Map()):
+case class Build(pwd: Directory, repos: Map[DiskPath, Text], publishing: Option[Publishing],
+    index: Map[Text, Step] = Map()):
   val steps: Set[Step] = index.values.to(Set)
   
   lazy val graph: Dag[Step] throws BrokenLinkError =
@@ -88,16 +89,29 @@ case class Build(pwd: Directory, repos: Map[DiskPath, Text], publishing: Option[
         cacheFile => Json.parse(cacheFile.file.read[Text](64.kb)).as[Cache].hashes
       
       caches.flatten.flatMap:
-        case Hash(id, hash, _) => try Set(resolve(id) -> hash) catch case e: BrokenLinkError => Set()
+        case Hash(id, hash, _) =>
+          try Set(resolve(id) -> hash) catch case e: BrokenLinkError => Set()
       .to(Map)
     catch
-      case err: JsonParseError  => throw AppError(t"The cache file is not in the correct format", err)
-      case err: StreamCutError  => throw AppError(t"The stream was cut while reading the cache file", err)
-      case err: IoError         => throw AppError(t"There was an IO error while reading the cache",err)
-      case err: JsonTypeError   => throw AppError(t"The cache file did not contain the correct JSON format", err)
-      case err: JsonAccessError => throw AppError(t"The cache file did not contain the correct JSON format", err)
-      case err: Error           => throw AppError(t"An unexpected error occurred", err)
+      case err: JsonParseError =>
+        throw AppError(t"The cache file is not in the correct format", err)
+      
+      case err: StreamCutError =>
+        throw AppError(t"The stream was cut while reading the cache file", err)
+      
+      case err: IoError =>
+        throw AppError(t"There was an IO error while reading the cache",err)
+      
+      case err: JsonTypeError =>
+        throw AppError(t"The cache file did not contain the correct JSON format", err)
+      
+      case err: JsonAccessError =>
+        throw AppError(t"The cache file did not contain the correct JSON format", err)
+      
+      case err: Error =>
+        throw AppError(t"An unexpected error occurred", err)
   
+
   def updateCache(step: Step, binDigest: Text): Unit =
     synchronized:
       try
@@ -113,12 +127,24 @@ case class Build(pwd: Directory, repos: Map[DiskPath, Text], publishing: Option[
         val newCache = cache.copy(hashes = cache.hashes.filter(_.id != step.id) + newHash)
         newCache.json.show.bytes.writeTo(cacheFile.createFile(overwrite = true))
       catch
-        case err: JsonParseError  => throw AppError(t"The cache file is not in the correct format", err)
-        case err: StreamCutError  => throw AppError(t"The stream was cut while reading the cache file", err)
-        case err: IoError         => throw AppError(t"There was an IO error while reading the cache", err)
-        case err: JsonTypeError   => throw AppError(t"The cache file did not contain the correct JSON format", err)
-        case err: JsonAccessError => throw AppError(t"The cache file did not contain the correct JSON format", err)
-        case err: Error           => throw AppError(t"An unexpected error occurred", err)
+        case err: JsonParseError =>
+          throw AppError(t"The cache file is not in the correct format", err)
+        
+        case err: StreamCutError =>
+          throw AppError(t"The stream was cut while reading the cache file", err)
+        
+        case err: IoError =>
+          throw AppError(t"There was an IO error while reading the cache", err)
+        
+        case err: JsonTypeError =>
+          throw AppError(t"The cache file did not contain the correct JSON format", err)
+        
+        case err: JsonAccessError =>
+          throw AppError(t"The cache file did not contain the correct JSON format", err)
+        
+        case err: Error =>
+          throw AppError(t"An unexpected error occurred", err)
+
 
 case class Step(path: File, publishing: Option[Publishing], name: Text,
                     id: Text, links: Set[Text], resources: Set[Directory],
@@ -146,11 +172,14 @@ case class Step(path: File, publishing: Option[Publishing], name: Text,
   def srcFiles: Set[File] throws IoError =
     sources.flatMap(_.path.descendantFiles(!_.name.startsWith(t"."))).filter(compilable)
 
-  def classpath(build: Build)(using Stdout): Set[DiskPath] throws IoError | BrokenLinkError | AppError =
+  def classpath(build: Build)(using Stdout): Set[DiskPath] throws IoError | BrokenLinkError =
     build.graph.reachable(this).flatMap:
-      step => step.jars.map(Vex.fetchFile(_)).map(_.path) + step.cacheDir.path
+      step => step.jars.map(Vex.fetchFile(_).await()).map(_.path) + step.cacheDir.path
   
-  def compileClasspath(build: Build)(using Stdout): Set[DiskPath] throws IoError | BrokenLinkError | AppError =
+  def allResources(build: Build)(using Stdout): Set[Directory] throws IoError | BrokenLinkError =
+    build.graph.reachable(this).flatMap(_.resources)
+
+  def compileClasspath(build: Build)(using Stdout): Set[DiskPath] throws IoError | BrokenLinkError =
     classpath(build) - cacheDir.path
 
   def cacheDir: Directory = synchronized:
@@ -159,9 +188,9 @@ case class Step(path: File, publishing: Option[Publishing], name: Text,
       case err: IoError =>
         throw AppError(t"Could not write to the user's home directory", err)
 
-  def runClasspath(build: Build)(using Stdout): Set[DiskPath] throws IoError | BrokenLinkError | AppError =
+  def runClasspath(build: Build)(using Stdout): Set[DiskPath] throws IoError | BrokenLinkError =
     build.graph.reachable(this).flatMap:
-      step => step.jars.map(Vex.fetchFile(_)).map(_.path) + step.pkg
+      step => step.jars.map(Vex.fetchFile(_).await()).map(_.path) + step.pkg
 
   def pomDependency(build: Build): Dependency = Dependency(group(build), dashed, version)
 
@@ -175,34 +204,30 @@ case class Step(path: File, publishing: Option[Publishing], name: Text,
              (using Stdout)
              : List[Message] =
     try
-      //val srcs = srcFiles.map(_.path.relativeTo(build.pwd.path).show).to(List)
-      //val classpath = build.transitive(_.classpath(build))(this).to(List).map(_.relativeTo(build.pwd.path).show).flatMap(List(t"--jar", _))
-      //val resourceArgs = build.transitive(_.resources)(this).map(_.path.relativeTo(build.pwd.path).show).to(List).flatMap(List(t"--resource", _))
-      //val extraJars = build.transitive(_.jars)(this).map(_.path.relativeTo(build.pwd.path).show).to(List).flatMap(List(t"--jar", _))
-      //val deps = build.transitive(_.dependencies)(this).map(_.show).to(List).flatMap(List(t"-d", _))
-      
       val t0 = System.currentTimeMillis
       cacheDir.children.foreach(_.delete())
-      val messages = Compiler.compile(id, srcFiles.to(List), compileClasspath(build), cacheDir, scriptFile)
+      val cp = compileClasspath(build)
+      val messages = Compiler.compile(id, srcFiles.to(List), cp, cacheDir, scriptFile)
       
       val time = System.currentTimeMillis - t0
       
       if messages.isEmpty then
         Out.println(ansi"Compilation of ${Green}[${name}] succeeded in ${Yellow}[${time}ms]")
         try 
-          val includes = cacheDir.children.map(_.name).flatMap(List(t"-C", cacheDir.fullname, _))
-          val subCmd: List[Text] = main.fold(List(t"cf", pkg.fullname))(List(t"cfe", pkg.fullname, _))
-          pkg.parent.directory(Ensure)
-          val t0 = System.currentTimeMillis
-          sh"jar $subCmd $includes".exec[Unit]()
-          val time = System.currentTimeMillis - t0
-          Out.println(ansi"Built ${Violet}(${pkg.relativeTo(pwd.path).get.show}) in ${Yellow}[${time}ms]")
+          //val includes = cacheDir.children.map(_.name).flatMap(List(t"-C", cacheDir.fullname, _))
+          //val subCmd: List[Text] = main.fold(List(t"cf", pkg.fullname))(List(t"cfe", pkg.fullname, _))
+          //pkg.parent.directory(Ensure)
+          //val t0 = System.currentTimeMillis
+          //sh"jar $subCmd $includes".exec[Unit]()
+          //val time = System.currentTimeMillis - t0
+          //Out.println(ansi"Built ${Violet}(${pkg.relativeTo(pwd.path).get.show}) in ${Yellow}[${time}ms]")
           
-          val digest = pkg.file.read[DataStream]().map:
-            chunk => try chunk catch case err: StreamCutError => Bytes()
-          .digest[Crc32].encode[Base64]
-          
-          build.updateCache(this, digest)
+          //val digest = pkg.file.read[DataStream]().map:
+            //chunk => try chunk catch case err: StreamCutError => Bytes()
+          //.digest[Crc32].encode[Base64]
+          val digestFiles = cacheDir.path.descendantFiles().to(List).sortBy(_.name).to(LazyList)
+          val digest = digestFiles.map(_.read[Bytes](1.mb).digest[Crc32]).to(List).digest[Crc32]
+          build.updateCache(this, digest.encode[Base64])
         catch case err: Error => throw AppError(t"Could not execute `jar` command", err)
         Nil
       else
@@ -236,7 +261,8 @@ case class BuildConfig(imports: Option[List[Text]], publishing: Option[Publishin
         build
       
       case path :: tail =>
-        Out.println(ansi"Reading build file $Violet(${path.relativeTo(build.pwd.path).get.show})".render)
+        Out.println(ansi"Reading build file $Violet(${path.relativeTo(build.pwd.path).get.show})"
+            .render)
         val steps: Map[Text, Step] = modules.map:
           module =>
             def relativize(text: Text): DiskPath = path.file.parent.path + Relative.parse(text)
@@ -259,7 +285,8 @@ case class BuildConfig(imports: Option[List[Text]], publishing: Option[Publishin
           repo => (build.pwd.path + Relative.parse(repo.base)) -> repo.url
         .to(Map)
 
-        Vex.readBuilds(build ++ Build(build.pwd, reposMap, build.publishing, steps), seen, (importPaths ++ tail)*)
+        Vex.readBuilds(build ++ Build(build.pwd, reposMap, build.publishing, steps), seen,
+            (importPaths ++ tail)*)
 
 case class Publishing(username: Text, group: Text, url: Text, organization: Organization,
                           developers: List[Developer])
@@ -295,32 +322,28 @@ object Vex extends Daemon():
     catch case err: IoError =>
       throw AppError(t"The user's cache directory could not be created", err)
   
-  private val prefixes = Set(t"scala/", t"dotty/", t"org/", t"com/", t"compiler.properties", t"incrementalcompiler.version.properties", t"library.properties", t"NOTICE", t"scala-asm.properties")
+  private val prefixes = Set(t"scala/", t"dotty/", t"compiler.properties", t"scala-asm.properties",
+      t"incrementalcompiler.version.properties", t"library.properties", t"org/", t"com/", t"NOTICE")
   
   def vexJar(scriptFile: File)(using Stdout): File throws StreamCutError = synchronized:
     val jarFile = cacheDir.path / t"lib" / t"base.jar"
     
     try if jarFile.exists() then jarFile.file else
       jarFile.parent.directory()
-      
       val entries = Zip.read(scriptFile).filter { e => prefixes.exists(e.path.show.startsWith(_)) }
-      
       Zip.write(jarFile, entries)
-
       jarFile.file
 
     catch case err: IoError =>
       throw AppError(t"The Vex binary could not be copied to the user's cache directory")
 
-  def fetchFile(ref: Text)(using Stdout): File =
-    fetchFileAsync(ref).await()
-
-  def fetchFileAsync(ref: Text)(using Stdout): Future[File] =
+  def fetchFile(ref: Text)(using Stdout): Future[File] =
     val libDir = cacheDir / t"lib"
     if ref.startsWith(t"https:") then
-      val dest = libDir / t"${ref.digest[Md5].encode[Hex]}.jar"
+      val dest = libDir / t"${ref.digest[Md5].encode[Hex].lower}.jar"
       if dest.exists() then Future:
         try dest.file catch case err: IoError =>
+          // FIXME: This exception is thrown inside a Future
           throw AppError(t"Could not access the dependency JAR, $ref", err)
       else Future:
         Out.println(ansi"Downloading JAR dependency ${ref}")
@@ -331,6 +354,7 @@ object Vex extends Daemon():
         catch
           case err: StreamCutError =>
             throw AppError(t"Could not download the file $ref", err)
+          
           case err: IoError =>
             throw AppError(t"The downloaded file could not be written to ${dest.fullname}", err)
         
@@ -384,12 +408,14 @@ object Vex extends Daemon():
         case path :: tail =>
           def digest: Text = hashFile(path.file).encode[Base64]
           if path.exists() && seen.contains(digest) then readBuilds(build, seen, tail*)
-          else if path.exists() then Json.parse(path.file.read[Text](1.mb)).as[BuildConfig].gen(build, seen + digest, files*)
+          else if path.exists() then
+            val buildConfig = Json.parse(path.file.read[Text](1.mb)).as[BuildConfig]
+            buildConfig.gen(build, seen + digest, files*)
           else
-            Out.println(t"Checking repos (${build.repos.toString.show}) for ${path.parent}")
             build.repos.get(path.parent) match
               case None =>
-                throw AppError(t"Could not find a remote repository containing the import $path referenced from ${build.pwd.path}")
+                throw AppError(txt"""Could not find a remote repository containing the import $path
+                                   referenced from ${build.pwd.path}""")
               case Some(uri) =>
                 Out.println(t"Cloning repo ${uri}")
                 Vex.cloneRepo(path.parent, uri)
@@ -440,7 +466,8 @@ object Vex extends Daemon():
                     else
                       repoList.find(_.basePath(file.parent.path) == ref.parent) match
                         case None =>
-                          throw AppError(t"Could not find a remote repository containing the import $path")
+                          throw AppError(txt"""Could not find a remote repository containing the
+                                             import $path""")
                         case Some(repo) =>
                           Vex.cloneRepo(ref.parent, repo.url)
                           List(ref.file)
@@ -498,7 +525,7 @@ object Vex extends Daemon():
       val futures = build.graph.traversal[Future[Set[Message]]]:
         (set, step) => Future.sequence(set).flatMap:
           results =>
-            Future.sequence(step.jars.map(Vex.fetchFileAsync(_))).flatMap:
+            Future.sequence(step.jars.map(Vex.fetchFile(_))).flatMap:
               downloads => Future:
                 val messages = results.flatten
                 if messages.isEmpty then
@@ -576,12 +603,18 @@ object Vex extends Daemon():
               val zipStreams = inputJars.filter(_.name.endsWith(t".jar")).to(LazyList).flatMap:
                 jarFile => Zip.read(jarFile).filter(_.path.parts.last != t"MANIFEST.MF")
               
+              val resourceStreams = step.allResources(build).flatMap:
+                dir => dir.path.descendantFiles().map:
+                  file =>
+                    Zip.Entry(file.path.relativeTo(dir.path).get, () => file.read[DataStream](1.mb))
+              .to(LazyList)
+              
               val basicMf = ListMap(t"Manifest-Version" -> t"1.0", t"Created-By" -> t"Vex 0.2.0")
               val manifest = step.main.fold(basicMf)(basicMf.updated(t"Main-Class", _))
               def manifestStream(): DataStream = LazyList(manifest.map(_+t": "+_).join(t"", t"\n", t"\n").bytes)
               val mfEntry = Zip.Entry(Relative.parse(t"META-INF/MANIFEST.MF"), manifestStream)
               val header = (Classpath() / t"exoskeleton" / t"invoke").resource.read[Text](100.kb)
-              Zip.write(artifact, mfEntry #:: zipStreams, header.bytes)
+              Zip.write(artifact, mfEntry #:: resourceStreams #::: zipStreams, header.bytes)
               
         if publishSonatype then Sonatype.publish(build, env.get(t"SONATYPE_PASSWORD"))
       
@@ -743,7 +776,9 @@ object Compiler:
       object driver extends dotc.Driver:
         val currentCtx =
           val ctx = initCtx.fresh
-          setup(Array[String]("-d", out.fullname.s, ""), ctx).map(_(1)).getOrElse(ctx)
+          setup(Array[String]("-d", out.fullname.s, "-deprecation", "-feature", "-Wunused:all",
+              "-new-syntax", "-Yrequire-targetName", "-Ysafe-init", "-Yexplicit-nulls",
+              "-Ycheck-all-patmat", ""), ctx).map(_(1)).getOrElse(ctx)
         
         def run(files: List[File], classpath: Text): List[Diagnostic] =
           val ctx = currentCtx.fresh

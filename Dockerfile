@@ -97,7 +97,7 @@ RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/scala3-staging*.jar
 RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/scala3-interfaces*.jar
 RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/scala3-tasty-inspector*.jar
 RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/scala-asm*.jar
-RUN cp /vex/niveau/mod/exoskeleton/etc/invoke /vex/bin/exoskeleton/invoke
+RUN cp /vex/niveau/mod/exoskeleton/res/exoskeleton/invoke /vex/bin/exoskeleton/invoke
 
 RUN jar cfe /vex/vex.jar vex.Vex \
   -C /vex/bin NOTICE \
@@ -142,6 +142,8 @@ RUN jar cfe /vex/vex.jar vex.Vex \
   -C /vex/bin wisteria \
   -C /vex/bin xylophone
 
-RUN cat /vex/niveau/mod/exoskeleton/etc/invoke /vex/vex.jar > /vex/vex
+RUN cat /vex/niveau/mod/exoskeleton/res/exoskeleton/invoke /vex/vex.jar > /vex/vex
 RUN chmod +x /vex/vex
 RUN rm /vex/vex.jar
+ADD build.vex /vex/build.vex
+RUN cd /vex && ./vex
