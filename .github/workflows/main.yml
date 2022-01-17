@@ -12,8 +12,6 @@ jobs:
       uses: actions/checkout@v2
       with:
         submodules: recursive
-    - name: Checkout Niveau
-      run: git clone --jobs=8 https://github.com/propensive/niveau niveau --recurse-submodules
     - name: Docker Build
       run: docker build --tag=vex .
     - name: Docker Run
