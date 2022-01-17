@@ -241,6 +241,14 @@ case class BuildConfig(imports: Option[List[Text]], publishing: Option[Publishin
   
   def gen(build: Build, seen: Set[Text], files: DiskPath*)(using Stdout)
          : Build throws IoError | AppError | BuildfileError =
+    
+    repos.getOrElse(Nil).foreach:
+      case Repo(base, uri) =>
+        val root = build.pwd.path + Relative.parse(base)
+        if !root.exists() then
+          Out.println(ansi"Cloning repository $uri to $base")
+          Vex.cloneRepo(root, uri)
+
     files.to(List) match
       case Nil =>
         build
@@ -399,14 +407,7 @@ object Vex extends Daemon():
           else if path.exists() then
             val buildConfig = Json.parse(path.file().read[Text](1.mb)).as[BuildConfig]
             buildConfig.gen(build, seen + digest, files*)
-          else
-            build.repos.get(path.parent) match
-              case None =>
-                throw AppError(txt"""Could not find a remote repository containing the import $path referenced from ${build.pwd.path}""")
-              case Some(uri) =>
-                Out.println(t"Cloning repo ${uri}")
-                Vex.cloneRepo(path.parent, uri)
-                readBuilds(build, seen, files*)
+          else throw AppError(txt"""Build contains an import reference to a nonexistant build""")
             
     catch
       case err: IoError => err match
