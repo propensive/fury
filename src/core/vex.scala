@@ -17,6 +17,7 @@ import exoskeleton.*
 import profanity.*
 import xylophone.*
 import scintillate.*
+import clairvoyant.*
 import java.nio.BufferOverflowException
 
 import scala.collection.mutable as scm
@@ -24,6 +25,7 @@ import scala.concurrent.*
 
 erased given CanThrow[AppError | RootParentError] = compiletime.erasedValue
 
+import timekeeping.long
 import encodings.Utf8
 
 given Env = envs.enclosing
@@ -86,7 +88,7 @@ case class Build(pwd: Directory, repos: Map[DiskPath, Text], publishing: Option[
   def cache: Map[Step, Text] =
     try
       val caches = bases.map(_.path / t".vex").filter(_.exists()).map:
-        cacheFile => Json.parse(cacheFile.file.read[Text](64.kb)).as[Cache].hashes
+        cacheFile => Json.parse(cacheFile.file().read[Text](64.kb)).as[Cache].hashes
       
       caches.flatten.flatMap:
         case Hash(id, hash, _) =>
@@ -119,13 +121,16 @@ case class Build(pwd: Directory, repos: Map[DiskPath, Text], publishing: Option[
         val cache =
           if cacheFile.exists()
           then Cache:
-            Json.parse(cacheFile.file.read[Text](64.kb)).as[Cache].hashes.filter:
+            Json.parse(cacheFile.file().read[Text](64.kb)).as[Cache].hashes.filter:
               hash => try resolve(hash.id).pwd == step.pwd catch case err: BrokenLinkError => false
           else Cache(Set())
         
         val newHash = Hash(step.id, hashes(step), binDigest)
         val newCache = cache.copy(hashes = cache.hashes.filter(_.id != step.id) + newHash)
-        newCache.json.show.bytes.writeTo(cacheFile.createFile(overwrite = true))
+        
+        newCache.json.show.bytes.writeTo:
+          if cacheFile.exists() then cacheFile.file(Expect).delete()
+          cacheFile.file()
       catch
         case err: JsonParseError =>
           throw AppError(t"The cache file is not in the correct format", err)
@@ -159,7 +164,6 @@ case class Step(path: File, publishing: Option[Publishing], name: Text,
   def dashed: Text = t"$projectId-$moduleId"
   def pwd: Directory = path.parent
   def group(build: Build): Text = publish(build).group
-  def pkg: DiskPath = output(t".jar")
   def docFile: DiskPath = output(t"-javadoc.jar")
   def srcsPkg: DiskPath = output(t"-sources.jar")
   def pomFile: DiskPath = output(t".pom")
@@ -174,23 +178,19 @@ case class Step(path: File, publishing: Option[Publishing], name: Text,
 
   def classpath(build: Build)(using Stdout): Set[DiskPath] throws IoError | BrokenLinkError =
     build.graph.reachable(this).flatMap:
-      step => step.jars.map(Vex.fetchFile(_).await()).map(_.path) + step.cacheDir.path
+      step => step.jars.map(Vex.fetchFile(_).await()).map(_.path) + step.classesDir.path
   
   def allResources(build: Build)(using Stdout): Set[Directory] throws IoError | BrokenLinkError =
     build.graph.reachable(this).flatMap(_.resources)
 
   def compileClasspath(build: Build)(using Stdout): Set[DiskPath] throws IoError | BrokenLinkError =
-    classpath(build) - cacheDir.path
+    classpath(build) - classesDir.path
 
-  def cacheDir: Directory = synchronized:
+  def classesDir: Directory = synchronized:
     try (Vex.cacheDir / t"cls" / projectId / moduleId).directory(Ensure)
     catch
       case err: IoError =>
         throw AppError(t"Could not write to the user's home directory", err)
-
-  def runClasspath(build: Build)(using Stdout): Set[DiskPath] throws IoError | BrokenLinkError =
-    build.graph.reachable(this).flatMap:
-      step => step.jars.map(Vex.fetchFile(_).await()).map(_.path) + step.pkg
 
   def pomDependency(build: Build): Dependency = Dependency(group(build), dashed, version)
 
@@ -205,14 +205,14 @@ case class Step(path: File, publishing: Option[Publishing], name: Text,
              : List[Message] =
     try
       val t0 = System.currentTimeMillis
-      cacheDir.children.foreach(_.delete())
+      classesDir.children.foreach(_.delete())
       val cp = compileClasspath(build)
-      val messages = Compiler.compile(id, srcFiles.to(List), cp, cacheDir, scriptFile)
+      val messages = Compiler.compile(id, srcFiles.to(List), cp, classesDir, scriptFile)
       val time = System.currentTimeMillis - t0
       
       if messages.isEmpty then
         Out.println(ansi"Compilation of ${Green}[${name}] succeeded in ${Yellow}[${time}ms]")
-        val digestFiles = cacheDir.path.descendantFiles().to(List).sortBy(_.name).to(LazyList)
+        val digestFiles = classesDir.path.descendantFiles().to(List).sortBy(_.name).to(LazyList)
         val digest = digestFiles.map(_.read[Bytes](1.mb).digest[Crc32]).to(List).digest[Crc32]
         build.updateCache(this, digest.encode[Base64])
       else Out.println(ansi"Compilation of ${Green}[${name}] failed in ${Yellow}[${time}ms]")
@@ -250,15 +250,16 @@ case class BuildConfig(imports: Option[List[Text]], publishing: Option[Publishin
             .render)
         val steps: Map[Text, Step] = modules.map:
           module =>
-            def relativize(text: Text): DiskPath = path.file.parent.path + Relative.parse(text)
+            def relativize(text: Text): DiskPath = path.file(Expect).parent.path + Relative.parse(text)
             val links = module.links.getOrElse(Set())
             val resources = module.resources.getOrElse(Set()).map(relativize).map(_.directory(Expect))
             val sources = module.sources.map(relativize).map(_.directory(Expect))
             val dependencies = module.dependencies.getOrElse(Set())
             val docs = module.docs.getOrElse(Nil).map(relativize)
             val version = module.version.getOrElse(t"1.0.0")
-            val artifactPath = module.artifact.map(path.file.parent.path + Relative.parse(_))
-            Step(path.file, publishing, module.name, module.id, links, resources, sources,
+            val artifactPath = module.artifact.map(path.parent + Relative.parse(_))
+            
+            Step(path.file(), publishing, module.name, module.id, links, resources, sources,
                 module.jars.getOrElse(Set()), dependencies, version, docs, artifactPath,
                 module.main)
         .mtwin.map(_.id -> _).to(Map)
@@ -313,11 +314,11 @@ object Vex extends Daemon():
   def vexJar(scriptFile: File)(using Stdout): File throws StreamCutError = synchronized:
     val jarFile = cacheDir.path / t"lib" / t"base.jar"
     
-    try if jarFile.exists() then jarFile.file else
+    try if jarFile.exists() then jarFile.file(Expect) else
       jarFile.parent.directory()
       val entries = Zip.read(scriptFile).filter { e => prefixes.exists(e.path.show.startsWith(_)) }
       Zip.write(jarFile, entries)
-      jarFile.file
+      jarFile.file(Expect)
 
     catch case err: IoError =>
       throw AppError(t"The Vex binary could not be copied to the user's cache directory")
@@ -325,17 +326,18 @@ object Vex extends Daemon():
   def fetchFile(ref: Text)(using Stdout): Future[File] =
     val libDir = cacheDir / t"lib"
     if ref.startsWith(t"https:") then
-      val dest = libDir / t"${ref.digest[Md5].encode[Hex].lower}.jar"
+      val dest = libDir / t"${ref.digest[Crc32].encode[Hex].lower}.jar"
       if dest.exists() then Future:
-        try dest.file catch case err: IoError =>
+        try dest.file(Expect) catch case err: IoError =>
           // FIXME: This exception is thrown inside a Future
           throw AppError(t"Could not access the dependency JAR, $ref", err)
       else Future:
         Out.println(ansi"Downloading JAR dependency ${ref}")
         try
           libDir.directory()
-          Uri(ref).writeTo(dest.createFile())
-          dest.file
+          val file = dest.file(Create)
+          Uri(ref).writeTo(file)
+          file
         catch
           case err: StreamCutError =>
             throw AppError(t"Could not download the file $ref", err)
@@ -345,7 +347,7 @@ object Vex extends Daemon():
         
     else
       Future:
-        try Unix.parse(ref).get.file catch case err: IoError =>
+        try Unix.parse(ref).get.file(Expect) catch case err: IoError =>
           throw AppError(t"Could not access the dependency JAR, $ref", err)
 
   def main(using cli: CommandLine): ExitStatus = try
@@ -356,9 +358,10 @@ object Vex extends Daemon():
       case t"stop" :: params    => Vex.stop(cli)
       case params               => Vex.build(false, params.headOption.map(_.show), false, None, cli.pwd, cli.env, cli.script)
   
-  catch case err: AppError =>
-    Out.println(err.stackTrace.ansi)
-    ExitStatus.Fail(1)
+  catch
+    case err: Throwable =>
+      Out.println(StackTrace(err).ansi)
+      ExitStatus.Fail(1)
   
   private lazy val fileHashes: FileCache[Bytes] = new FileCache()
 
@@ -391,16 +394,15 @@ object Vex extends Daemon():
           build
         
         case path :: tail =>
-          def digest: Text = hashFile(path.file).encode[Base64]
+          def digest: Text = hashFile(path.file()).encode[Base64]
           if path.exists() && seen.contains(digest) then readBuilds(build, seen, tail*)
           else if path.exists() then
-            val buildConfig = Json.parse(path.file.read[Text](1.mb)).as[BuildConfig]
+            val buildConfig = Json.parse(path.file().read[Text](1.mb)).as[BuildConfig]
             buildConfig.gen(build, seen + digest, files*)
           else
             build.repos.get(path.parent) match
               case None =>
-                throw AppError(txt"""Could not find a remote repository containing the import $path
-                                   referenced from ${build.pwd.path}""")
+                throw AppError(txt"""Could not find a remote repository containing the import $path referenced from ${build.pwd.path}""")
               case Some(uri) =>
                 Out.println(t"Cloning repo ${uri}")
                 Vex.cloneRepo(path.parent, uri)
@@ -437,13 +439,13 @@ object Vex extends Daemon():
       def gen(seen: Map[Text, File], files: File*): Set[File] =
         files.to(List) match
           case file :: tail =>
-            val importFiles = imports.getOrElse(Nil).flatMap:
+            val importFiles: List[File] = imports.getOrElse(Nil).flatMap:
               path =>
                 val ref = file.parent.path + Relative.parse(path)
                 try
                   if ref.exists() then
                     Out.println(t"The import $ref exists")
-                    List((file.parent.path + Relative.parse(path)).file)
+                    List((file.parent.path + Relative.parse(path)).file(Expect))
                   else
                     Out.println(t"Build file $ref does not exist; attempting to clone")
                     if ref.parent.exists()
@@ -451,11 +453,11 @@ object Vex extends Daemon():
                     else
                       repoList.find(_.basePath(file.parent.path) == ref.parent) match
                         case None =>
-                          throw AppError(txt"""Could not find a remote repository containing the
-                                             import $path""")
+                          throw AppError(txt"""Could not find a remote repository containing the import $path""")
+                        
                         case Some(repo) =>
                           Vex.cloneRepo(ref.parent, repo.url)
-                          List(ref.file)
+                          List(ref.file(Expect))
                           
                 catch case err: IoError =>
                   throw AppError(t"Imported build $ref could not be read", err)
@@ -474,10 +476,9 @@ object Vex extends Daemon():
           
           if file.exists() then
             val digest: Text = hashFile(file).encode[Base64]
-            if !seen.contains(digest)
-            then interpret(Some(digest))
-            else readImports(seen, tail*)
+            if !seen.contains(digest) then interpret(Some(digest)) else readImports(seen, tail*)
           else interpret(None)
+
         catch case err: Error => readImports(seen, tail*)
 
   def stop(cli: CommandLine)(using Stdout): ExitStatus =
@@ -494,7 +495,7 @@ object Vex extends Daemon():
       if watch then
         try
           val path = pwd / (target.getOrElse(t"build")+t".vex")
-          val dirs = readImports(Map(), path.file).map(_.parent).to(List)
+          val dirs = readImports(Map(), path.file(Expect)).map(_.parent).to(List)
           waitForChange(dirs)
           Vex.build(false, target, true, None, pwd, env, scriptFile)
         catch case err: Error =>
@@ -515,7 +516,7 @@ object Vex extends Daemon():
                 val messages = results.flatten
                 if messages.isEmpty then
                   try
-                    if oldHashes.get(step) != build.hashes.get(step) || !step.pkg.exists() || step.main.isDefined then
+                    if oldHashes.get(step) != build.hashes.get(step) || step.main.isDefined then
                       Out.println(ansi"Compiling ${Green}[${step.name}]...")
                       messages ++ step.compile(build.hashes, oldHashes, build, scriptFile)
                     else messages
@@ -536,13 +537,13 @@ object Vex extends Daemon():
       if success then Out.println(t"Compilation completed successfully")
       else Out.println(t"Compilation failed\n")
       
+      // FIXME: Files should be sorted by last-modified
       messages.groupBy(_.path).foreach:
         case (path, messages) =>
           val syntax = ScalaSyntax.highlight(String(messages.head.content.unsafeMutable).show)
           messages.sortBy(-_.line).foreach:
             case Message(module, path, line, from, to, message, _) =>
               Out.println(ansi"${colors.Black}(${Bg(colors.Purple)}( $module ))${colors.Purple}(${Bg(colors.Crimson)}( ${colors.Black}($path:${line + 1}:$from) ))${colors.Crimson}()")
-              Out.println(ansi"${Bold}(${message})")
               
               def format(line: Int) =
                 if line >= syntax.length then ansi""
@@ -561,11 +562,14 @@ object Vex extends Daemon():
                   case Token.Space(n)          => ansi" "*n
                   case Token.Newline           => throw Impossible("Should not have a newline")
                 .join
+              
               val margin = (line + 2).show.length
               val bg = Bg(Srgb(0.16, 0.06, 0.03))
+              
               if line > 1 then
                 Out.print(ansi"$bg${colors.Orange}(${line.show.pad(margin, Rtl)})${colors.Gray}(│) ")
                 Out.println(ansi"${format(line - 1)}${escapes.EraseLine}")
+              
               val code = format(line)
               Out.print(ansi"$bg${colors.Orange}(${(line + 1).show.pad(margin, Rtl)})${colors.Gray}(│) ")
               Out.print(ansi"${code.take(from)}")
@@ -578,6 +582,7 @@ object Vex extends Daemon():
                 Out.println(ansi"${format(line + 1)}${escapes.EraseLine}${escapes.Reset}")
               
               Out.println(ansi"${escapes.Reset}")
+              Out.println(ansi"${Bold}(${message})")
 
       if success then
         build.linearization.foreach:
@@ -585,9 +590,15 @@ object Vex extends Daemon():
             artifact =>
               if !watch then
                 Out.println(ansi"Building $Violet(${artifact.show}) artifact...")
-                val inputJars = step.runClasspath(build).map(_.file) + vexJar(scriptFile)
-                val zipStreams = inputJars.filter(_.name.endsWith(t".jar")).to(LazyList).flatMap:
-                  jarFile => Zip.read(jarFile).filter(_.path.parts.last != t"MANIFEST.MF")
+                val inputJars = step.classpath(build) + vexJar(scriptFile).path
+                val zipStreams = inputJars.to(LazyList).flatMap:
+                  path =>
+                    if path.isFile then
+                      Zip.read(path.file(Expect)).filter(_.path.parts.last != t"MANIFEST.MF")
+                    else if path.isDirectory then
+                      path.descendantFiles().map:
+                        file => Zip.Entry(file.path.relativeTo(path).get, () => file.read[DataStream](10.mb))
+                    else LazyList()
                 
                 val resourceStreams = step.allResources(build).flatMap:
                   dir => dir.path.descendantFiles().map:
@@ -601,6 +612,7 @@ object Vex extends Daemon():
                 val mfEntry = Zip.Entry(Relative.parse(t"META-INF/MANIFEST.MF"), manifestStream)
                 val header = (Classpath() / t"exoskeleton" / t"invoke").resource.read[Text](1.mb)
                 Zip.write(artifact, mfEntry #:: resourceStreams #::: zipStreams, header.bytes)
+                artifact.file(Expect).setPermissions(executable = true)
               
         if publishSonatype then Sonatype.publish(build, env.get(t"SONATYPE_PASSWORD"))
       
@@ -838,3 +850,37 @@ object Zip:
 
     zipOut.close()
     fileOut.close()
+
+object Cache:
+  import scala.collection.mutable.HashMap
+  private val latest: HashMap[Text, Text] = HashMap()
+  private val locks: HashMap[DiskPath, Lock] = HashMap()
+  
+  private class Lock()
+
+  private def synchronously(path: DiskPath)(block: Directory => Unit): Directory throws IoError =
+    Cache.synchronized:
+      locks.get(path).getOrElse:
+        val lock = Lock()
+        locks(path) = lock
+        lock
+    .synchronized:
+      if path.isDirectory then path.directory(Expect) else
+        val dir = path.directory(Create)
+        block(dir)
+        dir
+
+  def apply[T: Hashable](key: Text, input: T)(make: (T, Directory) => Unit)
+           : Directory throws IoError =
+    val hash = input.digest[Crc32].encode[Hex].lower
+    
+    synchronously(Vex.cacheDir / hash):
+      workDir =>
+        make(input, workDir)
+        
+        Cache.synchronized:
+          latest.get(key).foreach:
+            oldHash => if oldHash != hash then (Vex.cacheDir / hash).directory().delete()
+          
+          latest(key) = hash
+          workDir

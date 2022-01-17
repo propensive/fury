@@ -36,6 +36,7 @@ RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/flexmark-formatter-0
 RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/flexmark-ext-tables-0.42.12.jar
 RUN rm -r /vex/bin/META-INF
 ADD src /vex/src
+ADD niveau /vex/niveau
 
 RUN javac -classpath /vex/lib/jna.jar \
   -d /vex/bin \
@@ -53,6 +54,7 @@ RUN cd /vex && scala/bin/scalac \
   niveau/mod/caesura/src/core/*.scala \
   niveau/mod/cataract/src/core/*.scala \
   niveau/mod/clairvoyant/src/css/*.scala \
+  niveau/mod/clairvoyant/src/time/*.scala \
   niveau/mod/clairvoyant/src/html/*.scala \
   niveau/mod/clairvoyant/src/http/*.scala \
   niveau/mod/contextual/src/core/*.scala \
@@ -141,8 +143,8 @@ RUN jar cfe /vex/vex.jar vex.Vex \
   -C /vex/bin wisteria \
   -C /vex/bin xylophone
 
-RUN cat /vex/niveau/mod/exoskeleton/res/exoskeleton/invoke /vex/vex.jar > /vex/vex
-RUN chmod +x /vex/vex
+RUN cat /vex/niveau/mod/exoskeleton/res/exoskeleton/invoke /vex/vex.jar > /vex/bootstrap
+RUN chmod +x /vex/bootstrap
 RUN rm /vex/vex.jar
 ADD build.vex /vex/build.vex
-RUN cd /vex && ./vex
+RUN cd /vex && ./bootstrap

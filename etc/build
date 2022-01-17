@@ -48,6 +48,7 @@ CLASSPATH="classes:$(cs fetch \
     ../niveau/mod/caesura/src/core/*.scala \
     ../niveau/mod/cataract/src/core/*.scala \
     ../niveau/mod/clairvoyant/src/css/*.scala \
+    ../niveau/mod/clairvoyant/src/time/*.scala \
     ../niveau/mod/clairvoyant/src/html/*.scala \
     ../niveau/mod/clairvoyant/src/http/*.scala \
     ../niveau/mod/contextual/src/core/*.scala \

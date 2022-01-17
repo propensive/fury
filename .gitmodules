@@ -1,0 +1,3 @@
+[submodule "niveau"]
+	path = niveau
+	url = https://github.com/propensive/niveau

@@ -44,11 +44,11 @@
       "id": "vex/core",
       "links": ["harlequin/core", "xylophone/core", "profanity/core", "guillotine/core",
           "acyclicity/core", "jovian/core", "scintillate/core", "euphemism/core", "honeycomb/core",
-          "exoskeleton/core"],
+          "exoskeleton/core", "clairvoyant/time"],
       "sources": ["src/core"],
       "version": "0.1.0",
       "docs": ["doc"],
-      "artifact": "vex",
+      "artifact": "vex-0.2.0",
       "main": "vex.Vex"
     }
   ]

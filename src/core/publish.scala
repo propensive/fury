@@ -43,7 +43,7 @@ object Sonatype:
                 t"https://propensive.com/opensource/${step.projectId}",
                 t"github.com/${step.projectId}", pub).xml
             
-            pomXml.show.bytes.writeTo(step.pomFile.createFile())
+            pomXml.show.bytes.writeTo(step.pomFile.file(Create))
             
             val srcFiles: List[Text] = step.sources.to(List).flatMap:
               dir =>
@@ -77,21 +77,21 @@ object Sonatype:
             
             sh"jar cf ${step.docFile} $docFiles".exec[ExitStatus]()
 
-            List(step.docFile, step.pomFile, step.pkg, step.srcsPkg).foreach:
+            List(step.docFile, step.pomFile, /*step.pkg,*/ step.srcsPkg).foreach:
               file => sh"gpg -ab $file".exec[ExitStatus]()
 
             Out.println(t"Publishing ${step.id}")
             val dir = t"${step.id.sub(t"/", t"-")}/${step.version}"
 
-            val uploads = List(step.pkg, step.pomFile, step.docFile, step.srcsPkg).map(_.file)
-            val signedUploads = uploads ++ uploads.map(_.path.rename(_+t".asc").file)
+            val uploads = List(/*step.pkg, */step.pomFile, step.docFile, step.srcsPkg).map(_.file(Expect))
+            val signedUploads = uploads ++ uploads.map(_.path.rename(_+t".asc").file(Expect))
 
             val checksums =
               signedUploads.map:
                 file =>
                   val checksum = file.path.rename(_+t".sha1")
-                  sh"sha1sum $file".exec[Text]().take(40).bytes.writeTo(checksum.createFile())
-                  checksum.file
+                  sh"sha1sum $file".exec[Text]().take(40).bytes.writeTo(checksum.file(Create))
+                  checksum.file(Expect)
 
             sonatype.deploy(repoId, dir, signedUploads ++ checksums)
         
@@ -127,12 +127,11 @@ case class Sonatype(username: Text, password: Text, profileName: Text,
     RepoId(output)
   
   def deploy(repoId: RepoId, dir: Text, files: List[File])(using Log): Unit =
-    val futures = for file <- files yield Future {
+    val futures = for file <- files yield Future:
       val uri = uri"https://$domain/$servicePath/deployByRepositoryId/${repoId.id}/${profileName.sub(t".", t"/").nn}/$dir/${file.name}"
       Log.info(t"Uploading file $file to $uri")
       uri.put(auth)(file.read[DataStream](5.mb))
       Log.info(t"Finished uploading $file")
-    }
 
     Await.result(Future.sequence(futures), duration.Duration.Inf)
 
@@ -140,7 +139,6 @@ case class Sonatype(username: Text, password: Text, profileName: Text,
     case class Data(data: Payload)
     case class Payload(description: Text, stagedRepositoryId: Text, targetRepositoryId: Text)
     uri"https://$domain/$servicePath/profiles/${profileId.id}/finish".post(auth, jsonContent, acceptJson)(Data(Payload(t"", repoId.id, profileId.repoTargetId)).json).as[Text]
-  
   
   def activity(repoId: RepoId): Unit =
     val events = Json.parse(uri"https://$domain/$servicePath/repository/${repoId.id}".get(auth, acceptJson).as[Text])

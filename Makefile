@@ -1,5 +1,8 @@
 VERSION = 0.2.0
 
+niveau:
+	rsync -a --delete --delete-excluded --exclude 'mod/*/out' --exclude '.*' --exclude scala ../niveau ./
+
 .image: niveau src/*/*.scala Dockerfile
 	docker build --tag=vex .
 	touch .image
