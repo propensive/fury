@@ -1,6 +1,8 @@
 VERSION = 0.2.0
 
-niveau:
+distribution: dist/vex-$(VERSION) dist/launcher-$(VERSION)
+
+local-niveau:
 	rsync -a --delete --delete-excluded --exclude 'mod/*/out' --exclude '.*' --exclude scala ../niveau ./
 
 .image: niveau src/*/*.scala Dockerfile
@@ -24,8 +26,8 @@ dist/launcher-$(VERSION): dist etc/launcher
 install: dist/vex-$(VERSION)
 	sudo cp dist/vex-$(VERSION) /usr/local/bin/vex
 
-release: dist/vex-$(VERSION) dist/launcher-$(VERSION)
+release: distribution
 	gh release upload --clobber "v$(VERSION)" vex-$(VERSION)
 	gh release upload --clobber "v$(VERSION)" launcher-$(VERSION)
 
-.PHONY: niveau quick
+.PHONY: local-niveau niveau quick distribution
