@@ -28,7 +28,7 @@ and Vex. This can be invoked with `make`.
 
 To build Vex, run,
 ```sh
-make release
+make distribution
 ```
 which will generate the files `dist/vex-0.2.0` and `dist/launcher-0.2.0`.
 
