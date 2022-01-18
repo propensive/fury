@@ -611,8 +611,11 @@ object Vex extends Daemon():
                 val manifest = step.main.fold(basicMf)(basicMf.updated(t"Main-Class", _))
                 def manifestStream(): DataStream = LazyList(manifest.map(_+t": "+_).join(t"", t"\n", t"\n").bytes)
                 val mfEntry = Zip.Entry(Relative.parse(t"META-INF/MANIFEST.MF"), manifestStream)
-                val header = (Classpath() / t"exoskeleton" / t"invoke").resource.read[Text](1.mb)
-                Zip.write(artifact, mfEntry #:: resourceStreams #::: zipStreams, header.bytes)
+                
+                val header = if artifact.name.endsWith(t".jar") then Bytes.empty else
+                    (Classpath() / t"exoskeleton" / t"invoke").resource.read[Bytes](100.kb)
+                
+                Zip.write(artifact, mfEntry #:: resourceStreams #::: zipStreams, header)
                 artifact.file(Expect).setPermissions(executable = true)
               
         if publishSonatype then Sonatype.publish(build, env.get(t"SONATYPE_PASSWORD"))
@@ -838,14 +841,20 @@ object Zip:
       dir => (0 to dir.parts.length).map { n => Relative(0, dir.parts.take(n)) }.to(Set)
     .to(List).map(_.show+t"/").sorted
     
+    val epoch = java.nio.file.attribute.FileTime.fromMillis(946684800000L)
+    Out.println(t"Writing $path...")
     for dir <- dirs do
-      zipOut.putNextEntry(ZipEntry(dir.s))
+      val entry = ZipEntry(dir.s).nn.setLastAccessTime(epoch).nn.setCreationTime(epoch).nn
+      zipOut.putNextEntry(entry)
       zipOut.closeEntry()
     
     val entries = inputs.to(List).distinctBy(_.path.show).sortBy(_.path.show)
-    Out.println(t"Writing $path...")
+    
     for entry <- entries do
-      zipOut.putNextEntry(ZipEntry(entry.path.show.s))
+      val zipEntry = ZipEntry(entry.path.show.s).nn.setLastAccessTime(epoch).nn.setCreationTime(
+          epoch).nn
+      
+      zipOut.putNextEntry(zipEntry)
       Util.write(entry(), zipOut)
       zipOut.closeEntry()
 
