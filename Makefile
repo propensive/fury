@@ -16,8 +16,9 @@ quick:
 	VERSION="$(VERSION)" etc/build
 
 dist/vex-$(VERSION): dist .image
+	docker rm vex || true
 	docker run --name vex vex /bin/true
-	docker cp vex:/vex/vex-0.2.0 dist/vex-$(VERSION)
+	docker cp vex:/vex/vex dist/vex-$(VERSION)
 	docker rm vex
 
 dist/launcher-$(VERSION): dist etc/launcher

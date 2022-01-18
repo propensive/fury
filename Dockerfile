@@ -148,3 +148,9 @@ RUN chmod +x /vex/bootstrap
 RUN rm /vex/vex.jar
 ADD build.vex /vex/build.vex
 RUN cd /vex && ./bootstrap
+RUN mv /vex/vex-* /vex/vex
+RUN md5sum /vex/vex > bootstrap.md5
+RUN cd /vex && ./vex
+RUN mv /vex/vex-* /vex/vex
+RUN md5sum /vex/vex > vex.md5
+RUN diff vex.md5 bootstrap.md5
