@@ -845,6 +845,8 @@ object Zip:
     Out.println(t"Writing $path...")
     for dir <- dirs do
       val entry = ZipEntry(dir.s).nn.setLastAccessTime(epoch).nn.setCreationTime(epoch).nn
+          .setLastModifiedTime(epoch).nn
+      
       zipOut.putNextEntry(entry)
       zipOut.closeEntry()
     
@@ -852,7 +854,7 @@ object Zip:
     
     for entry <- entries do
       val zipEntry = ZipEntry(entry.path.show.s).nn.setLastAccessTime(epoch).nn.setCreationTime(
-          epoch).nn
+          epoch).nn.setLastModifiedTime(epoch).nn
       
       zipOut.putNextEntry(zipEntry)
       Util.write(entry(), zipOut)
