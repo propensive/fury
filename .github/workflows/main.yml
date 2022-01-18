@@ -17,5 +17,5 @@ jobs:
     - name: Docker Run
       run: |
         docker run --name vex vex /bin/true
-        docker cp vex:/vex/vex-0.2.0 vex
+        docker cp vex:/vex/vex vex
         docker rm vex
