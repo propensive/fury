@@ -1,3 +1,6 @@
+[<img alt="GitHub Workflow" src="https://img.shields.io/github/workflow/status/propensive/vex/Build/main?style=for-the-badge" height="24">](https://github.com/propensive/vex/actions)
+[<img src="https://img.shields.io/discord/633198088311537684?color=8899f7&label=DISCORD&style=for-the-badge" height="24">](https://discord.gg/v7CjtbnwDq)
+
 ![Vex logo](doc/logo.svg)
 
 # Vex
