@@ -508,22 +508,23 @@ object Vex extends Daemon():
           results =>
             Future.sequence(step.jars.map(Vex.fetchFile(_))).flatMap:
               downloads => Future:
-                val messages = results.flatten
-                if messages.isEmpty then
-                  try
-                    if oldHashes.get(step) != build.hashes.get(step) || step.main.isDefined then
-                      Out.println(ansi"Compiling ${Green}[${step.name}]...")
-                      messages ++ step.compile(build.hashes, oldHashes, build, scriptFile)
-                    else messages
-                  catch
-                    case err: ExcessDataError =>
-                      messages + Message(step.id, t"<unknown>", 0, 0, 0, t"too much data was received", IArray())
-    
-                    case err: StreamCutError =>
-                      messages + Message(step.id, t"<unknown>", 0, 0, 0, t"the stream was cut prematurely", IArray())
-                else
-                  Out.println(t"Skipping compilation of ${step.name}")
-                  messages
+                blocking:
+                  val messages = results.flatten
+                  if messages.isEmpty then
+                    try
+                      if oldHashes.get(step) != build.hashes.get(step) || step.main.isDefined then
+                        Out.println(ansi"Compiling ${Green}[${step.name}]...")
+                        messages ++ step.compile(build.hashes, oldHashes, build, scriptFile)
+                      else messages
+                    catch
+                      case err: ExcessDataError =>
+                        messages + Message(step.id, t"<unknown>", 0, 0, 0, t"too much data was received", IArray())
+      
+                      case err: StreamCutError =>
+                        messages + Message(step.id, t"<unknown>", 0, 0, 0, t"the stream was cut prematurely", IArray())
+                  else
+                    Out.println(t"Skipping compilation of ${step.name}")
+                    messages
       .values
 
       val messages: List[Message] = Future.sequence(futures).await().to(Set).flatten.to(List)
