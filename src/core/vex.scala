@@ -104,9 +104,6 @@ case class Build(pwd: Directory, repos: Map[DiskPath, Text], publishing: Option[
       case err: IoError =>
         throw AppError(t"There was an IO error while reading the cache",err)
       
-      case err: JsonTypeError =>
-        throw AppError(t"The cache file did not contain the correct JSON format", err)
-      
       case err: JsonAccessError =>
         throw AppError(t"The cache file did not contain the correct JSON format", err)
       
@@ -140,9 +137,6 @@ case class Build(pwd: Directory, repos: Map[DiskPath, Text], publishing: Option[
         
         case err: IoError =>
           throw AppError(t"There was an IO error while reading the cache", err)
-        
-        case err: JsonTypeError =>
-          throw AppError(t"The cache file did not contain the correct JSON format", err)
         
         case err: JsonAccessError =>
           throw AppError(t"The cache file did not contain the correct JSON format", err)
