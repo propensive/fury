@@ -13,9 +13,9 @@ jobs:
       with:
         submodules: recursive
     - name: Docker Build
-      run: docker build --tag=vex .
+      run: docker build --tag=irk .
     - name: Docker Run
       run: |
-        docker run --name vex vex /bin/true
-        docker cp vex:/vex/vex vex
-        docker rm vex
+        docker run --name irk irk /bin/true
+        docker cp irk:/irk/irk irk
+        docker rm irk
