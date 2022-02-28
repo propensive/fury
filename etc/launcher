@@ -1,29 +1,29 @@
 #!/bin/sh
 # --------------------------
-# Vex Launcher version ${VERSION}
+# Irk Launcher version ${VERSION}
 # --------------------------
 #
-# Vex is a simplistic build tool for Scala. This launcher script will download and run Vex, replacing this
+# Irk is a simplistic build tool for Scala. This launcher script will download and run Irk, replacing this
 # script in the process.
 #
-# For more information, see https://github.com/propensive/vex/
+# For more information, see https://github.com/propensive/irk/
 #
-# Vex, version ${VERSION}. Copyright 2021 Jon Pretty, Propensive OÜ.
+# Irk, version ${VERSION}. Copyright 2021 Jon Pretty, Propensive OÜ.
 
 if [ ! "$(command -v java)" ]
 then
   echo "It does not look like Java is installed. The 'java' command must be available on the path."
 elif [ "$(java -version 2>&1 | head -n1 | awk -F '"' '{print $2}' | awk -F '.' '{print $1}')" -lt "11" ]
 then
-  echo "It looks like the install version of Java is not recent enough. Java 11 is required to run Vex."
+  echo "It looks like the install version of Java is not recent enough. Java 11 is required to run Irk."
 elif [ ! "$(command -v curl)" ]
 then
-  echo "The 'curl' command must be available to download Vex. Please install Curl and try again."
+  echo "The 'curl' command must be available to download Irk. Please install Curl and try again."
 else
-  echo "Downloading Vex ${VERSION}..."
-  curl -Lso "$0.tmp" "https://github.com/propensive/vex/releases/download/v${VERSION}/vex-${VERSION}"
+  echo "Downloading Irk ${VERSION}..."
+  curl -Lso "$0.tmp" "https://github.com/propensive/irk/releases/download/v${VERSION}/irk-${VERSION}"
   echo "Downloaded $(du -sh "$0.tmp" | cut -d'	' -f1)"
-  echo 'Launching Vex for the first time...'
+  echo 'Launching Irk for the first time...'
   chmod +x "$0.tmp"
   mv "$0.tmp" "$0"
   exec "$0" "$@"

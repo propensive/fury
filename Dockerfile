@@ -1,156 +1,158 @@
 FROM openjdk:11
 RUN apt update
 RUN apt install -y make
-RUN mkdir /vex
-RUN git clone https://github.com/propensive/dotty /vex/scala
-RUN mkdir -p /vex/bin
-RUN curl -Lo /vex/sbt.tgz https://github.com/sbt/sbt/releases/download/v1.6.1/sbt-1.6.1.tgz
-RUN tar xvf /vex/sbt.tgz -C /vex
-ENV PATH="/vex/sbt/bin:${PATH}"
-RUN /vex/scala/bin/scalac -version
-RUN mkdir /vex/lib
+RUN mkdir /irk
+RUN git clone https://github.com/propensive/dotty /irk/scala
+RUN mkdir -p /irk/bin
+RUN curl -Lo /irk/sbt.tgz https://github.com/sbt/sbt/releases/download/v1.6.1/sbt-1.6.1.tgz
+RUN tar xvf /irk/sbt.tgz -C /irk
+ENV PATH="/irk/sbt/bin:${PATH}"
+RUN /irk/scala/bin/scalac -version
+RUN mkdir /irk/lib
 
-RUN curl -Lo /vex/lib/jawn-parser.jar \
+RUN curl -Lo /irk/lib/jawn-parser.jar \
   https://repo1.maven.org/maven2/org/typelevel/jawn-parser_3/1.2.0/jawn-parser_3-1.2.0.jar
 
-RUN curl -Lo /vex/lib/jawn-ast.jar \
+RUN curl -Lo /irk/lib/jawn-ast.jar \
   https://repo1.maven.org/maven2/org/typelevel/jawn-ast_3/1.2.0/jawn-ast_3-1.2.0.jar
 
-RUN curl -Lo /vex/lib/jawn-util.jar \
+RUN curl -Lo /irk/lib/jawn-util.jar \
   https://repo1.maven.org/maven2/org/typelevel/jawn-util_3/1.2.0/jawn-util_3-1.2.0.jar
 
-RUN curl -Lo /vex/lib/servlet-api.jar \
+RUN curl -Lo /irk/lib/servlet-api.jar \
   https://repo1.maven.org/maven2/javax/servlet/javax.servlet-api/3.0.1/javax.servlet-api-3.0.1.jar
 
-RUN curl -Lo /vex/lib/jna.jar \
+RUN curl -Lo /irk/lib/jna.jar \
   https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.3.1/jna-5.3.1.jar
 
-RUN unzip -q -o -d /vex/bin /vex/lib/jawn-parser.jar
-RUN unzip -q -o -d /vex/bin /vex/lib/jawn-ast.jar
-RUN unzip -q -o -d /vex/bin /vex/lib/jawn-util.jar
-RUN unzip -q -o -d /vex/bin /vex/lib/servlet-api.jar
-RUN unzip -q -o -d /vex/bin /vex/lib/jna.jar
-RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/flexmark-0.42.12.jar
-RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/flexmark-util-0.42.12.jar
-RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/flexmark-formatter-0.42.12.jar
-RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/flexmark-ext-tables-0.42.12.jar
-RUN rm -r /vex/bin/META-INF
-ADD src /vex/src
-ADD niveau /vex/niveau
+RUN unzip -q -o -d /irk/bin /irk/lib/jawn-parser.jar
+RUN unzip -q -o -d /irk/bin /irk/lib/jawn-ast.jar
+RUN unzip -q -o -d /irk/bin /irk/lib/jawn-util.jar
+RUN unzip -q -o -d /irk/bin /irk/lib/servlet-api.jar
+RUN unzip -q -o -d /irk/bin /irk/lib/jna.jar
+RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/flexmark-0.42.12.jar
+RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/flexmark-util-0.42.12.jar
+RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/flexmark-formatter-0.42.12.jar
+RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/flexmark-ext-tables-0.42.12.jar
+RUN rm -r /irk/bin/META-INF
+ADD src /irk/src
+ADD one /irk/one
 
-RUN javac -classpath /vex/lib/jna.jar \
-  -d /vex/bin \
-  /vex/niveau/mod/profanity/src/java/profanity/Termios.java
+RUN javac -classpath /irk/lib/jna.jar \
+  -d /irk/bin \
+  /irk/one/mod/profanity/src/java/profanity/Termios.java
 
-RUN cd /vex && scala/bin/scalac \
+RUN cp -r /irk/one/mod/gesticulate/res/gesticulate /irk/bin/
+
+RUN cd /irk && scala/bin/scalac \
   -classpath bin \
   -language:experimental.fewerBraces \
   -language:experimental.saferExceptions \
   -language:experimental.erasedDefinitions \
   -d bin \
   src/core/*.scala \
-  niveau/mod/acyclicity/src/core/*.scala \
-  niveau/mod/adversaria/src/core/*.scala \
-  niveau/mod/caesura/src/core/*.scala \
-  niveau/mod/cataract/src/core/*.scala \
-  niveau/mod/clairvoyant/src/css/*.scala \
-  niveau/mod/clairvoyant/src/time/*.scala \
-  niveau/mod/clairvoyant/src/html/*.scala \
-  niveau/mod/clairvoyant/src/http/*.scala \
-  niveau/mod/contextual/src/core/*.scala \
-  niveau/mod/cosmopolite/src/core/*.scala \
-  niveau/mod/escapade/src/core/*.scala \
-  niveau/mod/escritoire/src/core/*.scala \
-  niveau/mod/eucalyptus/src/core/*.scala \
-  niveau/mod/euphemism/src/core/*.scala \
-  niveau/mod/exoskeleton/src/core/*.scala \
-  niveau/mod/gastronomy/src/core/*.scala \
-  niveau/mod/gesticulate/src/core/*.scala \
-  niveau/mod/gossamer/src/core/*.scala \
-  niveau/mod/guillotine/src/core/*.scala \
-  niveau/mod/harlequin/src/core/*.scala \
-  niveau/mod/honeycomb/src/core/*.scala \
-  niveau/mod/iridescence/src/core/*.scala \
-  niveau/mod/jovian/src/core/*.scala \
-  niveau/mod/kaleidoscope/src/core/*.scala \
-  niveau/mod/probably/src/core/*.scala \
-  niveau/mod/probably/src/cli/*.scala \
-  niveau/mod/probably/src/tolerance/*.scala \
-  niveau/mod/punctuation/src/core/*.scala \
-  niveau/mod/punctuation/src/ansi/*.scala \
-  niveau/mod/punctuation/src/html/*.scala \
-  niveau/mod/profanity/src/java/**/*.java \
-  niveau/mod/profanity/src/core/*.scala \
-  niveau/mod/rudiments/src/core/*.scala \
-  niveau/mod/scintillate/src/core/*.scala \
-  niveau/mod/scintillate/src/server/*.scala \
-  niveau/mod/scintillate/src/servlet/*.scala \
-  niveau/mod/slalom/src/core/*.scala \
-  niveau/mod/wisteria/src/core/*.scala \
-  niveau/mod/xylophone/src/core/*.scala
+  one/mod/acyclicity/src/core/*.scala \
+  one/mod/adversaria/src/core/*.scala \
+  one/mod/caesura/src/core/*.scala \
+  one/mod/cataract/src/core/*.scala \
+  one/mod/clairvoyant/src/css/*.scala \
+  one/mod/clairvoyant/src/time/*.scala \
+  one/mod/clairvoyant/src/html/*.scala \
+  one/mod/clairvoyant/src/http/*.scala \
+  one/mod/contextual/src/core/*.scala \
+  one/mod/cosmopolite/src/core/*.scala \
+  one/mod/escapade/src/core/*.scala \
+  one/mod/escritoire/src/core/*.scala \
+  one/mod/eucalyptus/src/core/*.scala \
+  one/mod/euphemism/src/core/*.scala \
+  one/mod/exoskeleton/src/core/*.scala \
+  one/mod/gastronomy/src/core/*.scala \
+  one/mod/gesticulate/src/core/*.scala \
+  one/mod/gossamer/src/core/*.scala \
+  one/mod/guillotine/src/core/*.scala \
+  one/mod/harlequin/src/core/*.scala \
+  one/mod/honeycomb/src/core/*.scala \
+  one/mod/iridescence/src/core/*.scala \
+  one/mod/jovian/src/core/*.scala \
+  one/mod/kaleidoscope/src/core/*.scala \
+  one/mod/probably/src/core/*.scala \
+  one/mod/probably/src/cli/*.scala \
+  one/mod/probably/src/tolerance/*.scala \
+  one/mod/punctuation/src/core/*.scala \
+  one/mod/punctuation/src/ansi/*.scala \
+  one/mod/punctuation/src/html/*.scala \
+  one/mod/profanity/src/java/**/*.java \
+  one/mod/profanity/src/core/*.scala \
+  one/mod/rudiments/src/core/*.scala \
+  one/mod/scintillate/src/core/*.scala \
+  one/mod/scintillate/src/server/*.scala \
+  one/mod/scintillate/src/servlet/*.scala \
+  one/mod/slalom/src/core/*.scala \
+  one/mod/wisteria/src/core/*.scala \
+  one/mod/xylophone/src/core/*.scala
 
-RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/tasty-core*.jar
-RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/compiler-interface*.jar
-RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/scala-library*.jar
-RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/scala3-compiler*.jar
-RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/scala3-library*.jar
-RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/scala3-staging*.jar
-RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/scala3-interfaces*.jar
-RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/scala3-tasty-inspector*.jar
-RUN unzip -q -o -d /vex/bin /vex/scala/dist/target/pack/lib/scala-asm*.jar
-RUN cp /vex/niveau/mod/exoskeleton/res/exoskeleton/invoke /vex/bin/exoskeleton/invoke
+RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/tasty-core*.jar
+RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/compiler-interface*.jar
+RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala-library*.jar
+RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala3-compiler*.jar
+RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala3-library*.jar
+RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala3-staging*.jar
+RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala3-interfaces*.jar
+RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala3-tasty-inspector*.jar
+RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala-asm*.jar
+RUN cp /irk/one/mod/exoskeleton/res/exoskeleton/invoke /irk/bin/exoskeleton/invoke
 
-RUN jar cfe /vex/vex.jar vex.Vex \
-  -C /vex/bin NOTICE \
-  -C /vex/bin compiler.properties \
-  -C /vex/bin incrementalcompiler.version.properties \
-  -C /vex/bin library.properties \
-  -C /vex/bin scala-asm.properties \
-  -C /vex/bin xsbti \
-  -C /vex/bin scala \
-  -C /vex/bin dotty \
-  -C /vex/bin acyclicity \
-  -C /vex/bin adversaria \
-  -C /vex/bin caesura \
-  -C /vex/bin cataract \
-  -C /vex/bin clairvoyant \
-  -C /vex/bin com \
-  -C /vex/bin contextual \
-  -C /vex/bin cosmopolite \
-  -C /vex/bin escapade \
-  -C /vex/bin escritoire \
-  -C /vex/bin eucalyptus \
-  -C /vex/bin euphemism \
-  -C /vex/bin exoskeleton \
-  -C /vex/bin gastronomy \
-  -C /vex/bin gesticulate \
-  -C /vex/bin gossamer \
-  -C /vex/bin guillotine \
-  -C /vex/bin harlequin \
-  -C /vex/bin honeycomb \
-  -C /vex/bin iridescence \
-  -C /vex/bin javax \
-  -C /vex/bin jovian \
-  -C /vex/bin kaleidoscope \
-  -C /vex/bin org \
-  -C /vex/bin probably \
-  -C /vex/bin profanity \
-  -C /vex/bin punctuation \
-  -C /vex/bin rudiments \
-  -C /vex/bin scintillate \
-  -C /vex/bin slalom \
-  -C /vex/bin vex \
-  -C /vex/bin wisteria \
-  -C /vex/bin xylophone
+RUN jar cfe /irk/irk.jar irk.Irk \
+  -C /irk/bin NOTICE \
+  -C /irk/bin compiler.properties \
+  -C /irk/bin incrementalcompiler.version.properties \
+  -C /irk/bin library.properties \
+  -C /irk/bin scala-asm.properties \
+  -C /irk/bin xsbti \
+  -C /irk/bin scala \
+  -C /irk/bin dotty \
+  -C /irk/bin acyclicity \
+  -C /irk/bin adversaria \
+  -C /irk/bin caesura \
+  -C /irk/bin cataract \
+  -C /irk/bin clairvoyant \
+  -C /irk/bin com \
+  -C /irk/bin contextual \
+  -C /irk/bin cosmopolite \
+  -C /irk/bin escapade \
+  -C /irk/bin escritoire \
+  -C /irk/bin eucalyptus \
+  -C /irk/bin euphemism \
+  -C /irk/bin exoskeleton \
+  -C /irk/bin gastronomy \
+  -C /irk/bin gesticulate \
+  -C /irk/bin gossamer \
+  -C /irk/bin guillotine \
+  -C /irk/bin harlequin \
+  -C /irk/bin honeycomb \
+  -C /irk/bin iridescence \
+  -C /irk/bin javax \
+  -C /irk/bin jovian \
+  -C /irk/bin kaleidoscope \
+  -C /irk/bin org \
+  -C /irk/bin probably \
+  -C /irk/bin profanity \
+  -C /irk/bin punctuation \
+  -C /irk/bin rudiments \
+  -C /irk/bin scintillate \
+  -C /irk/bin slalom \
+  -C /irk/bin irk \
+  -C /irk/bin wisteria \
+  -C /irk/bin xylophone
 
-RUN cat /vex/niveau/mod/exoskeleton/res/exoskeleton/invoke /vex/vex.jar > /vex/bootstrap
-RUN chmod +x /vex/bootstrap
-RUN rm /vex/vex.jar
-ADD build.vex /vex/build.vex
-RUN cd /vex && ./bootstrap
-RUN mv /vex/vex-* /vex/vex
-RUN md5sum /vex/vex > bootstrap.md5
-RUN cd /vex && ./vex
-RUN mv /vex/vex-* /vex/vex
-RUN md5sum /vex/vex > vex.md5
-RUN diff vex.md5 bootstrap.md5
+RUN cat /irk/one/mod/exoskeleton/res/exoskeleton/invoke /irk/irk.jar > /irk/bootstrap
+RUN chmod +x /irk/bootstrap
+RUN rm /irk/irk.jar
+ADD build.irk /irk/build.irk
+RUN cd /irk && ./bootstrap
+RUN mv /irk/irk-* /irk/irk
+RUN md5sum /irk/irk > bootstrap.md5
+RUN cd /irk && ./irk
+RUN mv /irk/irk-* /irk/irk
+RUN md5sum /irk/irk > irk.md5
+RUN diff irk.md5 bootstrap.md5

@@ -1,12 +1,12 @@
 VERSION = 0.2.0
 
-distribution: dist/vex-$(VERSION) dist/launcher-$(VERSION)
+distribution: dist/irk-$(VERSION) dist/launcher-$(VERSION)
 
-local-niveau:
-	rsync -a --delete --delete-excluded --exclude 'mod/*/out' --exclude '.*' --exclude scala ../niveau ./
+local-one:
+	rsync -a --delete --delete-excluded --exclude 'mod/*/out' --exclude '.*' --exclude scala ../one ./
 
-.image: niveau src/*/*.scala Dockerfile
-	docker build --tag=vex .
+.image: one src/*/*.scala Dockerfile
+	docker build --tag=irk .
 	touch .image
 
 dist:
@@ -15,20 +15,20 @@ dist:
 quick:
 	VERSION="$(VERSION)" etc/build
 
-dist/vex-$(VERSION): dist .image
-	docker rm vex || true
-	docker run --name vex vex /bin/true
-	docker cp vex:/vex/vex dist/vex-$(VERSION)
-	docker rm vex
+dist/irk-$(VERSION): dist .image
+	docker rm irk || true
+	docker run --name irk irk /bin/true
+	docker cp irk:/irk/irk dist/irk-$(VERSION)
+	docker rm irk
 
 dist/launcher-$(VERSION): dist etc/launcher
 	VERSION="$(VERSION)" envsubst < etc/launcher > dist/launcher-$(VERSION)
 
-install: dist/vex-$(VERSION)
-	sudo cp dist/vex-$(VERSION) /usr/local/bin/vex
+install: dist/irk-$(VERSION)
+	sudo cp dist/irk-$(VERSION) /usr/local/bin/irk
 
 release: distribution
-	cd dist && gh release upload --clobber "v$(VERSION)" vex-$(VERSION)
+	cd dist && gh release upload --clobber "v$(VERSION)" irk-$(VERSION)
 	cd dist && gh release upload --clobber "v$(VERSION)" launcher-$(VERSION)
 
-.PHONY: local-niveau niveau quick distribution
+.PHONY: local-one one quick distribution

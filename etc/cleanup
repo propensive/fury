@@ -1,4 +1,4 @@
 #!/bin/sh
-jps | grep vex | cut -d' ' -f1 | xargs -r kill -9
-killall -9 vex
-rm /run/user/1000/vex*
+jps | grep irk | cut -d' ' -f1 | xargs -r kill -9
+killall -9 irk
+rm /run/user/1000/irk*
