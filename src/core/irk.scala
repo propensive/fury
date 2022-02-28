@@ -616,7 +616,7 @@ object Irk extends Daemon():
                       Zip.Entry(file.path.relativeTo(dir.path).get, () => file.read[DataStream](1.mb))
                 .to(LazyList)
                 
-                val basicMf = ListMap(t"Manifest-Version" -> t"1.0", t"Created-By" -> t"Irk 0.2.0")
+                val basicMf = ListMap(t"Manifest-Version" -> t"1.0", t"Created-By" -> t"Irk 0.3.0")
                 
                 val manifest = step.main.fold(basicMf)(basicMf.updated(t"Main-Class", _)).flatMap:
                   (k, v) =>
