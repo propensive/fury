@@ -799,7 +799,6 @@ object Compiler:
         
         def run(files: List[File], classpath: Text): List[Diagnostic] =
           val ctx = currentCtx.fresh
-          Out.println(classpath)
           val newCtx = ctx
             .setReporter(reporter)
             .setCompilerCallback(callbackApi)
