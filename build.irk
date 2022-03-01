@@ -46,9 +46,9 @@
           "acyclicity/core", "jovian/core", "scintillate/core", "euphemism/core", "honeycomb/core",
           "exoskeleton/core", "clairvoyant/time"],
       "sources": ["src/core"],
-      "version": "0.1.0",
+      "version": "0.3.1",
       "docs": ["doc"],
-      "artifact": "irk-0.2.0",
+      "artifact": "irk-0.3.1",
       "main": "irk.Irk"
     }
   ]
