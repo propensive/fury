@@ -1,0 +1,11 @@
+{
+  "modules": [
+    {
+      "name": "Hello World",
+      "id": "helloworld/core",
+      "sources": ["src"],
+      "main": "helloworld.run",
+      "artifict": "helloworld.jar"
+    }
+  ]
+}

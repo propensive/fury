@@ -31,4 +31,12 @@ release: distribution
 	cd dist && gh release upload --clobber "v$(VERSION)" irk-$(VERSION)
 	cd dist && gh release upload --clobber "v$(VERSION)" launcher-$(VERSION)
 
-.PHONY: local-one one quick distribution
+test:
+	for DIR in test/* ; do \
+	  cd $$DIR ; \
+	  ./script > ./out ; \
+	  diff ./pos ./out || echo 'Output does not match' && exit 1 ; \
+	  cd ../../ ; \
+	done
+
+.PHONY: local-one one quick distribution test

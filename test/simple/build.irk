@@ -1,0 +1,9 @@
+{
+  "modules": [
+    {
+      "name": "Hello World",
+      "id": "helloworld/core",
+      "sources": ["src"]
+    }
+  ]
+}
