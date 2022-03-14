@@ -22,6 +22,7 @@ import java.nio.BufferOverflowException
 
 import scala.collection.mutable as scm
 import scala.concurrent.*
+import scala.collection.convert.ImplicitConversions.given
 
 erased given CanThrow[AppError | RootParentError] = compiletime.erasedValue
 
@@ -296,6 +297,9 @@ case class BrokenLinkError(link: Text) extends Error:
   def message: Text = t"The reference to $link cannot be resolved"
 
 object Irk extends Daemon():
+
+  def version(using Stdout): Text = getClass.nn.getPackage.nn.getImplementationVersion.nn.show
+
   def homeDir: Directory =
     try Unix.parse(Sys.user.home()).get.directory(Expect)
     catch
@@ -359,6 +363,7 @@ object Irk extends Daemon():
 
   def main(using cli: CommandLine): ExitStatus = try
     cli.args match
+      case t"about" :: _        => Irk.about()
       case t"compile" :: params => Irk.build(false, params.headOption.map(_.show), false, None, cli.pwd, cli.env, cli.script)
       case t"publish" :: params => Irk.build(true, params.headOption.map(_.show), false, None, cli.pwd, cli.env, cli.script)
       case t"watch" :: params   => Irk.build(false, params.headOption.map(_.show), true, None, cli.pwd, cli.env, cli.script)
@@ -484,6 +489,10 @@ object Irk extends Daemon():
   def stop(cli: CommandLine)(using Stdout): ExitStatus =
     Out.println(t"Shutting down Irk")
     cli.shutdown()
+    ExitStatus.Ok
+
+  def about()(using Stdout): ExitStatus =
+    Out.println(t"Irk version ${Irk.version}")
     ExitStatus.Ok
 
   def build(publishSonatype: Boolean, target: Option[Text], watch: Boolean = false,
@@ -621,7 +630,13 @@ object Irk extends Daemon():
                       Zip.Entry(file.path.relativeTo(dir.path).get, () => file.read[DataStream](1.mb))
                 .to(LazyList)
                 
-                val basicMf = ListMap(t"Manifest-Version" -> t"1.0", t"Created-By" -> t"Irk 0.3.1")
+                val basicMf = ListMap(
+                  t"Manifest-Version"       -> t"1.0",
+                  t"Created-By"             -> t"Irk ${Irk.version}",
+                  t"Implementation-Title"   -> step.name,
+                  t"Implementation-Version" -> step.version,
+                  t"Implementation-Vendor"  -> t""
+                )
                 
                 val manifest = step.main.fold(basicMf)(basicMf.updated(t"Main-Class", _)).flatMap:
                   (k, v) =>
