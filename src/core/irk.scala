@@ -298,7 +298,9 @@ case class BrokenLinkError(link: Text) extends Error:
 
 object Irk extends Daemon():
 
-  def version: Text = getClass.nn.getPackage.nn.getImplementationVersion.nn.show
+  def version: Text =
+    Option(getClass.nn.getPackage.nn.getImplementationVersion).fold(t"0")(_.nn.show)
+  
   def javaVersion: Text = try Sys.java.version() catch case err: KeyNotFoundError => t"unknown"
   
   def scalaVersion: Text =
@@ -371,6 +373,7 @@ object Irk extends Daemon():
   def main(using cli: CommandLine): ExitStatus = try
     cli.args match
       case t"about" :: _        => Irk.about()
+      case t"init" :: name :: _ => Irk.init(cli.pwd, name)
       case t"version" :: _      => Irk.showVersion()
       case t"compile" :: params => Irk.build(false, params.headOption.map(_.show), params.contains(t"-w") || params.contains(t"--watch"), None, cli.pwd, cli.env, cli.script)
       case t"publish" :: params => Irk.build(true, params.headOption.map(_.show), false, None, cli.pwd, cli.env, cli.script)
@@ -507,6 +510,31 @@ object Irk extends Daemon():
     Out.println(t"Scala ${Irk.scalaVersion}")
     Out.println(t"Java ${Irk.javaVersion}")
     ExitStatus.Ok
+
+  def init(pwd: Directory, name: Text)(using Stdout): ExitStatus =
+    val buildPath = pwd / t"build.irk"
+    val sourcePath = pwd / t"src" / t"core"
+    if buildPath.exists() then
+      Out.println(t"Build file build.irk already exists")
+      ExitStatus.Fail(1)
+    else
+      val buildFile = try buildPath.file(Create) catch case e: IoError => ???
+      val sourceDir = try sourcePath.directory(Create) catch case e: IoError => ???
+      
+      val module = Module(name, pwd.path.name, None, None, Set(sourceDir.path.fullname), None, None,
+          None, None, None, None)
+
+      val config = BuildConfig(None, None, List(module), None)
+      try
+        config.json.show.writeTo(buildFile)
+        ExitStatus.Ok
+      catch
+        case err: IoError =>
+          Out.println(t"Could not write to build.irk")
+          ExitStatus.Fail(1)
+        case err: StreamCutError =>
+          Out.println(t"Could not write to build.irk")
+          ExitStatus.Fail(1)
 
   def build(publishSonatype: Boolean, target: Option[Text], watch: Boolean = false,
                 oldBuild: Option[Build], pwd: Directory, env: Map[Text, Text],
@@ -647,8 +675,7 @@ object Irk extends Daemon():
                   t"Manifest-Version"       -> t"1.0",
                   t"Created-By"             -> t"Irk ${Irk.version}",
                   t"Implementation-Title"   -> step.name,
-                  t"Implementation-Version" -> step.version,
-                  t"Implementation-Vendor"  -> t""
+                  t"Implementation-Version" -> step.version
                 )
                 
                 val manifest = step.main.fold(basicMf)(basicMf.updated(t"Main-Class", _)).flatMap:

@@ -101,8 +101,13 @@ RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala3-interfaces*.j
 RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala3-tasty-inspector*.jar
 RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala-asm*.jar
 RUN cp /irk/one/mod/exoskeleton/res/exoskeleton/invoke /irk/bin/exoskeleton/invoke
+RUN echo 'Manifest-Version: 1.0' > /irk/manifest
+RUN echo 'Created-By: Irk 0.3.2' >> /irk/manifest
+RUN echo 'Implementation-Title: Irk' >> /irk/manifest
+RUN echo 'Implementation-Version: 0.3.2' >> /irk/manifest
+RUN echo 'Main-Class: irk.Irk' >> /irk/manifest
 
-RUN jar cfe /irk/irk.jar irk.Irk \
+RUN jar cmf /irk/manifest /irk/irk.jar \
   -C /irk/bin NOTICE \
   -C /irk/bin compiler.properties \
   -C /irk/bin incrementalcompiler.version.properties \
