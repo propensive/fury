@@ -298,7 +298,14 @@ case class BrokenLinkError(link: Text) extends Error:
 
 object Irk extends Daemon():
 
-  def version(using Stdout): Text = getClass.nn.getPackage.nn.getImplementationVersion.nn.show
+  def version: Text = getClass.nn.getPackage.nn.getImplementationVersion.nn.show
+  def javaVersion: Text = try Sys.java.version() catch case err: KeyNotFoundError => t"unknown"
+  
+  def scalaVersion: Text =
+    val props = java.util.Properties()
+    props.load(getClass.nn.getClassLoader.nn.getResourceAsStream("compiler.properties").nn)
+    props.get("version.number").toString.show
+ 
 
   def homeDir: Directory =
     try Unix.parse(Sys.user.home()).get.directory(Expect)
@@ -364,11 +371,11 @@ object Irk extends Daemon():
   def main(using cli: CommandLine): ExitStatus = try
     cli.args match
       case t"about" :: _        => Irk.about()
-      case t"compile" :: params => Irk.build(false, params.headOption.map(_.show), false, None, cli.pwd, cli.env, cli.script)
+      case t"version" :: _      => Irk.showVersion()
+      case t"compile" :: params => Irk.build(false, params.headOption.map(_.show), params.contains(t"-w") || params.contains(t"--watch"), None, cli.pwd, cli.env, cli.script)
       case t"publish" :: params => Irk.build(true, params.headOption.map(_.show), false, None, cli.pwd, cli.env, cli.script)
-      case t"watch" :: params   => Irk.build(false, params.headOption.map(_.show), true, None, cli.pwd, cli.env, cli.script)
       case t"stop" :: params    => Irk.stop(cli)
-      case params               => Irk.build(false, params.headOption.map(_.show), false, None, cli.pwd, cli.env, cli.script)
+      case params               => Irk.build(false, params.headOption.map(_.show), params.contains(t"-w") || params.contains(t"--watch"), None, cli.pwd, cli.env, cli.script)
   
   catch
     case err: Throwable =>
@@ -491,8 +498,14 @@ object Irk extends Daemon():
     cli.shutdown()
     ExitStatus.Ok
 
+  def showVersion()(using Stdout): ExitStatus =
+    Out.println(Irk.version)
+    ExitStatus.Ok
+  
   def about()(using Stdout): ExitStatus =
-    Out.println(t"Irk version ${Irk.version}")
+    Out.println(t"Irk ${Irk.version}")
+    Out.println(t"Scala ${Irk.scalaVersion}")
+    Out.println(t"Java ${Irk.javaVersion}")
     ExitStatus.Ok
 
   def build(publishSonatype: Boolean, target: Option[Text], watch: Boolean = false,
