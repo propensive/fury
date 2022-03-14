@@ -513,16 +513,17 @@ object Irk extends Daemon():
 
   def init(pwd: Directory, name: Text)(using Stdout): ExitStatus =
     val buildPath = pwd / t"build.irk"
-    val sourcePath = pwd / t"src" / t"core"
     if buildPath.exists() then
       Out.println(t"Build file build.irk already exists")
       ExitStatus.Fail(1)
     else
-      val buildFile = try buildPath.file(Create) catch case e: IoError => ???
-      val sourceDir = try sourcePath.directory(Create) catch case e: IoError => ???
+      import unsafeExceptions.canThrowAny
+      val buildFile = buildPath.file(Create)
+      val src = (pwd / t"src").directory(Ensure)
+      val sourceDir = (src / t"core").directory(Ensure)
       
-      val module = Module(name, pwd.path.name, None, None, Set(sourceDir.path.fullname), None, None,
-          None, None, None, None)
+      val module = Module(name, pwd.path.name, None, None,
+          Set(sourceDir.path.relativeTo(pwd.path).get.show), None, None, None, None, None, None)
 
       val config = BuildConfig(None, None, List(module), None)
       try
