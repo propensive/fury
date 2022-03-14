@@ -87,7 +87,7 @@ case class Build(pwd: Directory, repos: Map[DiskPath, Text], publishing: Option[
 
   def cache: Map[Step, Text] =
     try
-      val caches = bases.map(_.path / t".irk").filter(_.exists()).map:
+      val caches = bases.map(Irk.hashesDir / _.path.show.digest[Crc32].encode[Hex]).filter(_.exists()).map:
         cacheFile => Json.parse(cacheFile.file().read[Text](64.kb)).as[Cache].hashes
       
       caches.flatten.flatMap:
@@ -114,7 +114,7 @@ case class Build(pwd: Directory, repos: Map[DiskPath, Text], publishing: Option[
   def updateCache(step: Step, binDigest: Text): Unit =
     synchronized:
       try
-        val cacheFile = (step.pwd / t".irk")
+        val cacheFile = Irk.hashesDir / step.pwd.path.show.digest[Crc32].encode[Hex]
         val cache =
           if cacheFile.exists()
           then Cache:
@@ -309,7 +309,12 @@ object Irk extends Daemon():
     try (homeDir.path / t".cache" / t"irk").directory(Ensure)
     catch case err: IoError =>
       throw AppError(t"The user's cache directory could not be created", err)
-  
+
+  def hashesDir: Directory =
+    try (cacheDir / t"hashes").directory(Ensure)
+    catch case err: IoError =>
+      throw AppError(t"The user's cache directory could not be created", err)
+
   private val prefixes = Set(t"scala/", t"dotty/", t"compiler.properties", t"scala-asm.properties",
       t"incrementalcompiler.version.properties", t"library.properties", t"org/", t"com/", t"NOTICE")
   
@@ -679,16 +684,19 @@ object Irk extends Daemon():
       
       stream.head match
         case Unix.FileEvent.Modify(file) =>
-          Out.println(ansi"The file $Violet(${file.path.show}) was modified")
-          !file.path.name.startsWith(t".") && file.path.name.endsWith(t".irk")
+          val interesting = !file.path.name.startsWith(t".") && file.path.name.endsWith(t".irk")
+          if interesting then Out.println(ansi"The file $Violet(${file.path.show}) was modified")
+          interesting
         
         case Unix.FileEvent.Delete(path) =>
-          Out.println(ansi"The file $Violet(${path.show}) was deleted")
-          !path.name.startsWith(t".") && path.name.endsWith(t".irk")
+          val interesting = !path.name.startsWith(t".") && path.name.endsWith(t".irk")
+          if interesting then Out.println(ansi"The file $Violet(${path.show}) was deleted")
+          interesting
         
         case Unix.FileEvent.NewFile(file) =>
-          Out.println(ansi"The file $Violet(${file.path.show}) was created")
-          !file.path.name.startsWith(t".") && file.path.name.endsWith(t".irk")
+          val interesting = !file.path.name.startsWith(t".") && file.path.name.endsWith(t".irk")
+          if interesting then Out.println(ansi"The file $Violet(${file.path.show}) was created")
+          interesting
         
         case Unix.FileEvent.NewDirectory(dir) =>
           Out.println(ansi"The directory $Violet(${dir.path.show}) was created")
