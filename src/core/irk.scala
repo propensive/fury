@@ -373,12 +373,13 @@ object Irk extends Daemon():
   def main(using cli: CommandLine): ExitStatus = try
     cli.args match
       case t"about" :: _        => Irk.about()
+      case t"help" :: _         => Irk.help()
       case t"init" :: name :: _ => Irk.init(cli.pwd, name)
       case t"version" :: _      => Irk.showVersion()
-      case t"compile" :: params => Irk.build(false, params.headOption.map(_.show), params.contains(t"-w") || params.contains(t"--watch"), None, cli.pwd, cli.env, cli.script)
-      case t"publish" :: params => Irk.build(true, params.headOption.map(_.show), false, None, cli.pwd, cli.env, cli.script)
+      case t"build" :: params => Irk.build(false, params.contains(t"-w") || params.contains(t"--watch"), None, cli.pwd, cli.env, cli.script)
+      //case t"publish" :: params => Irk.build(true, false, None, cli.pwd, cli.env, cli.script)
       case t"stop" :: params    => Irk.stop(cli)
-      case params               => Irk.build(false, params.headOption.map(_.show), params.contains(t"-w") || params.contains(t"--watch"), None, cli.pwd, cli.env, cli.script)
+      case params               => Irk.build(false, params.contains(t"-w") || params.contains(t"--watch"), None, cli.pwd, cli.env, cli.script)
   
   catch
     case err: Throwable =>
@@ -387,9 +388,8 @@ object Irk extends Daemon():
   
   private lazy val fileHashes: FileCache[Bytes] = new FileCache()
 
-  private def init(target: Option[Text], pwd: Directory)(using Stdout)
-                  : Build throws IoError | BuildfileError =
-    val path = pwd / (target.getOrElse(t"build")+t".irk")
+  private def init(pwd: Directory)(using Stdout): Build throws IoError | BuildfileError =
+    val path = pwd / t"build.irk"
     
     try readBuilds(Build(pwd, Map(), None), Set(), path)
     catch case err: IoError =>
@@ -511,6 +511,19 @@ object Irk extends Daemon():
     Out.println(t"Java ${Irk.javaVersion}")
     ExitStatus.Ok
 
+  def help()(using Stdout): ExitStatus =
+    Out.println(t"Usage: irk [subcommand] [options]")
+    Out.println(t"")
+    Out.println(t"Subcommands:")
+    Out.println(t"  build    -- runs the build in the current directory (default)")
+    Out.println(t"  about    -- show version information for Irk")
+    Out.println(t"  help     -- show this message")
+    Out.println(t"  stop     -- stop the Irk daemon process")
+    Out.println(t"")
+    Out.println(t"Options:")
+    Out.println(t"  -w, --watch    Wait for changes and re-run build.")
+    ExitStatus.Ok
+
   def init(pwd: Directory, name: Text)(using Stdout): ExitStatus =
     val buildPath = pwd / t"build.irk"
     if buildPath.exists() then
@@ -522,7 +535,7 @@ object Irk extends Daemon():
       val src = (pwd / t"src").directory(Ensure)
       val sourceDir = (src / t"core").directory(Ensure)
       
-      val module = Module(name, pwd.path.name, None, None,
+      val module = Module(name, t"${pwd.path.name}/core", None, None,
           Set(sourceDir.path.relativeTo(pwd.path).get.show), None, None, None, None, None, None)
 
       val config = BuildConfig(None, None, List(module), None)
@@ -537,7 +550,7 @@ object Irk extends Daemon():
           Out.println(t"Could not write to build.irk")
           ExitStatus.Fail(1)
 
-  def build(publishSonatype: Boolean, target: Option[Text], watch: Boolean = false,
+  def build(publishSonatype: Boolean, watch: Boolean = false,
                 oldBuild: Option[Build], pwd: Directory, env: Map[Text, Text],
                 scriptFile: File)
            (using Stdout)
@@ -545,17 +558,17 @@ object Irk extends Daemon():
     def restart(): ExitStatus =
       if watch then
         try
-          val path = pwd / (target.getOrElse(t"build")+t".irk")
+          val path = pwd / t"build.irk"
           val dirs = readImports(Map(), path.file(Expect)).map(_.parent).to(List)
           waitForChange(dirs)
-          Irk.build(false, target, true, None, pwd, env, scriptFile)
+          Irk.build(false, true, None, pwd, env, scriptFile)
         catch case err: Error =>
           Out.println(err.toString.show)
           ExitStatus.Fail(1)
       else ExitStatus.Ok
     try
       import unsafeExceptions.canThrowAny
-      val build = init(target, pwd)
+      val build = init(pwd)
       val oldHashes = build.cache
       Out.println("Starting build")
 
@@ -698,7 +711,7 @@ object Irk extends Daemon():
       
       if watch then
         val dirs = build.sourceDirs.to(List) ++ build.bases.to(List)
-        Irk.build(false, target, true, if waitForChange(dirs) then None else Some(build), build.pwd, env, scriptFile)
+        Irk.build(false, true, if waitForChange(dirs) then None else Some(build), build.pwd, env, scriptFile)
       else ExitStatus.Ok
     catch
       case err: BrokenLinkError =>
