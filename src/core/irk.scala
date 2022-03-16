@@ -732,12 +732,12 @@ object Irk extends Daemon():
     val watchers = dirs.map:
       case dir: Unix.Directory => dir.watch()
 
-    val stream = LazyList.multiplex(watchers.map(_.stream.filter(_ != Unix.FileEvent.NoChange))*)
+    val stream = LazyList.multiplex(watchers.map(_.stream.filter(_ != Unix.FileEvent.NoChange))*).cluster(50)
     if stream.isEmpty then sys.exit(0)
     else
       watchers.foreach(_.stop())
       
-      stream.head match
+      stream.head.filter:
         case Unix.FileEvent.Modify(file) =>
           val interesting = !file.path.name.startsWith(t".") && file.path.name.endsWith(t".irk")
           if interesting then Out.println(ansi"The file $Violet(${file.path.show}) was modified")
@@ -759,6 +759,7 @@ object Irk extends Daemon():
         
         case _ =>
           false
+      .nonEmpty
 
 case class Hash(id: Text, digest: Text, bin: Text)
 case class Cache(hashes: Set[Hash])
