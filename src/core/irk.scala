@@ -2,6 +2,7 @@ package irk
 
 import gossamer.*
 import rudiments.*
+import turbulence.*
 import acyclicity.*
 import euphemism.*
 import jovian.*
@@ -14,6 +15,7 @@ import iridescence.*, solarized.*
 import eucalyptus.*
 import slalom.*
 import exoskeleton.*
+import imperial.*
 import profanity.*
 import xylophone.*
 import scintillate.*
@@ -23,6 +25,7 @@ import java.nio.BufferOverflowException
 import scala.collection.mutable as scm
 import scala.concurrent.*
 import scala.collection.convert.ImplicitConversions.given
+import scala.util.chaining.scalaUtilChainingOps
 
 erased given CanThrow[AppError | RootParentError] = compiletime.erasedValue
 
@@ -50,6 +53,7 @@ case class Build(pwd: Directory, repos: Map[DiskPath, Text], publishing: Option[
 
   lazy val linearization: List[Step] throws BrokenLinkError = graph.sorted
   def sourceDirs: List[Directory] = steps.flatMap(_.sources).to(List)
+  def resourceDirs: List[Directory] = steps.flatMap(_.resources).to(List)
 
   lazy val hashes: Map[Step, Text] throws BrokenLinkError | IoError | StreamCutError |
       ExcessDataError =
@@ -249,8 +253,7 @@ case class BuildConfig(imports: Option[List[Text]], publishing: Option[Publishin
         build
       
       case path :: tail =>
-        Out.println(ansi"Reading build file $Violet(${path.relativeTo(build.pwd.path).get.show})"
-            .render)
+        Out.println(ansi"Reading build file $Violet(${path.relativeTo(build.pwd.path).get.show})")
         val steps: Map[Text, Step] = modules.map:
           module =>
             def relativize(text: Text): DiskPath = path.file(Expect).parent.path + Relative.parse(text)
@@ -309,17 +312,10 @@ object Irk extends Daemon():
     props.get("version.number").toString.show
  
 
-  def homeDir: Directory =
-    try Unix.parse(Sys.user.home()).get.directory(Expect)
-    catch
-      case err: IoError =>
-        throw AppError(t"The user's home directory could not be determined", err)
-      
-      case err: KeyNotFoundError =>
-        throw AppError(t"The user's home directory could not be determined", err)
+  def homeDir: Directory = Home()
       
   def cacheDir: Directory =
-    try (homeDir.path / t".cache" / t"irk").directory(Ensure)
+    try (Home.Cache[jovian.Directory]() / t"irk").directory(Ensure)
     catch case err: IoError =>
       throw AppError(t"The user's cache directory could not be created", err)
 
@@ -375,10 +371,10 @@ object Irk extends Daemon():
       case t"about" :: _        => Irk.about()
       case t"init" :: name :: _ => Irk.init(cli.pwd, name)
       case t"version" :: _      => Irk.showVersion()
-      case t"compile" :: params => Irk.build(false, params.headOption.map(_.show), params.contains(t"-w") || params.contains(t"--watch"), None, cli.pwd, cli.env, cli.script)
-      case t"publish" :: params => Irk.build(true, params.headOption.map(_.show), false, None, cli.pwd, cli.env, cli.script)
+      case t"compile" :: params => Irk.build(false, params.contains(t"-w") || params.contains(t"--watch"), cli.pwd, cli.env, cli.script)
+      case t"publish" :: params => Irk.build(true, false, cli.pwd, cli.env, cli.script)
       case t"stop" :: params    => Irk.stop(cli)
-      case params               => Irk.build(false, params.headOption.map(_.show), params.contains(t"-w") || params.contains(t"--watch"), None, cli.pwd, cli.env, cli.script)
+      case params               => Irk.build(false, params.contains(t"-w") || params.contains(t"--watch"), cli.pwd, cli.env, cli.script)
   
   catch
     case err: Throwable =>
@@ -391,8 +387,7 @@ object Irk extends Daemon():
                   : Build throws IoError | BuildfileError =
     val path = pwd / (target.getOrElse(t"build")+t".irk")
     
-    try readBuilds(Build(pwd, Map(), None), Set(), path)
-    catch case err: IoError =>
+    try readBuilds(Build(pwd, Map(), None), Set(), path) catch case err: IoError =>
       Out.println(ansi"Configuration file $Violet(${path.show})")
       sys.exit(1)
   
@@ -459,7 +454,6 @@ object Irk extends Daemon():
                 val ref = file.parent.path + Relative.parse(path)
                 try
                   if ref.exists() then
-                    Out.println(t"The import $ref exists")
                     List((file.parent.path + Relative.parse(path)).file(Expect))
                   else
                     Out.println(t"Build file $ref does not exist; attempting to clone")
@@ -536,230 +530,258 @@ object Irk extends Daemon():
           Out.println(t"Could not write to build.irk")
           ExitStatus.Fail(1)
 
-  def build(publishSonatype: Boolean, target: Option[Text], watch: Boolean = false,
-                oldBuild: Option[Build], pwd: Directory, env: Map[Text, Text],
+
+  def reportMessages(messages: List[Message])(using Stdout): Unit =
+    messages.groupBy(_.path).foreach:
+      case (path, messages) =>
+        val syntax = ScalaSyntax.highlight(String(messages.head.content.unsafeMutable).show)
+        messages.sortBy(-_.line).groupBy(_.line).foreach:
+          case (line, messages) => messages.last match
+            case Message(module, path, line, from, to, message, _) =>
+              val bg = Bg(Srgb(0.16, 0.06, 0.03))
+              Out.println(ansi"${colors.Black}(${Bg(colors.Purple)}( $module ))${colors.Purple}(${Bg(colors.Crimson)}( ${colors.Black}($path:${line + 1}:$from) ))$bg${colors.Crimson}()$bg${escapes.EraseLine}")
+              
+              def format(line: Int) =
+                if line >= syntax.length then ansi""
+                else syntax(line).map:
+                  case Token.Code(code, flair) => flair match
+                    case Flair.Type              => ansi"${colors.YellowGreen}(${code})"
+                    case Flair.Term              => ansi"${colors.CadetBlue}(${code})"
+                    case Flair.Symbol            => ansi"${colors.Turquoise}(${code})"
+                    case Flair.Keyword           => ansi"${colors.DarkOrange}(${code})"
+                    case Flair.Modifier          => ansi"${colors.Chocolate}(${code})"
+                    case Flair.Ident             => ansi"${colors.BurlyWood}(${code})"
+                    case Flair.Error             => ansi"${colors.OrangeRed}($Underline(${code}))"
+                    case Flair.Number            => ansi"${colors.Gold}(${code})"
+                    case Flair.String            => ansi"${colors.Plum}(${code})"
+                    case other                   => ansi"${code}"
+                  case Token.Unparsed(txt)     => ansi"$txt"
+                  case Token.Markup(_)         => ansi""
+                  case Token.Newline           => throw Impossible("Should not have a newline")
+                .join
+              
+              val margin = (line + 2).show.length
+              
+              if line > 1 then
+                Out.print(ansi"${colors.Orange}(${line.show.pad(margin, Rtl)})${colors.Gray}(║)$bg ")
+                Out.println(ansi"${format(line - 1)}${escapes.EraseLine}")
+              
+              val code = format(line)
+              Out.print(ansi"${colors.Orange}($Bold(${(line + 1).show.pad(margin, Rtl)}))${colors.Gray}(║)$bg ")
+              Out.print(ansi"${code.take(from)}")
+              Out.print(ansi"${Underline}(${colors.OrangeRed}(${code.plain.slice(from, to)}))")
+              Out.println(ansi"${code.drop(to)}${escapes.EraseLine}")
+              
+              if line + 1 < syntax.length
+              then
+                Out.print(ansi"${colors.Orange}(${(line + 2).show.pad(margin, Rtl)})${colors.Gray}(║)$bg ")
+                Out.println(ansi"${format(line + 1)}${escapes.EraseLine}${escapes.Reset}")
+              
+              messages.reverse.foreach:
+                case m@Message(module, path, line, from, to, message, _) =>
+                  if m != messages.last then
+                    Out.print(ansi"${colors.Orange}($Bold(${(line + 1).show.pad(margin, Rtl)}))${colors.Gray}(║)$bg ")
+                    Out.print(ansi"${code.take(from)}")
+                    Out.print(ansi"${Underline}(${colors.OrangeRed}(${code.plain.slice(from, to)}))")
+                    Out.println(ansi"${code.drop(to)}${escapes.EraseLine}${escapes.Reset}")
+                  Out.println(ansi"${colors.Gray}(${t" "*margin}╟${t"─"*from}┴${t"─"*(to - from)}┘)${escapes.EraseLine}${escapes.Reset}")
+                  message.cut(t"\n").foreach:
+                    line =>
+                      Out.println(ansi"${t" "*margin}${colors.Gray}(║) ${Bold}($line)${escapes.EraseLine}${escapes.Reset}")
+                  if m != messages.head then Out.println(ansi"${t" "*margin}${colors.Gray}(║)")
+              Out.println(ansi"${t" "*margin}${colors.Gray}(╨)${escapes.EraseLine}${escapes.Reset}")
+              Out.println(ansi"${escapes.Reset}")
+  
+  case class Changes(build: Boolean = false, sources: Boolean = false, resources: Boolean = false):
+    def changed: Boolean = build || sources
+    
+    def apply(path: DiskPath): Changes = 
+      if path.name.endsWith(t".irk") then copy(build = true) else copy(sources = true)
+    
+  def build(publishSonatype: Boolean, watch: Boolean = false, pwd: Directory, env: Map[Text, Text],
                 scriptFile: File)
            (using Stdout)
-           : ExitStatus =
-    def restart(): ExitStatus =
-      if watch then
-        try
-          val path = pwd / (target.getOrElse(t"build")+t".irk")
-          val dirs = readImports(Map(), path.file(Expect)).map(_.parent).to(List)
-          waitForChange(dirs)
-          Irk.build(false, target, true, None, pwd, env, scriptFile)
-        catch case err: Error =>
-          Out.println(err.toString.show)
-          ExitStatus.Fail(1)
-      else ExitStatus.Ok
-    try
-      import unsafeExceptions.canThrowAny
-      val build = init(target, pwd)
-      val oldHashes = build.cache
-      Out.println("Starting build")
-
-      val futures = build.graph.traversal[Future[Set[Message]]]:
-        (set, step) => Future.sequence(set).flatMap:
-          results =>
-            Future.sequence(step.jars.map(Irk.fetchFile(_))).flatMap:
-              downloads => Future:
-                blocking:
-                  val messages = results.flatten
-                  if messages.isEmpty then
-                    try
-                      if oldHashes.get(step) != build.hashes.get(step) || step.main.isDefined then
-                        Out.println(ansi"Compiling ${Green}[${step.name}]...")
-                        messages ++ step.compile(build.hashes, oldHashes, build, scriptFile)
-                      else messages
-                    catch
-                      case err: ExcessDataError =>
-                        messages + Message(step.id, t"<unknown>", 0, 0, 0, t"too much data was received", IArray())
+           : ExitStatus throws AppError =
+    Out.println(t"build()")
+    val rootBuild = pwd / t"build.irk"
+    
+    val watcher: Unix.Watcher = try  
+      val watcher = Unix.watch(Nil)
       
-                      case err: StreamCutError =>
-                        messages + Message(step.id, t"<unknown>", 0, 0, 0, t"the stream was cut prematurely", IArray())
-                  else
-                    Out.println(t"Skipping compilation of ${step.name}")
-                    messages
-      .values
-
-      val messages: List[Message] = Future.sequence(futures).await().to(Set).flatten.to(List)
-      val success = messages.isEmpty
-
-      if success then Out.println(t"Compilation completed successfully")
-      else Out.println(t"Compilation failed\n")
+      val dirs = readImports(Map(), rootBuild.file(Expect)).map(_.parent).to(Set).map:
+        case dir: Unix.Directory =>
+          watcher.add(dir)
+          Out.println(t"  watcher.add(${dir.path})")
+          dir
       
-      // FIXME: Files should be sorted by last-modified
-      messages.groupBy(_.path).foreach:
-        case (path, messages) =>
-          val syntax = ScalaSyntax.highlight(String(messages.head.content.unsafeMutable).show)
-          messages.sortBy(-_.line).groupBy(_.line).foreach:
-            case (line, messages) => messages.last match
-              case Message(module, path, line, from, to, message, _) =>
-                val bg = Bg(Srgb(0.16, 0.06, 0.03))
-                Out.println(ansi"${colors.Black}(${Bg(colors.Purple)}( $module ))${colors.Purple}(${Bg(colors.Crimson)}( ${colors.Black}($path:${line + 1}:$from) ))$bg${colors.Crimson}()$bg${escapes.EraseLine}")
-                
-                def format(line: Int) =
-                  if line >= syntax.length then ansi""
-                  else syntax(line).map:
-                    case Token.Code(code, flair) => flair match
-                      case Flair.Type              => ansi"${colors.YellowGreen}(${code})"
-                      case Flair.Term              => ansi"${colors.CadetBlue}(${code})"
-                      case Flair.Symbol            => ansi"${colors.Turquoise}(${code})"
-                      case Flair.Keyword           => ansi"${colors.DarkOrange}(${code})"
-                      case Flair.Modifier          => ansi"${colors.Chocolate}(${code})"
-                      case Flair.Ident             => ansi"${colors.BurlyWood}(${code})"
-                      case Flair.Error             => ansi"${colors.OrangeRed}($Underline(${code}))"
-                      case Flair.Number            => ansi"${colors.Gold}(${code})"
-                      case Flair.String            => ansi"${colors.Plum}(${code})"
-                      case other                   => ansi"${code}"
-                    case Token.Unparsed(txt)     => ansi"$txt"
-                    case Token.Markup(_)         => ansi""
-                    case Token.Newline           => throw Impossible("Should not have a newline")
-                  .join
-                
-                val margin = (line + 2).show.length
-                
-                if line > 1 then
-                  Out.print(ansi"${colors.Orange}(${line.show.pad(margin, Rtl)})${colors.Gray}(║)$bg ")
-                  Out.println(ansi"${format(line - 1)}${escapes.EraseLine}")
-                
-                val code = format(line)
-                Out.print(ansi"${colors.Orange}($Bold(${(line + 1).show.pad(margin, Rtl)}))${colors.Gray}(║)$bg ")
-                Out.print(ansi"${code.take(from)}")
-                Out.print(ansi"${Underline}(${colors.OrangeRed}(${code.plain.slice(from, to)}))")
-                Out.println(ansi"${code.drop(to)}${escapes.EraseLine}")
-                
-                if line + 1 < syntax.length
-                then
-                  Out.print(ansi"${colors.Orange}(${(line + 2).show.pad(margin, Rtl)})${colors.Gray}(║)$bg ")
-                  Out.println(ansi"${format(line + 1)}${escapes.EraseLine}${escapes.Reset}")
-                
-                messages.reverse.foreach:
-                  case m@Message(module, path, line, from, to, message, _) =>
-                    if m != messages.last then
-                      Out.print(ansi"${colors.Orange}($Bold(${(line + 1).show.pad(margin, Rtl)}))${colors.Gray}(║)$bg ")
-                      Out.print(ansi"${code.take(from)}")
-                      Out.print(ansi"${Underline}(${colors.OrangeRed}(${code.plain.slice(from, to)}))")
-                      Out.println(ansi"${code.drop(to)}${escapes.EraseLine}${escapes.Reset}")
-                    Out.println(ansi"${colors.Gray}(${t" "*margin}╟${t"─"*from}┴${t"─"*(to - from)}┘)${escapes.EraseLine}${escapes.Reset}")
-                    message.cut(t"\n").foreach:
-                      line =>
-                        Out.println(ansi"${t" "*margin}${colors.Gray}(║) ${Bold}($line)${escapes.EraseLine}${escapes.Reset}")
-                    if m != messages.head then Out.println(ansi"${t" "*margin}${colors.Gray}(║)")
-                Out.println(ansi"${t" "*margin}${colors.Gray}(╨)${escapes.EraseLine}${escapes.Reset}")
-                Out.println(ansi"${escapes.Reset}")
-
-      if success then
-        build.linearization.foreach:
-          step => step.artifact.foreach:
-            artifact =>
-              if !watch then
-                Out.println(ansi"Building $Violet(${artifact.show}) artifact...")
-                val inputJars = step.classpath(build) + irkJar(scriptFile).path
-                val zipStreams = inputJars.to(LazyList).flatMap:
-                  path =>
-                    if path.isFile then
-                      Zip.read(path.file(Expect)).filter(_.path.parts.last != t"MANIFEST.MF")
-                    else if path.isDirectory then
-                      path.descendantFiles().map:
-                        file => Zip.Entry(file.path.relativeTo(path).get, () => file.read[DataStream](10.mb))
-                    else LazyList()
-                
-                val resourceStreams = step.allResources(build).flatMap:
-                  dir => dir.path.descendantFiles().map:
-                    file =>
-                      Zip.Entry(file.path.relativeTo(dir.path).get, () => file.read[DataStream](1.mb))
-                .to(LazyList)
-                
-                val basicMf = ListMap(
-                  t"Manifest-Version"       -> t"1.0",
-                  t"Created-By"             -> t"Irk ${Irk.version}",
-                  t"Implementation-Title"   -> step.name,
-                  t"Implementation-Version" -> step.version
-                )
-                
-                val manifest = step.main.fold(basicMf)(basicMf.updated(t"Main-Class", _)).flatMap:
-                  (k, v) =>
-                    val (first, rest) = t"$k: $v".snip(72)
-                    first :: rest.s.grouped(71).map(t" "+_.show).to(List)
-                .join(t"", t"\n", t"\n")
-                
-                def manifestStream(): DataStream = LazyList(manifest.bytes)
-                val mfEntry = Zip.Entry(Relative.parse(t"META-INF/MANIFEST.MF"), manifestStream)
-                
-                val header = if artifact.name.endsWith(t".jar") then Bytes.empty else
-                    (Classpath() / t"exoskeleton" / t"invoke").resource.read[Bytes](100.kb)
-                
-                Zip.write(artifact, mfEntry #:: resourceStreams #::: zipStreams, header)
-                artifact.file(Expect).setPermissions(executable = true)
-              
-        if publishSonatype then Sonatype.publish(build, env.get(t"SONATYPE_PASSWORD"))
-      
-      if watch then
-        val dirs = build.sourceDirs.to(List) ++ build.bases.to(List)
-        Irk.build(false, target, true, if waitForChange(dirs) then None else Some(build), build.pwd, env, scriptFile)
-      else ExitStatus.Ok
+      watcher
     catch
-      case err: BrokenLinkError =>
-        Out.println(t"The reference to ${err.link} could not be resolved")
-        restart()
-      case err: IoError =>
-        throw AppError(t"An I/O error occurred", err)
-      
-      case err: TtyError =>
-        Out.println(t"Could not capture TTY")
-        ExitStatus.Fail(1)
-      
       case err: InotifyError =>
-        Out.println(t"The limit of the number if inotify instances has been exceeded")
-        ExitStatus.Fail(1)
+        throw AppError(t"Could not watch directories", err)
       
-      case err: StreamCutError =>
-        Out.println(t"The stream was cut")
-        restart()
-      
-      case err: ExcessDataError =>
-        Out.println(t"Too much data")
-        restart()
-      
-      case err: BuildfileError =>
-        Out.println(t"There was an error with the build file")
-        restart()
+      case err: IoError      =>
+        throw AppError(t"Could not watch directories", err)
 
-  def waitForChange(dirs: List[Directory])(using Stdout)
-                   : Boolean throws InotifyError | IoError =
-    Out.println(t"Watching ${dirs.size} directories for changes")
-    val watchers = dirs.map:
-      case dir: Unix.Directory => dir.watch()
+    Out.println(t"watcher")
 
-    val stream = LazyList.multiplex(watchers.map(_.stream.filter(_ != Unix.FileEvent.NoChange))*).cluster(50)
-    if stream.isEmpty then sys.exit(0)
-    else
-      watchers.foreach(_.stop())
-      
-      stream.head.filter:
-        case Unix.FileEvent.Modify(file) =>
-          val interesting = !file.path.name.startsWith(t".") && file.path.name.endsWith(t".irk")
-          if interesting then Out.println(ansi"The file $Violet(${file.path.show}) was modified")
-          interesting
+    val suffixes = Set(t".scala", t".java", t".irk")
+    
+    def interest(path: DiskPath): Boolean =
+      suffixes.exists(path.name.endsWith(_)) && !path.name.startsWith(t".")
+
+    def ephemeral(events: List[Unix.FileEvent]): Boolean = events match
+      case Unix.FileEvent.NewFile(_) +: _ :+ Unix.FileEvent.Delete(_) => true
+      case _                                                          => false
+
+    def triggers(events: List[Unix.FileEvent]): Changes =
+      Out.println(events.toString)
+      events.groupBy(_.path).collect:
+        case (path, es) if interest(path) && !ephemeral(es) => es.last
+      .foldLeft(Changes()):
+        (changes, event) =>
+          Option(event).collect:
+            case Unix.FileEvent.Delete(_)  => t"deleted"
+            case Unix.FileEvent.Modify(_)  => t"modified"
+            case Unix.FileEvent.NewFile(_) => t"created"
+          .foreach:
+            changed => Out.println(ansi"The file $Violet(${event.path}) was $changed")
+          
+          Changes(event.path.fullname.endsWith(t".irk"), event.path.fullname.endsWith(t".scala"))
+
+    @tailrec
+    def recur(stream: LazyList[Changes], oldBuild: Option[Build], success: Boolean): ExitStatus =
+      if stream.isEmpty then
+        if success then ExitStatus.Ok else ExitStatus.Fail(1)
+      else
+        val newBuild: Option[Build] =
+          if stream.head.build || oldBuild.isEmpty then
+            try
+              val newBuild = init(None, pwd)
+              val dirs = readImports(Map(), rootBuild.file(Expect)).map(_.parent).to(Set)
+
+              try
+                val allDirs = (dirs ++ newBuild.sourceDirs ++ newBuild.resourceDirs).map:
+                  case dir: Unix.Directory => dir
+
+                val additions = allDirs -- watcher.directories
+                additions.foreach:
+                  dir =>
+                    watcher.add(dir)
+                    Out.println(ansi"Started watching ${dir.path}")
+
+                val deletions = watcher.directories -- allDirs
+                deletions.foreach:
+                  dir =>
+                    watcher.remove(dir)
+                    Out.println(ansi"Stopped watching ${dir.path}")
+
+              catch case err: InotifyError => Out.println(ansi"Could not update watch directories")
+              Some(newBuild)
+            catch
+              case err: BuildfileError =>
+                Out.println(ansi"The build contained an error")
+                None
+              case err: IoError =>
+                Out.println(ansi"The build file could not be read")
+                None
+          else oldBuild
+
+
+        val succeeded: Boolean = newBuild.fold(false):
+          build =>
+            Out.println(t"Getting hashes")
+            import unsafeExceptions.canThrowAny
+            val oldHashes = build.cache
+            Out.println("Starting build")
+
+            val futures = build.graph.traversal[Future[Set[Message]]]:
+              (set, step) => Future.sequence(set).flatMap:
+                results =>
+                  Future.sequence(step.jars.map(Irk.fetchFile(_))).flatMap:
+                    downloads => Future:
+                      blocking:
+                        val messages = results.flatten
+                        if messages.isEmpty then
+                          try
+                            if oldHashes.get(step) != build.hashes.get(step) || step.main.isDefined
+                            then
+                              Out.println(ansi"Compiling ${Green}[${step.name}]...")
+                              messages ++ step.compile(build.hashes, oldHashes, build, scriptFile)
+                            else messages
+                          catch
+                            case err: ExcessDataError =>
+                              messages + Message(step.id, t"<unknown>", 0, 0, 0,
+                                  t"too much data was received", IArray())
+            
+                            case err: StreamCutError =>
+                              messages + Message(step.id, t"<unknown>", 0, 0, 0,
+                                  t"the stream was cut prematurely", IArray())
+                        else
+                          Out.println(t"Skipping compilation of ${step.name}")
+                          messages
+            .values
+
+            val messages: List[Message] = Future.sequence(futures).await().to(Set).flatten.to(List)
+            val success = messages.isEmpty
+            reportMessages(messages)
+            if success then Out.println(t"Compilation completed successfully")
+            else Out.println(t"Compilation failed\n")
+            
+            // FIXME: Files should be sorted by last-modified
+            if success then
+              build.linearization.foreach:
+                step => step.artifact.foreach:
+                  artifact =>
+                    if !watch then
+                      Out.println(ansi"Building $Violet(${artifact.show}) artifact...")
+                      val inputJars = step.classpath(build) + irkJar(scriptFile).path
+                      val zipStreams = inputJars.to(LazyList).flatMap:
+                        path =>
+                          if path.isFile then
+                            Zip.read(path.file(Expect)).filter(_.path.parts.last != t"MANIFEST.MF")
+                          else if path.isDirectory then
+                            path.descendantFiles().map:
+                              file => Zip.Entry(file.path.relativeTo(path).get, () => file.read[DataStream](10.mb))
+                          else LazyList()
+                      
+                      val resourceStreams = step.allResources(build).flatMap:
+                        dir => dir.path.descendantFiles().map:
+                          file =>
+                            Zip.Entry(file.path.relativeTo(dir.path).get, () => file.read[DataStream](1.mb))
+                      .to(LazyList)
+                      
+                      val basicMf = ListMap(
+                        t"Manifest-Version"       -> t"1.0",
+                        t"Created-By"             -> t"Irk ${Irk.version}",
+                        t"Implementation-Title"   -> step.name,
+                        t"Implementation-Version" -> step.version
+                      )
+                      
+                      val manifest = step.main.fold(basicMf)(basicMf.updated(t"Main-Class", _)).flatMap:
+                        (k, v) =>
+                          val (first, rest) = t"$k: $v".snip(72)
+                          first :: rest.s.grouped(71).map(t" "+_.show).to(List)
+                      .join(t"", t"\n", t"\n")
+                      
+                      def manifestStream(): DataStream = LazyList(manifest.bytes)
+                      val mfEntry = Zip.Entry(Relative.parse(t"META-INF/MANIFEST.MF"), manifestStream)
+                      
+                      val header = if artifact.name.endsWith(t".jar") then Bytes.empty else
+                          (Classpath() / t"exoskeleton" / t"invoke").resource.read[Bytes](100.kb)
+                      
+                      Zip.write(artifact, mfEntry #:: resourceStreams #::: zipStreams, header)
+                      artifact.file(Expect).setPermissions(executable = true)
+                    
+              if publishSonatype then Sonatype.publish(build, env.get(t"SONATYPE_PASSWORD"))
+            success
         
-        case Unix.FileEvent.Delete(path) =>
-          val interesting = !path.name.startsWith(t".") && path.name.endsWith(t".irk")
-          if interesting then Out.println(ansi"The file $Violet(${path.show}) was deleted")
-          interesting
-        
-        case Unix.FileEvent.NewFile(file) =>
-          val interesting = !file.path.name.startsWith(t".") && file.path.name.endsWith(t".irk")
-          if interesting then Out.println(ansi"The file $Violet(${file.path.show}) was created")
-          interesting
-        
-        case Unix.FileEvent.NewDirectory(dir) =>
-          Out.println(ansi"The directory $Violet(${dir.path.show}) was created")
-          false
-        
-        case _ =>
-          false
-      .nonEmpty
+        if watch then Out.println(t"Watching ${watcher.directories.size} directories for changes")
+        recur(stream.tail, newBuild, succeeded)
+    
+    def buildStream: LazyList[Changes] =
+      if !watch then LazyList() else watcher.stream.cluster(100).map(triggers).filter(_.changed)
+    
+    recur(Changes(true, true, true) #:: buildStream, None, false)
 
 case class Hash(id: Text, digest: Text, bin: Text)
 case class Cache(hashes: Set[Hash])
@@ -773,7 +795,6 @@ case class Organization(name: Text, url: Text)
 
 @xmlLabel("license")
 case class License(name: Text, url: Text, distribution: Text)
-
 
 @xmlLabel("scm")
 case class Scm(url: Text, connection: Text)
@@ -975,3 +996,4 @@ object Cache:
           
           latest(key) = hash
           workDir
+

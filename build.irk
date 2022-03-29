@@ -1,7 +1,5 @@
 {
-  "imports": [
-    "one/build.irk"
-  ],
+  "imports": ["one/build.irk"],
   "config": {
     "scalac": {
       "version": "3.1.2-RC1-bin-SNAPSHOT",
@@ -17,7 +15,7 @@
         "-Ysafe-init",
         "-Ycheck-all-patmat",
         "-Yexplicit-nulls",
-	"-Yno-predef"
+        "-Yno-predef"
       ]
     }
   },
@@ -44,11 +42,11 @@
       "id": "irk/core",
       "links": ["harlequin/core", "xylophone/core", "profanity/core", "guillotine/core",
           "acyclicity/core", "jovian/core", "scintillate/core", "euphemism/core", "honeycomb/core",
-          "exoskeleton/core", "clairvoyant/time"],
+          "exoskeleton/core", "clairvoyant/time", "imperial/core"],
       "sources": ["src/core"],
       "version": "0.3.2",
       "docs": ["doc"],
-      "artifact": "irk-0.3.2",
+      "artifact": "irk",
       "main": "irk.Irk"
     }
   ]

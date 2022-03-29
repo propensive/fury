@@ -57,6 +57,7 @@ RUN cd /irk && scala/bin/scalac \
   one/mod/cataract/src/core/*.scala \
   one/mod/clairvoyant/src/css/*.scala \
   one/mod/clairvoyant/src/time/*.scala \
+  one/mod/clairvoyant/src/file/*.scala \
   one/mod/clairvoyant/src/html/*.scala \
   one/mod/clairvoyant/src/http/*.scala \
   one/mod/contextual/src/core/*.scala \
@@ -72,6 +73,7 @@ RUN cd /irk && scala/bin/scalac \
   one/mod/guillotine/src/core/*.scala \
   one/mod/harlequin/src/core/*.scala \
   one/mod/honeycomb/src/core/*.scala \
+  one/mod/imperial/src/core/*.scala \
   one/mod/iridescence/src/core/*.scala \
   one/mod/jovian/src/core/*.scala \
   one/mod/kaleidoscope/src/core/*.scala \
@@ -88,6 +90,7 @@ RUN cd /irk && scala/bin/scalac \
   one/mod/scintillate/src/server/*.scala \
   one/mod/scintillate/src/servlet/*.scala \
   one/mod/slalom/src/core/*.scala \
+  one/mod/turbulence/src/core/*.scala \
   one/mod/wisteria/src/core/*.scala \
   one/mod/xylophone/src/core/*.scala
 
