@@ -369,10 +369,11 @@ object Irk extends Daemon():
   def main(using cli: CommandLine): ExitStatus = try
     cli.args match
       case t"about" :: _        => Irk.about()
+      case t"help" :: _         => Irk.help()
       case t"init" :: name :: _ => Irk.init(cli.pwd, name)
       case t"version" :: _      => Irk.showVersion()
-      case t"compile" :: params => Irk.build(false, params.contains(t"-w") || params.contains(t"--watch"), cli.pwd, cli.env, cli.script)
-      case t"publish" :: params => Irk.build(true, false, cli.pwd, cli.env, cli.script)
+      case t"build" :: params   => Irk.build(false, params.contains(t"-w") || params.contains(t"--watch"), cli.pwd, cli.env, cli.script)
+      //case t"publish" :: params => Irk.build(true, false, None, cli.pwd, cli.env, cli.script)
       case t"stop" :: params    => Irk.stop(cli)
       case params               => Irk.build(false, params.contains(t"-w") || params.contains(t"--watch"), cli.pwd, cli.env, cli.script)
   
@@ -383,9 +384,8 @@ object Irk extends Daemon():
   
   private lazy val fileHashes: FileCache[Bytes] = new FileCache()
 
-  private def init(target: Option[Text], pwd: Directory)(using Stdout)
-                  : Build throws IoError | BuildfileError =
-    val path = pwd / (target.getOrElse(t"build")+t".irk")
+  private def init(pwd: Directory)(using Stdout): Build throws IoError | BuildfileError =
+    val path = pwd / t"build.irk"
     
     try readBuilds(Build(pwd, Map(), None), Set(), path) catch case err: IoError =>
       Out.println(ansi"Configuration file $Violet(${path.show})")
@@ -505,18 +505,32 @@ object Irk extends Daemon():
     Out.println(t"Java ${Irk.javaVersion}")
     ExitStatus.Ok
 
+  def help()(using Stdout): ExitStatus =
+    Out.println(t"Usage: irk [subcommand] [options]")
+    Out.println(t"")
+    Out.println(t"Subcommands:")
+    Out.println(t"  build    -- runs the build in the current directory (default)")
+    Out.println(t"  about    -- show version information for Irk")
+    Out.println(t"  help     -- show this message")
+    Out.println(t"  stop     -- stop the Irk daemon process")
+    Out.println(t"")
+    Out.println(t"Options:")
+    Out.println(t"  -w, --watch    Wait for changes and re-run build.")
+    ExitStatus.Ok
+
   def init(pwd: Directory, name: Text)(using Stdout): ExitStatus =
     val buildPath = pwd / t"build.irk"
-    val sourcePath = pwd / t"src" / t"core"
     if buildPath.exists() then
       Out.println(t"Build file build.irk already exists")
       ExitStatus.Fail(1)
     else
-      val buildFile = try buildPath.file(Create) catch case e: IoError => ???
-      val sourceDir = try sourcePath.directory(Create) catch case e: IoError => ???
+      import unsafeExceptions.canThrowAny
+      val buildFile = buildPath.file(Create)
+      val src = (pwd / t"src").directory(Ensure)
+      val sourceDir = (src / t"core").directory(Ensure)
       
-      val module = Module(name, pwd.path.name, None, None, Set(sourceDir.path.fullname), None, None,
-          None, None, None, None)
+      val module = Module(name, t"${pwd.path.name}/core", None, None,
+          Set(sourceDir.path.relativeTo(pwd.path).get.show), None, None, None, None, None, None)
 
       val config = BuildConfig(None, None, List(module), None)
       try
@@ -529,7 +543,6 @@ object Irk extends Daemon():
         case err: StreamCutError =>
           Out.println(t"Could not write to build.irk")
           ExitStatus.Fail(1)
-
 
   def reportMessages(messages: List[Message])(using Stdout): Unit =
     messages.groupBy(_.path).foreach:
@@ -615,6 +628,7 @@ object Irk extends Daemon():
           dir
       
       watcher
+    
     catch
       case err: InotifyError =>
         throw AppError(t"Could not watch directories", err)
@@ -656,7 +670,7 @@ object Irk extends Daemon():
         val newBuild: Option[Build] =
           if stream.head.build || oldBuild.isEmpty then
             try
-              val newBuild = init(None, pwd)
+              val newBuild = init(pwd)
               val dirs = readImports(Map(), rootBuild.file(Expect)).map(_.parent).to(Set)
 
               try
