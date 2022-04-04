@@ -38,6 +38,10 @@ import rendering.ansi
 given LogFormat[SystemOut.type, AnsiText] = LogFormat.timed
 given Log()
 
+object palette:
+  val File = colors.Salmon
+  val Number = colors.Gold
+
 case class Message(module: Text, path: Text, line: Int, from: Int, to: Int, message: Text,
                        content: IArray[Char])
 
@@ -72,7 +76,7 @@ case class Build(pwd: Directory, repos: Map[DiskPath, Text], publishing: Option[
     val t0 = System.currentTimeMillis
     val result = recur(linearization, Map())
     val time = System.currentTimeMillis - t0
-    //Out.println(ansi"Calculated ${colors.Gold}(${index.size}) hashes in ${colors.Gold}[${time}ms]")
+    //Out.println(ansi"Calculated ${palette.Number}(${index.size}) hashes in ${palette.Number}[${time}ms]")
     result
 
   @targetName("addAll")
@@ -177,7 +181,7 @@ case class Step(path: File, publishing: Option[Publishing], name: Text,
 
   def classpath(build: Build)(using Stdout): Set[DiskPath] throws IoError | BrokenLinkError =
     build.graph.reachable(this).flatMap:
-      step => step.jars.map(Irk.fetchFile(_).await()).map(_.path) + step.classesDir.path
+      step => step.jars.map(Irk.fetchFile(_, None).await()).map(_.path) + step.classesDir.path
   
   def allResources(build: Build)(using Stdout): Set[Directory] throws IoError | BrokenLinkError =
     build.graph.reachable(this).flatMap(_.resources)
@@ -210,11 +214,11 @@ case class Step(path: File, publishing: Option[Publishing], name: Text,
       val time = System.currentTimeMillis - t0
       
       if messages.isEmpty then
-        Out.println(ansi"Compilation of ${Green}[${name}] succeeded in ${colors.Gold}[${time}ms]")
+        //Out.println(ansi"Compilation of ${Green}[${name}] succeeded in ${palette.Number}[${time}ms]")
         val digestFiles = classesDir.path.descendantFiles().to(List).sortBy(_.name).to(LazyList)
         val digest = digestFiles.map(_.read[Bytes](1.mb).digest[Crc32]).to(List).digest[Crc32]
         build.updateCache(this, digest.encode[Base64])
-      else Out.println(ansi"Compilation of ${Green}[${name}] failed in ${colors.Gold}[${time}ms]")
+      //else Out.println(ansi"Compilation of ${Green}[${name}] failed in ${palette.Number}[${time}ms]")
       
       messages
     
@@ -253,7 +257,6 @@ case class BuildConfig(imports: Option[List[Text]], publishing: Option[Publishin
         build
       
       case path :: tail =>
-        Out.println(ansi"Reading build file ${colors.IndianRed}(${path.relativeTo(build.pwd.path).get.show})")
         val steps: Map[Text, Step] = modules.map:
           module =>
             def relativize(text: Text): DiskPath = path.file(Expect).parent.path + Relative.parse(text)
@@ -361,7 +364,7 @@ object Irk extends Daemon():
     catch case err: IoError =>
       throw AppError(t"The Irk binary could not be copied to the user's cache directory")
 
-  def fetchFile(ref: Text)(using Stdout): Future[File] =
+  def fetchFile(ref: Text, funnel: Option[Funnel[Progress.Update]])(using Stdout): Future[File] =
     val libDir = cacheDir / t"lib"
     if ref.startsWith(t"https:") then
       val dest = libDir / t"${ref.digest[Crc32].encode[Hex].lower}.jar"
@@ -370,17 +373,21 @@ object Irk extends Daemon():
           // FIXME: This exception is thrown inside a Future
           throw AppError(t"Could not access the dependency JAR, $ref", err)
       else Future:
-        Out.println(ansi"Downloading JAR dependency ${ref}")
+        val name = ansi"Downloading ${colors.CornflowerBlue}($ref)"
+        funnel.foreach(_.put(Progress.Update.Add(name)))
         try
           libDir.directory()
           val file = dest.file(Create)
           Uri(ref).writeTo(file)
+          funnel.foreach(_.put(Progress.Update.Remove(true, name)))
           file
         catch
           case err: StreamCutError =>
+            funnel.foreach(_.put(Progress.Update.Remove(false, name)))
             throw AppError(t"Could not download the file $ref", err)
           
           case err: IoError =>
+            funnel.foreach(_.put(Progress.Update.Remove(false, name)))
             throw AppError(t"The downloaded file could not be written to ${dest.fullname}", err)
         
     else
@@ -410,7 +417,7 @@ object Irk extends Daemon():
     val path = pwd / t"build.irk"
     
     try readBuilds(Build(pwd, Map(), None), Set(), path) catch case err: IoError =>
-      Out.println(ansi"Configuration file ${colors.IndianRed}(${path.show})")
+      Out.println(ansi"Configuration file ${palette.File}(${path.show})")
       sys.exit(1)
   
   def hashFile(file: File): Bytes throws IoError | AppError =
@@ -436,6 +443,7 @@ object Irk extends Daemon():
           def digest: Text = hashFile(path.file()).encode[Base64]
           if path.exists() && seen.contains(digest) then readBuilds(build, seen, tail*)
           else if path.exists() then
+            Out.println(ansi"Reading build file ${palette.File}(${path.relativeTo(build.pwd.path).get.show})")
             val buildConfig = Json.parse(path.file().read[Text](1.mb)).as[BuildConfig]
             buildConfig.gen(build, seen + digest, files*)
           else throw AppError(txt"""Build contains an import reference to a nonexistant build""")
@@ -677,7 +685,7 @@ object Irk extends Daemon():
             case Unix.FileEvent.Modify(_)  => t"modified"
             case Unix.FileEvent.NewFile(_) => t"created"
           .foreach:
-            changed => Out.println(ansi"The file ${colors.IndianRed}(${event.path}) was $changed")
+            changed => Out.println(ansi"The file ${palette.File}(${event.path}) was $changed")
           
           Changes(event.path.fullname.endsWith(t".irk"), event.path.fullname.endsWith(t".scala"))
 
@@ -687,20 +695,11 @@ object Irk extends Daemon():
       val dirs = (buildDirs ++ build.sourceDirs ++ build.resourceDirs).sift[Unix.Directory]
       val additions = dirs -- watcher.directories
       
-      if additions.size > 5
-      then Out.println(ansi"Started watching ${colors.Gold}(${additions.size}) directories")
-
       additions.foreach:
-        dir =>
-          watcher.add(dir)
+        dir => watcher.add(dir)
           
-          if additions.size <= 5
-          then Out.println(ansi"Started watching ${colors.IndianRed}(${dir.path})")
-
       (watcher.directories -- dirs).foreach:
-        dir =>
-          watcher.remove(dir)
-          Out.println(ansi"Stopped watching ${colors.IndianRed}(${dir.path})")
+        dir => watcher.remove(dir)
       
       build
     catch
@@ -734,40 +733,58 @@ object Irk extends Daemon():
             build =>
               import unsafeExceptions.canThrowAny
               val oldHashes = build.cache
-              Out.println("Starting build")
+              Out.println(ansi"Starting build")
   
+              val funnel = Funnel[Progress.Update]()
+              
               val futures = build.graph.traversal[Future[Set[Message]]]:
                 (set, step) => Future.sequence(set).flatMap:
                   results =>
-                    Future.sequence(step.jars.map(Irk.fetchFile(_))).flatMap:
+                    Future.sequence:
+                      step.jars.map:
+                        download =>
+                          Irk.fetchFile(download, Some(funnel))
+                    .flatMap:
                       downloads => Future:
+                        val name = ansi"Compiling ${Green}(${step.name})"
                         blocking:
                           val messages = results.flatten
                           if messages.isEmpty then
                             try
                               if oldHashes.get(step) != build.hashes.get(step) || step.main.isDefined
                               then
-                                Out.println(ansi"Compiling ${Green}[${step.name}]...")
-                                messages ++ step.compile(build.hashes, oldHashes, build, scriptFile)
+                                //Out.println(ansi"Compiling ${Green}[${step.name}]...")
+                                funnel.put(Progress.Update.Add(name))
+                                val output = step.compile(build.hashes, oldHashes, build, scriptFile)
+                                funnel.put(Progress.Update.Remove(output.isEmpty, name))
+                                messages ++ output
                               else messages
                             catch
                               case err: ExcessDataError =>
+                                funnel.put(Progress.Update.Remove(false, name))
                                 messages + Message(step.id, t"<unknown>", 0, 0, 0,
                                     t"too much data was received", IArray())
               
                               case err: StreamCutError =>
+                                funnel.put(Progress.Update.Remove(false, name))
                                 messages + Message(step.id, t"<unknown>", 0, 0, 0,
                                     t"the stream was cut prematurely", IArray())
                           else
-                            Out.println(t"Skipping compilation of ${step.name}")
+                            //funnel.put(Progress.Update.Remove(false, name))
                             messages
               .values
-  
+
+              val pulsar = Pulsar(100)
+              
+              val task = Task:
+                funnel.stream.multiplexWith:
+                  pulsar.stream.map { _ => Progress.Update.Print }
+                .foldLeft(Progress(TreeMap(), Nil))(_(_))
+              
+              val promise = task()
               val messages: List[Message] = Future.sequence(futures).await().to(Set).flatten.to(List)
               val success = messages.isEmpty
               reportMessages(messages)
-              if success then Out.println(t"Compilation completed successfully")
-              else Out.println(t"Compilation failed\n")
               
               // FIXME: Files should be sorted by last-modified
               if success then
@@ -775,7 +792,8 @@ object Irk extends Daemon():
                   step => step.artifact.foreach:
                     artifact =>
                       val t0 = System.currentTimeMillis
-                      Out.println(ansi"Building ${colors.IndianRed}(${artifact.show}) artifact...")
+                      val name = ansi"Building ${palette.File}(${artifact.show}) artifact"
+                      funnel.put(Progress.Update.Add(name))
                       val inputJars = step.classpath(build) + irkJar(scriptFile).path
                       val zipStreams = inputJars.to(LazyList).flatMap:
                         path =>
@@ -813,13 +831,19 @@ object Irk extends Daemon():
                       
                       Zip.write(irkJar(scriptFile), artifact, mfEntry #:: resourceStreams #::: zipStreams, header)
                       artifact.file(Expect).setPermissions(executable = true)
-                      val time = System.currentTimeMillis - t0
-                      Out.println(ansi"Built ${colors.IndianRed}(${artifact.show}) in ${colors.Gold}[${time}ms]")
+                      funnel.put(Progress.Update.Remove(true, name))
+                      //val time = System.currentTimeMillis - t0
+                      //Out.println(ansi"Built ${palette.File}(${artifact.show}) in ${palette.Number}[${time}ms]")
                       
                 if publishSonatype then Sonatype.publish(build, env.get(t"SONATYPE_PASSWORD"))
-              success
           
-          if watch then Out.println(t"Watching ${watcher.directories.size} directories for changes")
+              pulsar.stop()
+              funnel.stop()
+              promise.future.await()
+              Out.println(t"\e[0m\e[?25h\e[A")
+              success
+
+          if watch then Out.println(t"Watching ${watcher.directories.size} directories for changes...")
           recur(stream.tail, newBuild, succeeded)
       
     def buildStream: LazyList[Trigger] =
@@ -1063,3 +1087,57 @@ object Cache:
           
           latest(key) = hash
           workDir
+
+
+object Progress:
+  enum Update:
+    case Add(name: AnsiText)
+    case Remove(success: Boolean, name: AnsiText)
+    case Print
+
+case class Progress(active: TreeMap[AnsiText, Long], completed: List[(AnsiText, Long)],
+                        started: Boolean = false):
+  private def add(name: AnsiText): Progress = copy(active = active.updated(name, System.currentTimeMillis))
+  
+  private def remove(success: Boolean, name: AnsiText): Progress = copy(
+    active = active - name,
+    completed = (name, if success then active(name) else -1) :: completed
+  )
+
+  def apply(update: Progress.Update)(using Stdout): Progress = update match
+    case Progress.Update.Add(name) =>
+      add(name)
+    
+    case Progress.Update.Remove(success, name) =>
+      remove(success, name)
+    
+    case Progress.Update.Print =>
+      val starting = !started && completed.nonEmpty
+      if starting then Out.println(t"─"*120)
+      status.foreach(Out.println(_))
+      if active.size > 0 then Out.print(t"\e[${active.size + 1}A")
+      Out.print(t"\e[?25l")
+      copy(completed = Nil, started = started || starting)
+
+  val spinner = IArray(t"🯅", t"🯇", t"🯈")
+  val spinner2 = IArray(t"◜ ", t" ◝", t" ◞", t"◟ ")
+  val spinner3 = IArray(t"▁", t"▃", t"▄", t"▅", t"▆", t"▇", t"█", t"▉", t"▊", t"▋", t"▌", t"▍", t"▎",
+    t"▏", t"▎", t"▍", t"▌", t"▋", t"▊", t"▉", t"▇", t"▆", t"▅", t"▄", t"▃")
+
+  val braille = IArray(t"⡀", t"⡄", t"⡆", t"⡇", t"⡏", t"⡟", t"⡿", t"⣿", t"⢿", t"⢻", t"⢹", t"⢸", t"⢰", t"⢠", t"⢀")
+
+  private def status: List[AnsiText] =
+    def line(name: AnsiText, start: Long, active: Boolean): AnsiText =
+      val ds = (System.currentTimeMillis - start).show.drop(2, Rtl)
+      val fractional = if ds.length == 0 then t"0" else ds.take(1, Rtl)
+      val time = ansi"${if ds.length < 2 then t"0" else ds.drop(1, Rtl)}.${fractional}s"
+      val padding = ansi" "*(6 - time.length.min(6))
+      
+      if active then
+        val anim = braille(((System.currentTimeMillis/100)%braille.length).toInt)
+        ansi"[$Yellow($anim)] $Italic(${name.padTo(110, ' ')}$padding${palette.Number}($time))"
+      else ansi"[$Green(${braille(7)})] ${name.padTo(110, ' ')}$padding${palette.Number}($time)"
+    
+    completed.map(line(_, _, false)) ++ List(ansi"─"*120) ++
+      active.to(List).map(line(_, _, true))
+        
