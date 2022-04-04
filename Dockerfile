@@ -104,10 +104,13 @@ RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala3-interfaces*.j
 RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala3-tasty-inspector*.jar
 RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala-asm*.jar
 RUN cp /irk/one/mod/exoskeleton/res/exoskeleton/invoke /irk/bin/exoskeleton/invoke
+ADD doc/.version /irk/.version
 RUN echo 'Manifest-Version: 1.0' > /irk/manifest
-RUN echo 'Created-By: Irk 0.3.2' >> /irk/manifest
+RUN echo -n 'Created-By: Irk ' >> /irk/manifest
+RUN cat /irk/.version >> /irk/manifest
 RUN echo 'Implementation-Title: Irk' >> /irk/manifest
-RUN echo 'Implementation-Version: 0.3.2' >> /irk/manifest
+RUN echo -n 'Implementation-Version: ' >> /irk/manifest
+RUN cat /irk/.version >> /irk/manifest
 RUN echo 'Main-Class: irk.Irk' >> /irk/manifest
 
 RUN jar cmf /irk/manifest /irk/irk.jar \
@@ -139,6 +142,7 @@ RUN jar cmf /irk/manifest /irk/irk.jar \
   -C /irk/bin harlequin \
   -C /irk/bin honeycomb \
   -C /irk/bin iridescence \
+  -C /irk/bin imperial \
   -C /irk/bin javax \
   -C /irk/bin jovian \
   -C /irk/bin kaleidoscope \
@@ -149,6 +153,7 @@ RUN jar cmf /irk/manifest /irk/irk.jar \
   -C /irk/bin rudiments \
   -C /irk/bin scintillate \
   -C /irk/bin slalom \
+  -C /irk/bin turbulence \
   -C /irk/bin irk \
   -C /irk/bin wisteria \
   -C /irk/bin xylophone
@@ -158,9 +163,8 @@ RUN chmod +x /irk/bootstrap
 RUN rm /irk/irk.jar
 ADD build.irk /irk/build.irk
 RUN cd /irk && ./bootstrap
-RUN mv /irk/irk-* /irk/irk
-RUN md5sum /irk/irk > bootstrap.md5
-RUN cd /irk && ./irk
-RUN mv /irk/irk-* /irk/irk
-RUN md5sum /irk/irk > irk.md5
+RUN mv /irk/irk /irk/irk-bootstrap
+RUN md5sum /irk/irk-bootstrap | cut -d' ' -f1 > bootstrap.md5
+RUN cd /irk && ./irk-bootstrap
+RUN md5sum /irk/irk | cut -d' ' -f1 > irk.md5
 RUN diff irk.md5 bootstrap.md5
