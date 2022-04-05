@@ -7,6 +7,7 @@ RUN mkdir -p /irk/bin
 RUN curl -Lo /irk/sbt.tgz https://github.com/sbt/sbt/releases/download/v1.6.1/sbt-1.6.1.tgz
 RUN tar xvf /irk/sbt.tgz -C /irk
 ENV PATH="/irk/sbt/bin:${PATH}"
+ENV GITHUB_ACTIONS="true"
 RUN /irk/scala/bin/scalac -version
 RUN mkdir /irk/lib
 

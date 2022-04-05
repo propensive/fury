@@ -16,6 +16,6 @@ jobs:
       run: docker build --tag=irk .
     - name: Docker Run
       run: |
-        docker run -e GITHUB_ACTIONS --name irk irk /bin/true
+        docker run --name irk irk /bin/true
         docker cp irk:/irk/irk irk
         docker rm irk
