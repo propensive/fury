@@ -7,9 +7,7 @@ import slalom.*
 import xylophone.*
 import euphemism.*
 
-case class Target(name: Text, module: Text, triggers: Option[List[Trigger]])
-
-case class Trigger(kind: Text, url: Text)
+case class Target(name: Text, module: Text, run: Text, parallel: Boolean, trigger: Boolean)
 
 case class Publishing(username: Text, group: Text, url: Text, organization: Organization,
                           developers: List[Developer])
@@ -27,8 +25,7 @@ case class Module(name: Text, id: Text, links: Option[Set[Text]], resources: Opt
 
 case class AppError(message: Text, cause: Maybe[Error] = Unset) extends Error(cause)
 
-case class BuildfileError() extends Error:
-  def message: Text = t"There was an error in the buildfile"
+case class BuildfileError(message: Text) extends Error
 
 case class BrokenLinkError(link: Text) extends Error:
   def message: Text = t"The reference to $link cannot be resolved"

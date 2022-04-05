@@ -132,11 +132,11 @@ object Irk extends Daemon():
       case t"version" :: _      => Irk.showVersion()
       case t"build" :: params   =>
         val target = params.headOption.filter(!_.startsWith(t"-"))
-        Irk.build(target, false, params.contains(t"-w") || params.contains(t"--watch"), cli.pwd, cli.env, cli.script, cli.killStream)
+        Irk.build(target, false, params.contains(t"-w") || params.contains(t"--watch"), cli.pwd, cli.env, cli.script)
       case t"stop" :: params    => Irk.stop(cli)
       case params               =>
         val target = params.headOption.filter(!_.startsWith(t"-"))
-        Irk.build(target, false, params.contains(t"-w") || params.contains(t"--watch"), cli.pwd, cli.env, cli.script, cli.killStream)
+        Irk.build(target, false, params.contains(t"-w") || params.contains(t"--watch"), cli.pwd, cli.env, cli.script)
   
   catch
     case err: Throwable =>
@@ -147,10 +147,7 @@ object Irk extends Daemon():
 
   private def initBuild(pwd: Directory)(using Stdout): Build throws IoError | BuildfileError =
     val path = pwd / t"build.irk"
-    
-    try readBuilds(Build(pwd, Map(), None, Map(), Map()), Set(), path) catch case err: IoError =>
-      Out.println(ansi"Configuration file ${palette.File}(${path.show})")
-      sys.exit(1)
+    readBuilds(Build(pwd, Map(), None, Map(), Map()), Set(), path)
   
   def hashFile(file: File): Bytes throws IoError | AppError =
     try fileHashes(file.path.show, file.modified):
@@ -165,7 +162,7 @@ object Irk extends Daemon():
     catch case err: ExecError => throw AppError(t"Could not run `git clone` for repository $url")
 
   def readBuilds(build: Build, seen: Set[Text], files: DiskPath*)(using Stdout)
-                : Build throws BuildfileError =
+                : Build throws BuildfileError | IoError =
     try
       files.to(List) match
         case Nil =>
@@ -186,24 +183,19 @@ object Irk extends Daemon():
           throw AppError(t"There was an I/O error", err)
       
       case err: ExcessDataError =>
-        Out.println(t"The configuration file was larger than 1MB")
-        throw BuildfileError()
+        throw BuildfileError(t"The build file was larger than 1MB")
       
       case err: StreamCutError =>
         throw AppError(t"The configuration file could not be read completely", err)
       
       case err: JsonParseError =>
-        Out.println(t"The configuration file was not valid JSON")
-        throw BuildfileError()
+        throw BuildfileError(err.message)
+      
+      case err: JsonAccessError =>
+        throw BuildfileError(err.message)
       
       case err: AppError =>
         throw err
-
-      case err: BuildfileError =>
-        throw AppError(t"There was an error in the buildfile", err)
-
-      case err: Error =>
-        throw AppError(t"An unexpected error occurred", err)
 
   def readImports(seen: Map[Text, File], files: File*)(using Stdout): Set[File] =
     case class Imports(repos: Option[List[Repo]], imports: Option[List[Text]]):
@@ -367,22 +359,19 @@ object Irk extends Daemon():
               Out.println(ansi"${t" "*margin}${colors.Gray}(╨)${escapes.EraseLine}${escapes.Reset}")
               Out.println(ansi"${escapes.Reset}")
 
-  sealed trait Trigger
-  case object Abort extends Trigger
-
-  case class Changes(build: Boolean = false, sources: Boolean = false, resources: Boolean = false) extends Trigger:
+  case class Changes(build: Boolean = false, sources: Boolean = false, resources: Boolean = false):
     def changed: Boolean = build || sources || resources
     
     def apply(path: DiskPath): Changes = 
       if path.name.endsWith(t".irk") then copy(build = true) else copy(sources = true)
     
   def build(target: Option[Text], publishSonatype: Boolean, watch: Boolean = false, pwd: Directory,
-                env: Map[Text, Text], scriptFile: File, killStream: LazyList[Unit])
+                env: Map[Text, Text], scriptFile: File)
            (using Stdout)
            : ExitStatus throws AppError =
     val rootBuild = pwd / t"build.irk"
     val tap: Tap = Tap(true)
-    
+
     val watcher: Unix.Watcher = try  
       val watcher = Unix.watch(Nil)
       
@@ -391,7 +380,6 @@ object Irk extends Daemon():
         dirs.sift[Unix.Directory].foreach(watcher.add(_))
       
       watcher
-    
     catch
       case err: InotifyError =>
         throw AppError(t"Could not watch directories", err)
@@ -418,7 +406,7 @@ object Irk extends Daemon():
             case Unix.FileEvent.Modify(_)  => t"modified"
             case Unix.FileEvent.NewFile(_) => t"created"
           .foreach:
-            changed => Out.println(ansi"The file ${palette.File}(${event.path}) was $changed")
+            changed => Out.println(ansi"The file ${palette.File}(${event.path.relativeTo(pwd.path)}) was $changed")
           
           Changes(event.path.fullname.endsWith(t".irk"), event.path.fullname.endsWith(t".scala"))
 
@@ -440,16 +428,12 @@ object Irk extends Daemon():
       case err: IoError      => throw AppError(t"Could not update watch directories", err)
 
     @tailrec
-    def recur(stream: LazyList[Trigger], oldBuild: Option[Build], success: Boolean): ExitStatus =
+    def recur(stream: LazyList[Changes], oldBuild: Option[Build], success: Boolean): ExitStatus =
       if stream.isEmpty then
         if success then ExitStatus.Ok else ExitStatus.Fail(1)
       else stream.head match
-        case Abort =>
-          Out.println(t"Aborting")
-          watcher.removeAll()
-          recur(stream.tail, oldBuild, success)
         case changes@Changes(_, _, _) =>
-          tap.suspend()
+          tap.close()
           val newBuild: Option[Build] =
             if changes.build || oldBuild.isEmpty then
               try Some(if watch then updateWatches(watcher, initBuild(pwd)) else initBuild(pwd))
@@ -524,7 +508,7 @@ object Irk extends Daemon():
                   step => step.artifact.foreach:
                     artifact =>
                       val t0 = System.currentTimeMillis
-                      val name = ansi"Building artifact ${palette.File}(${artifact.show})"
+                      val name = ansi"Building artifact ${palette.File}(${artifact.relativeTo(pwd.path).show})"
                       funnel.put(Progress.Update.Add(name))
                       val inputJars = step.classpath(build) + irkJar(scriptFile).path
                       val zipStreams = inputJars.to(LazyList).flatMap:
@@ -568,10 +552,18 @@ object Irk extends Daemon():
                       //Out.println(ansi"Built ${palette.File}(${artifact.show}) in ${palette.Number}[${time}ms]")
                       
                 if publishSonatype then Sonatype.publish(build, env.get(t"SONATYPE_PASSWORD"))
+
+                // if run then
+                //   if parallel then
+                //     val task = Task(exec())
+                //     task.start()
+                //   else exec()
+                
+                // browser.reload()
           
               pulsar.stop()
               funnel.stop()
-              tap.resume()
+              tap.open()
               promise.future.await()
               Out.println(t"\e[0m\e[?25h\e[A")
               success
@@ -579,7 +571,8 @@ object Irk extends Daemon():
           if watch then Out.println(t"Watching ${watcher.directories.size} directories for changes...")
           recur(stream.tail, newBuild, succeeded)
       
-    def buildStream: LazyList[Trigger] =
+    def buildStream: LazyList[Changes] =
       if !watch then LazyList()
       else watcher.stream.regulate(tap).cluster(100).map(triggers).filter(_.changed)
+    
     recur(Changes(true, true, true) #:: buildStream, None, false)

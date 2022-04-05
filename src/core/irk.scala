@@ -37,8 +37,8 @@ given LogFormat[SystemOut.type, AnsiText] = LogFormat.timed
 given Log()
 
 object palette:
-  val File = colors.Salmon
-  val Number = colors.Gold
+  val File = colors.Coral
+  val Number = colors.SandyBrown
 
 case class Build(pwd: Directory, repos: Map[DiskPath, Text], publishing: Option[Publishing],
     index: Map[Text, Step] = Map(), targets: Map[Text, Target] = Map()):
@@ -294,7 +294,7 @@ given realm: Realm = Realm(t"irk")
 object Compiler:
   import dotty.tools.dotc.*, reporting.*
 
-  class CustomReporter() extends Reporter:
+  class CustomReporter() extends Reporter, UniqueMessagePositions:
     var errors: scm.ListBuffer[Diagnostic] = scm.ListBuffer()
     def doReport(diagnostic: Diagnostic)(using core.Contexts.Context): Unit =
       errors += diagnostic
@@ -467,16 +467,16 @@ object Progress:
     case Remove(success: Boolean, name: AnsiText)
     case Print
 
-case class Progress(active: TreeMap[AnsiText, Long], completed: List[(AnsiText, Long)],
+case class Progress(active: TreeMap[AnsiText, Long], completed: List[(AnsiText, Long, Boolean)],
                         started: Boolean = false, done: Int = 0):
   private def add(name: AnsiText): Progress = copy(active = active.updated(name, System.currentTimeMillis))
   
   private def remove(success: Boolean, name: AnsiText): Progress = copy(
     active = active - name,
-    completed = (name, if success then active(name) else -1) :: completed
+    completed = (name, active(name), success) :: completed
   )
 
-  def titleText(title: Text): Text = t"\e]0;$title\u0007"
+  def titleText(title: Text): Text = t"\e]0;$title\u0007\r"
 
   def apply(update: Progress.Update)(using Stdout): Progress = update match
     case Progress.Update.Add(name) =>
@@ -499,7 +499,7 @@ case class Progress(active: TreeMap[AnsiText, Long], completed: List[(AnsiText, 
   val braille = IArray(t"⡀", t"⡄", t"⡆", t"⡇", t"⡏", t"⡟", t"⡿", t"⣿", t"⢿", t"⢻", t"⢹", t"⢸", t"⢰", t"⢠", t"⢀")
 
   private def status: List[AnsiText] =
-    def line(name: AnsiText, start: Long, active: Boolean): AnsiText =
+    def line(name: AnsiText, start: Long, success: Boolean, active: Boolean): AnsiText =
       val ds = (System.currentTimeMillis - start).show.drop(2, Rtl)
       val fractional = if ds.length == 0 then t"0" else ds.take(1, Rtl)
       val time = ansi"${if ds.length < 2 then t"0" else ds.drop(1, Rtl)}.${fractional}s"
@@ -507,9 +507,11 @@ case class Progress(active: TreeMap[AnsiText, Long], completed: List[(AnsiText, 
       
       if active then
         val anim = braille(((System.currentTimeMillis/100)%braille.length).toInt)
-        ansi"[$Yellow($anim)] $Italic(${name.padTo(110, ' ')}$padding${palette.Number}($time))"
-      else ansi"[$Green(${braille(7)})] ${name.padTo(110, ' ')}$padding${palette.Number}($time)"
+        ansi"${colors.White}([$Yellow($anim)] ${name.padTo(110, ' ')}$padding${palette.Number}($time))"
+      else
+        val finish = if success then ansi"[$Green(✓)]" else ansi"[$Red(✗)]"
+        ansi"$Bold($finish) ${name.padTo(110, ' ')}$padding${palette.Number}($time)"
     
-    completed.map(line(_, _, false)) ++ List(ansi"─"*120) ++
-      active.to(List).map(line(_, _, true))
+    completed.map(line(_, _, _, false)) ++ List(ansi"─"*120) ++
+      active.to(List).map(line(_, _, true, true))
         
