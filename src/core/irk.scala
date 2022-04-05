@@ -2,6 +2,7 @@ package irk
 
 import gossamer.*
 import rudiments.*
+import turbulence.*
 import acyclicity.*
 import euphemism.*
 import jovian.*
@@ -9,11 +10,10 @@ import guillotine.*
 import kaleidoscope.*
 import escapade.*
 import gastronomy.*
-import harlequin.*
 import iridescence.*, solarized.*
 import eucalyptus.*
 import slalom.*
-import exoskeleton.*
+import imperial.*
 import profanity.*
 import xylophone.*
 import scintillate.*
@@ -23,6 +23,7 @@ import java.nio.BufferOverflowException
 import scala.collection.mutable as scm
 import scala.concurrent.*
 import scala.collection.convert.ImplicitConversions.given
+import scala.util.chaining.scalaUtilChainingOps
 
 erased given CanThrow[AppError | RootParentError] = compiletime.erasedValue
 
@@ -35,11 +36,12 @@ import rendering.ansi
 given LogFormat[SystemOut.type, AnsiText] = LogFormat.timed
 given Log()
 
-case class Message(module: Text, path: Text, line: Int, from: Int, to: Int, message: Text,
-                       content: IArray[Char])
+object palette:
+  val File = colors.Coral
+  val Number = colors.SandyBrown
 
 case class Build(pwd: Directory, repos: Map[DiskPath, Text], publishing: Option[Publishing],
-    index: Map[Text, Step] = Map()):
+    index: Map[Text, Step] = Map(), targets: Map[Text, Target] = Map()):
   val steps: Set[Step] = index.values.to(Set)
   
   lazy val graph: Dag[Step] throws BrokenLinkError =
@@ -50,6 +52,7 @@ case class Build(pwd: Directory, repos: Map[DiskPath, Text], publishing: Option[
 
   lazy val linearization: List[Step] throws BrokenLinkError = graph.sorted
   def sourceDirs: List[Directory] = steps.flatMap(_.sources).to(List)
+  def resourceDirs: List[Directory] = steps.flatMap(_.resources).to(List)
 
   lazy val hashes: Map[Step, Text] throws BrokenLinkError | IoError | StreamCutError |
       ExcessDataError =
@@ -68,7 +71,7 @@ case class Build(pwd: Directory, repos: Map[DiskPath, Text], publishing: Option[
     val t0 = System.currentTimeMillis
     val result = recur(linearization, Map())
     val time = System.currentTimeMillis - t0
-    //Out.println(ansi"Calculated ${Yellow}(${index.size}) hashes in ${Yellow}[${time}ms]")
+    //Out.println(ansi"Calculated ${palette.Number}(${index.size}) hashes in ${palette.Number}[${time}ms]")
     result
 
   @targetName("addAll")
@@ -162,9 +165,7 @@ case class Step(path: File, publishing: Option[Publishing], name: Text,
   def docFile: DiskPath = output(t"-javadoc.jar")
   def srcsPkg: DiskPath = output(t"-sources.jar")
   def pomFile: DiskPath = output(t".pom")
-
-  private def output(extension: Text): DiskPath =
-    pwd / t"bin" / t"$dashed-$version$extension"
+  private def output(extension: Text): DiskPath = pwd / t"bin" / t"$dashed-$version$extension"
   
   def compilable(f: File): Boolean = f.name.endsWith(t".scala") || f.name.endsWith(t".java")
 
@@ -173,7 +174,7 @@ case class Step(path: File, publishing: Option[Publishing], name: Text,
 
   def classpath(build: Build)(using Stdout): Set[DiskPath] throws IoError | BrokenLinkError =
     build.graph.reachable(this).flatMap:
-      step => step.jars.map(Irk.fetchFile(_).await()).map(_.path) + step.classesDir.path
+      step => step.jars.map(Irk.fetchFile(_, None).await()).map(_.path) + step.classesDir.path
   
   def allResources(build: Build)(using Stdout): Set[Directory] throws IoError | BrokenLinkError =
     build.graph.reachable(this).flatMap(_.resources)
@@ -194,10 +195,9 @@ case class Step(path: File, publishing: Option[Publishing], name: Text,
         dependencies
     catch case err: BrokenLinkError => throw AppError(t"Couldn't resolve dependencies", err)
 
-  def compile(hashes: Map[Step, Text], oldHashes: Map[Step, Text], build: Build,
-                  scriptFile: File)
+  def compile(hashes: Map[Step, Text], oldHashes: Map[Step, Text], build: Build, scriptFile: File)
              (using Stdout)
-             : List[Message] =
+             : List[irk.Message] =
     try
       val t0 = System.currentTimeMillis
       classesDir.children.foreach(_.delete())
@@ -206,11 +206,11 @@ case class Step(path: File, publishing: Option[Publishing], name: Text,
       val time = System.currentTimeMillis - t0
       
       if messages.isEmpty then
-        Out.println(ansi"Compilation of ${Green}[${name}] succeeded in ${Yellow}[${time}ms]")
+        //Out.println(ansi"Compilation of ${Green}[${name}] succeeded in ${palette.Number}[${time}ms]")
         val digestFiles = classesDir.path.descendantFiles().to(List).sortBy(_.name).to(LazyList)
         val digest = digestFiles.map(_.read[Bytes](1.mb).digest[Crc32]).to(List).digest[Crc32]
         build.updateCache(this, digest.encode[Base64])
-      else Out.println(ansi"Compilation of ${Green}[${name}] failed in ${Yellow}[${time}ms]")
+      //else Out.println(ansi"Compilation of ${Green}[${name}] failed in ${palette.Number}[${time}ms]")
       
       messages
     
@@ -232,7 +232,8 @@ case class Step(path: File, publishing: Option[Publishing], name: Text,
         throw AppError(t"An unexpected error occurred", err)
 
 case class BuildConfig(imports: Option[List[Text]], publishing: Option[Publishing],
-                           modules: List[Module], repos: Option[List[Repo]]):
+                           modules: List[Module], repos: Option[List[Repo]],
+                           targets: Option[List[Target]]):
   
   def gen(build: Build, seen: Set[Text], files: DiskPath*)(using Stdout)
          : Build throws IoError | AppError | BuildfileError =
@@ -249,8 +250,6 @@ case class BuildConfig(imports: Option[List[Text]], publishing: Option[Publishin
         build
       
       case path :: tail =>
-        Out.println(ansi"Reading build file $Violet(${path.relativeTo(build.pwd.path).get.show})"
-            .render)
         val steps: Map[Text, Step] = modules.map:
           module =>
             def relativize(text: Text): DiskPath = path.file(Expect).parent.path + Relative.parse(text)
@@ -277,554 +276,12 @@ case class BuildConfig(imports: Option[List[Text]], publishing: Option[Publishin
         Irk.readBuilds(build ++ Build(build.pwd, reposMap, build.publishing, steps), seen,
             (importPaths ++ tail)*)
 
-case class Publishing(username: Text, group: Text, url: Text, organization: Organization,
-                          developers: List[Developer])
-
-case class Repo(base: Text, url: Text):
-  def basePath(dir: DiskPath): DiskPath = dir + Relative.parse(base)
-
-case class Module(name: Text, id: Text, links: Option[Set[Text]], resources: Option[Set[Text]],
-                      sources: Set[Text], jars: Option[Set[Text]], docs: Option[List[Text]],
-                      dependencies: Option[Set[Dependency]], version: Option[Text],
-                      artifact: Option[Text], main: Option[Text])
-
-case class AppError(message: Text, cause: Maybe[Error] = Unset) extends Error(cause)
-
-case class BuildfileError() extends Error:
-  def message: Text = t"There was an error in the buildfile"
-
-case class BrokenLinkError(link: Text) extends Error:
-  def message: Text = t"The reference to $link cannot be resolved"
-
-object Irk extends Daemon():
-
-  def version: Text =
-    Option(getClass.nn.getPackage.nn.getImplementationVersion).fold(t"0")(_.nn.show)
-  
-  def javaVersion: Text = try Sys.java.version() catch case err: KeyNotFoundError => t"unknown"
-  
-  def scalaVersion: Text =
-    val props = java.util.Properties()
-    props.load(getClass.nn.getClassLoader.nn.getResourceAsStream("compiler.properties").nn)
-    props.get("version.number").toString.show
- 
-
-  def homeDir: Directory =
-    try Unix.parse(Sys.user.home()).get.directory(Expect)
-    catch
-      case err: IoError =>
-        throw AppError(t"The user's home directory could not be determined", err)
-      
-      case err: KeyNotFoundError =>
-        throw AppError(t"The user's home directory could not be determined", err)
-      
-  def cacheDir: Directory =
-    try (homeDir.path / t".cache" / t"irk").directory(Ensure)
-    catch case err: IoError =>
-      throw AppError(t"The user's cache directory could not be created", err)
-
-  def hashesDir: Directory =
-    try (cacheDir / t"hashes").directory(Ensure)
-    catch case err: IoError =>
-      throw AppError(t"The user's cache directory could not be created", err)
-
-  private val prefixes = Set(t"scala/", t"dotty/", t"compiler.properties", t"scala-asm.properties",
-      t"incrementalcompiler.version.properties", t"library.properties", t"org/", t"com/", t"NOTICE")
-  
-  def irkJar(scriptFile: File)(using Stdout): File throws StreamCutError = synchronized:
-    val jarFile = cacheDir.path / t"lib" / t"base.jar"
-    
-    try if jarFile.exists() then jarFile.file(Expect) else
-      jarFile.parent.directory()
-      val entries = Zip.read(scriptFile).filter { e => prefixes.exists(e.path.show.startsWith(_)) }
-      Zip.write(jarFile, entries)
-      jarFile.file(Expect)
-
-    catch case err: IoError =>
-      throw AppError(t"The Irk binary could not be copied to the user's cache directory")
-
-  def fetchFile(ref: Text)(using Stdout): Future[File] =
-    val libDir = cacheDir / t"lib"
-    if ref.startsWith(t"https:") then
-      val dest = libDir / t"${ref.digest[Crc32].encode[Hex].lower}.jar"
-      if dest.exists() then Future:
-        try dest.file(Expect) catch case err: IoError =>
-          // FIXME: This exception is thrown inside a Future
-          throw AppError(t"Could not access the dependency JAR, $ref", err)
-      else Future:
-        Out.println(ansi"Downloading JAR dependency ${ref}")
-        try
-          libDir.directory()
-          val file = dest.file(Create)
-          Uri(ref).writeTo(file)
-          file
-        catch
-          case err: StreamCutError =>
-            throw AppError(t"Could not download the file $ref", err)
-          
-          case err: IoError =>
-            throw AppError(t"The downloaded file could not be written to ${dest.fullname}", err)
-        
-    else
-      Future:
-        try Unix.parse(ref).get.file(Expect) catch case err: IoError =>
-          throw AppError(t"Could not access the dependency JAR, $ref", err)
-
-  def main(using cli: CommandLine): ExitStatus = try
-    cli.args match
-      case t"about" :: _        => Irk.about()
-      case t"help" :: _         => Irk.help()
-      case t"init" :: name :: _ => Irk.init(cli.pwd, name)
-      case t"version" :: _      => Irk.showVersion()
-      case t"build" :: params => Irk.build(false, params.contains(t"-w") || params.contains(t"--watch"), None, cli.pwd, cli.env, cli.script)
-      //case t"publish" :: params => Irk.build(true, false, None, cli.pwd, cli.env, cli.script)
-      case t"stop" :: params    => Irk.stop(cli)
-      case params               => Irk.build(false, params.contains(t"-w") || params.contains(t"--watch"), None, cli.pwd, cli.env, cli.script)
-  
-  catch
-    case err: Throwable =>
-      Out.println(StackTrace(err).ansi)
-      ExitStatus.Fail(1)
-  
-  private lazy val fileHashes: FileCache[Bytes] = new FileCache()
-
-  private def init(pwd: Directory)(using Stdout): Build throws IoError | BuildfileError =
-    val path = pwd / t"build.irk"
-    
-    try readBuilds(Build(pwd, Map(), None), Set(), path)
-    catch case err: IoError =>
-      Out.println(ansi"Configuration file $Violet(${path.show})")
-      sys.exit(1)
-  
-  def hashFile(file: File): Bytes throws IoError | AppError =
-    try fileHashes(file.path.show, file.modified):
-      file.read[Bytes](1.mb).digest[Crc32].bytes
-    catch
-      case err: StreamCutError  => throw AppError(t"The stream was cut while hashing a file", err)
-      case err: ExcessDataError => throw AppError(t"The file was too big to hash", err)
-      case err: Error           => throw AppError(t"An unexpected error occurred", err)
-  
-  def cloneRepo(path: DiskPath, url: Text): Unit =
-    try sh"git clone -q $url ${path.fullname}".exec[Unit]()
-    catch case err: ExecError => throw AppError(t"Could not run `git clone` for repository $url")
-
-  def readBuilds(build: Build, seen: Set[Text], files: DiskPath*)(using Stdout)
-                : Build throws BuildfileError =
-    try
-      files.to(List) match
-        case Nil =>
-          build
-        
-        case path :: tail =>
-          def digest: Text = hashFile(path.file()).encode[Base64]
-          if path.exists() && seen.contains(digest) then readBuilds(build, seen, tail*)
-          else if path.exists() then
-            val buildConfig = Json.parse(path.file().read[Text](1.mb)).as[BuildConfig]
-            buildConfig.gen(build, seen + digest, files*)
-          else throw AppError(txt"""Build contains an import reference to a nonexistant build""")
-            
-    catch
-      case err: IoError => err match
-        case IoError(op, reason, path) =>
-          throw AppError(t"There was an I/O error", err)
-      
-      case err: ExcessDataError =>
-        Out.println(t"The configuration file was larger than 1MB")
-        throw BuildfileError()
-      
-      case err: StreamCutError =>
-        throw AppError(t"The configuration file could not be read completely", err)
-      
-      case err: JsonParseError =>
-        Out.println(t"The configuration file was not valid JSON")
-        throw BuildfileError()
-      
-      case err: AppError =>
-        throw err
-
-      case err: BuildfileError =>
-        throw AppError(t"There was an error in the buildfile", err)
-
-      case err: Error =>
-        throw AppError(t"An unexpected error occurred", err)
-
-  def readImports(seen: Map[Text, File], files: File*)(using Stdout): Set[File] =
-    case class Imports(repos: Option[List[Repo]], imports: Option[List[Text]]):
-      def repoList: List[Repo] = repos.getOrElse(Nil)
-      def gen(seen: Map[Text, File], files: File*): Set[File] =
-        files.to(List) match
-          case file :: tail =>
-            val importFiles: List[File] = imports.getOrElse(Nil).flatMap:
-              path =>
-                val ref = file.parent.path + Relative.parse(path)
-                try
-                  if ref.exists() then
-                    Out.println(t"The import $ref exists")
-                    List((file.parent.path + Relative.parse(path)).file(Expect))
-                  else
-                    Out.println(t"Build file $ref does not exist; attempting to clone")
-                    if ref.parent.exists()
-                    then throw AppError(t"The build ${ref.name} does not exist in ${ref.parent}")
-                    else
-                      repoList.find(_.basePath(file.parent.path) == ref.parent) match
-                        case None =>
-                          throw AppError(txt"""Could not find a remote repository containing the import $path""")
-                        
-                        case Some(repo) =>
-                          Irk.cloneRepo(ref.parent, repo.url)
-                          List(ref.file(Expect))
-                          
-                catch case err: IoError =>
-                  throw AppError(t"Imported build $ref could not be read", err)
-            
-            readImports(seen, (importFiles ++ tail)*)
-          
-          case Nil => seen.values.to(Set)
-    
-    files.to(List) match
-      case Nil =>
-        seen.values.to(Set)
-      
-      case file :: tail =>
-        try
-          def interpret(digest: Option[Text]) = Json.parse(file.read[Text](1.mb)).as[Imports].gen(digest.fold(seen)(seen.updated(_, file)), files*)
-          
-          if file.exists() then
-            val digest: Text = hashFile(file).encode[Base64]
-            if !seen.contains(digest) then interpret(Some(digest)) else readImports(seen, tail*)
-          else interpret(None)
-
-        catch case err: Error => readImports(seen, tail*)
-
-  def stop(cli: CommandLine)(using Stdout): ExitStatus =
-    Out.println(t"Shutting down Irk")
-    cli.shutdown()
-    ExitStatus.Ok
-
-  def showVersion()(using Stdout): ExitStatus =
-    Out.println(Irk.version)
-    ExitStatus.Ok
-  
-  def about()(using Stdout): ExitStatus =
-    Out.println(t"Irk ${Irk.version}")
-    Out.println(t"Scala ${Irk.scalaVersion}")
-    Out.println(t"Java ${Irk.javaVersion}")
-    ExitStatus.Ok
-
-  def help()(using Stdout): ExitStatus =
-    Out.println(t"Usage: irk [subcommand] [options]")
-    Out.println(t"")
-    Out.println(t"Subcommands:")
-    Out.println(t"  build    -- runs the build in the current directory (default)")
-    Out.println(t"  about    -- show version information for Irk")
-    Out.println(t"  help     -- show this message")
-    Out.println(t"  stop     -- stop the Irk daemon process")
-    Out.println(t"")
-    Out.println(t"Options:")
-    Out.println(t"  -w, --watch    Wait for changes and re-run build.")
-    ExitStatus.Ok
-
-  def init(pwd: Directory, name: Text)(using Stdout): ExitStatus =
-    val buildPath = pwd / t"build.irk"
-    if buildPath.exists() then
-      Out.println(t"Build file build.irk already exists")
-      ExitStatus.Fail(1)
-    else
-      import unsafeExceptions.canThrowAny
-      val buildFile = buildPath.file(Create)
-      val src = (pwd / t"src").directory(Ensure)
-      val sourceDir = (src / t"core").directory(Ensure)
-      
-      val module = Module(name, t"${pwd.path.name}/core", None, None,
-          Set(sourceDir.path.relativeTo(pwd.path).get.show), None, None, None, None, None, None)
-
-      val config = BuildConfig(None, None, List(module), None)
-      try
-        config.json.show.writeTo(buildFile)
-        ExitStatus.Ok
-      catch
-        case err: IoError =>
-          Out.println(t"Could not write to build.irk")
-          ExitStatus.Fail(1)
-        case err: StreamCutError =>
-          Out.println(t"Could not write to build.irk")
-          ExitStatus.Fail(1)
-
-  def build(publishSonatype: Boolean, watch: Boolean = false,
-                oldBuild: Option[Build], pwd: Directory, env: Map[Text, Text],
-                scriptFile: File)
-           (using Stdout)
-           : ExitStatus =
-    def restart(): ExitStatus =
-      if watch then
-        try
-          val path = pwd / t"build.irk"
-          val dirs = readImports(Map(), path.file(Expect)).map(_.parent).to(List)
-          waitForChange(dirs)
-          Irk.build(false, true, None, pwd, env, scriptFile)
-        catch case err: Error =>
-          Out.println(err.toString.show)
-          ExitStatus.Fail(1)
-      else ExitStatus.Ok
-    try
-      import unsafeExceptions.canThrowAny
-      val build = init(pwd)
-      val oldHashes = build.cache
-      Out.println("Starting build")
-
-      val futures = build.graph.traversal[Future[Set[Message]]]:
-        (set, step) => Future.sequence(set).flatMap:
-          results =>
-            Future.sequence(step.jars.map(Irk.fetchFile(_))).flatMap:
-              downloads => Future:
-                blocking:
-                  val messages = results.flatten
-                  if messages.isEmpty then
-                    try
-                      if oldHashes.get(step) != build.hashes.get(step) || step.main.isDefined then
-                        Out.println(ansi"Compiling ${Green}[${step.name}]...")
-                        messages ++ step.compile(build.hashes, oldHashes, build, scriptFile)
-                      else messages
-                    catch
-                      case err: ExcessDataError =>
-                        messages + Message(step.id, t"<unknown>", 0, 0, 0, t"too much data was received", IArray())
-      
-                      case err: StreamCutError =>
-                        messages + Message(step.id, t"<unknown>", 0, 0, 0, t"the stream was cut prematurely", IArray())
-                  else
-                    Out.println(t"Skipping compilation of ${step.name}")
-                    messages
-      .values
-
-      val messages: List[Message] = Future.sequence(futures).await().to(Set).flatten.to(List)
-      val success = messages.isEmpty
-
-      if success then Out.println(t"Compilation completed successfully")
-      else Out.println(t"Compilation failed\n")
-      
-      // FIXME: Files should be sorted by last-modified
-      messages.groupBy(_.path).foreach:
-        case (path, messages) =>
-          val syntax = ScalaSyntax.highlight(String(messages.head.content.unsafeMutable).show)
-          messages.sortBy(-_.line).groupBy(_.line).foreach:
-            case (line, messages) => messages.last match
-              case Message(module, path, line, from, to, message, _) =>
-                val bg = Bg(Srgb(0.16, 0.06, 0.03))
-                Out.println(ansi"${colors.Black}(${Bg(colors.Purple)}( $module ))${colors.Purple}(${Bg(colors.Crimson)}( ${colors.Black}($path:${line + 1}:$from) ))$bg${colors.Crimson}()$bg${escapes.EraseLine}")
-                
-                def format(line: Int) =
-                  if line >= syntax.length then ansi""
-                  else syntax(line).map:
-                    case Token.Code(code, flair) => flair match
-                      case Flair.Type              => ansi"${colors.YellowGreen}(${code})"
-                      case Flair.Term              => ansi"${colors.CadetBlue}(${code})"
-                      case Flair.Symbol            => ansi"${colors.Turquoise}(${code})"
-                      case Flair.Keyword           => ansi"${colors.DarkOrange}(${code})"
-                      case Flair.Modifier          => ansi"${colors.Chocolate}(${code})"
-                      case Flair.Ident             => ansi"${colors.BurlyWood}(${code})"
-                      case Flair.Error             => ansi"${colors.OrangeRed}($Underline(${code}))"
-                      case Flair.Number            => ansi"${colors.Gold}(${code})"
-                      case Flair.String            => ansi"${colors.Plum}(${code})"
-                      case other                   => ansi"${code}"
-                    case Token.Unparsed(txt)     => ansi"$txt"
-                    case Token.Markup(_)         => ansi""
-                    case Token.Newline           => throw Impossible("Should not have a newline")
-                  .join
-                
-                val margin = (line + 2).show.length
-                
-                if line > 1 then
-                  Out.print(ansi"${colors.Orange}(${line.show.pad(margin, Rtl)})${colors.Gray}(║)$bg ")
-                  Out.println(ansi"${format(line - 1)}${escapes.EraseLine}")
-                
-                val code = format(line)
-                Out.print(ansi"${colors.Orange}($Bold(${(line + 1).show.pad(margin, Rtl)}))${colors.Gray}(║)$bg ")
-                Out.print(ansi"${code.take(from)}")
-                Out.print(ansi"${Underline}(${colors.OrangeRed}(${code.plain.slice(from, to)}))")
-                Out.println(ansi"${code.drop(to)}${escapes.EraseLine}")
-                
-                if line + 1 < syntax.length
-                then
-                  Out.print(ansi"${colors.Orange}(${(line + 2).show.pad(margin, Rtl)})${colors.Gray}(║)$bg ")
-                  Out.println(ansi"${format(line + 1)}${escapes.EraseLine}${escapes.Reset}")
-                
-                messages.reverse.foreach:
-                  case m@Message(module, path, line, from, to, message, _) =>
-                    if m != messages.last then
-                      Out.print(ansi"${colors.Orange}($Bold(${(line + 1).show.pad(margin, Rtl)}))${colors.Gray}(║)$bg ")
-                      Out.print(ansi"${code.take(from)}")
-                      Out.print(ansi"${Underline}(${colors.OrangeRed}(${code.plain.slice(from, to)}))")
-                      Out.println(ansi"${code.drop(to)}${escapes.EraseLine}${escapes.Reset}")
-                    Out.println(ansi"${colors.Gray}(${t" "*margin}╟${t"─"*from}┴${t"─"*(to - from)}┘)${escapes.EraseLine}${escapes.Reset}")
-                    message.cut(t"\n").foreach:
-                      line =>
-                        Out.println(ansi"${t" "*margin}${colors.Gray}(║) ${Bold}($line)${escapes.EraseLine}${escapes.Reset}")
-                    if m != messages.head then Out.println(ansi"${t" "*margin}${colors.Gray}(║)")
-                Out.println(ansi"${t" "*margin}${colors.Gray}(╨)${escapes.EraseLine}${escapes.Reset}")
-                Out.println(ansi"${escapes.Reset}")
-
-      if success then
-        build.linearization.foreach:
-          step => step.artifact.foreach:
-            artifact =>
-              if !watch then
-                Out.println(ansi"Building $Violet(${artifact.show}) artifact...")
-                val inputJars = step.classpath(build) + irkJar(scriptFile).path
-                val zipStreams = inputJars.to(LazyList).flatMap:
-                  path =>
-                    if path.isFile then
-                      Zip.read(path.file(Expect)).filter(_.path.parts.last != t"MANIFEST.MF")
-                    else if path.isDirectory then
-                      path.descendantFiles().map:
-                        file => Zip.Entry(file.path.relativeTo(path).get, () => file.read[DataStream](10.mb))
-                    else LazyList()
-                
-                val resourceStreams = step.allResources(build).flatMap:
-                  dir => dir.path.descendantFiles().map:
-                    file =>
-                      Zip.Entry(file.path.relativeTo(dir.path).get, () => file.read[DataStream](1.mb))
-                .to(LazyList)
-                
-                val basicMf = ListMap(
-                  t"Manifest-Version"       -> t"1.0",
-                  t"Created-By"             -> t"Irk ${Irk.version}",
-                  t"Implementation-Title"   -> step.name,
-                  t"Implementation-Version" -> step.version
-                )
-                
-                val manifest = step.main.fold(basicMf)(basicMf.updated(t"Main-Class", _)).flatMap:
-                  (k, v) =>
-                    val (first, rest) = t"$k: $v".snip(72)
-                    first :: rest.s.grouped(71).map(t" "+_.show).to(List)
-                .join(t"", t"\n", t"\n")
-                
-                def manifestStream(): DataStream = LazyList(manifest.bytes)
-                val mfEntry = Zip.Entry(Relative.parse(t"META-INF/MANIFEST.MF"), manifestStream)
-                
-                val header = if artifact.name.endsWith(t".jar") then Bytes.empty else
-                    (Classpath() / t"exoskeleton" / t"invoke").resource.read[Bytes](100.kb)
-                
-                Zip.write(artifact, mfEntry #:: resourceStreams #::: zipStreams, header)
-                artifact.file(Expect).setPermissions(executable = true)
-              
-        if publishSonatype then Sonatype.publish(build, env.get(t"SONATYPE_PASSWORD"))
-      
-      if watch then
-        val dirs = build.sourceDirs.to(List) ++ build.bases.to(List)
-        Irk.build(false, true, if waitForChange(dirs) then None else Some(build), build.pwd, env, scriptFile)
-      else ExitStatus.Ok
-    catch
-      case err: BrokenLinkError =>
-        Out.println(t"The reference to ${err.link} could not be resolved")
-        restart()
-      case err: IoError =>
-        throw AppError(t"An I/O error occurred", err)
-      
-      case err: TtyError =>
-        Out.println(t"Could not capture TTY")
-        ExitStatus.Fail(1)
-      
-      case err: InotifyError =>
-        Out.println(t"The limit of the number if inotify instances has been exceeded")
-        ExitStatus.Fail(1)
-      
-      case err: StreamCutError =>
-        Out.println(t"The stream was cut")
-        restart()
-      
-      case err: ExcessDataError =>
-        Out.println(t"Too much data")
-        restart()
-      
-      case err: BuildfileError =>
-        Out.println(t"There was an error with the build file")
-        restart()
-
-  def waitForChange(dirs: List[Directory])(using Stdout)
-                   : Boolean throws InotifyError | IoError =
-    Out.println(t"Watching ${dirs.size} directories for changes")
-    val watchers = dirs.map:
-      case dir: Unix.Directory => dir.watch()
-
-    val stream = LazyList.multiplex(watchers.map(_.stream.filter(_ != Unix.FileEvent.NoChange))*)
-    if stream.isEmpty then sys.exit(0)
-    else
-      watchers.foreach(_.stop())
-      
-      stream.head match
-        case Unix.FileEvent.Modify(file) =>
-          val interesting = !file.path.name.startsWith(t".") && file.path.name.endsWith(t".irk")
-          if interesting then Out.println(ansi"The file $Violet(${file.path.show}) was modified")
-          interesting
-        
-        case Unix.FileEvent.Delete(path) =>
-          val interesting = !path.name.startsWith(t".") && path.name.endsWith(t".irk")
-          if interesting then Out.println(ansi"The file $Violet(${path.show}) was deleted")
-          interesting
-        
-        case Unix.FileEvent.NewFile(file) =>
-          val interesting = !file.path.name.startsWith(t".") && file.path.name.endsWith(t".irk")
-          if interesting then Out.println(ansi"The file $Violet(${file.path.show}) was created")
-          interesting
-        
-        case Unix.FileEvent.NewDirectory(dir) =>
-          Out.println(ansi"The directory $Violet(${dir.path.show}) was created")
-          false
-        
-        case _ =>
-          false
-
 case class Hash(id: Text, digest: Text, bin: Text)
 case class Cache(hashes: Set[Hash])
 case class Versioning(versions: List[Version])
 
 case class Version(digest: Text, major: Int, minor: Int):
   def version: Text = t"$major.$minor"
-
-@xmlLabel("organization")
-case class Organization(name: Text, url: Text)
-
-@xmlLabel("license")
-case class License(name: Text, url: Text, distribution: Text)
-
-
-@xmlLabel("scm")
-case class Scm(url: Text, connection: Text)
-
-@xmlLabel("developer")
-case class Developer(id: Text, name: Text, url: Text)
-
-object Dependency:
-  given Json.Reader[Dependency] = summon[Json.Reader[Text]].map:
-    case s"$group:$artifact:$version" => Dependency(group.show, artifact.show, version.show)
-
-@xmlLabel("dependency")
-case class Dependency(groupId: Text, artifactId: Text, version: Text)
-
-@xmlLabel("project")
-case class Project(modelVersion: Text, groupId: Text, artifactId: Text, version: Text,
-    licenses: List[License], name: Text, description: Text, inceptionYear: Text, url: Text,
-    organization: Organization, scm: Scm, developers: List[Developer],
-    dependencies: List[Dependency])
-
-object Pom:
-  def apply(build: Build, step: Step, year: Int, url: Text, git: Text, publishing: Publishing)
-           : Project =
-    Project(
-      modelVersion = t"4.0.0",
-      groupId = step.group(build),
-      artifactId = step.dashed,
-      version = step.version,
-      licenses = List(License(t"Apache 2", t"http://www.apache.org/licenses/LICENSE-2.0.txt", t"repo")),
-      name = step.name,
-      description = step.name,
-      inceptionYear = year.show,
-      url = url,
-      organization = publishing.organization,
-      scm = Scm(t"https://$git/", t"scm:git:git@$git.git"),
-      developers = publishing.developers,
-      dependencies = step.pomDependencies(build)
-    )
 
 class FileCache[T]:
   private val files: scm.HashMap[Text, (Long, T)] = scm.HashMap()
@@ -834,11 +291,10 @@ class FileCache[T]:
     files(filename)(1)
 given realm: Realm = Realm(t"irk")
 
-
 object Compiler:
   import dotty.tools.dotc.*, reporting.*
 
-  class CustomReporter() extends Reporter:
+  class CustomReporter() extends Reporter, UniqueMessagePositions:
     var errors: scm.ListBuffer[Diagnostic] = scm.ListBuffer()
     def doReport(diagnostic: Diagnostic)(using core.Contexts.Context): Unit =
       errors += diagnostic
@@ -906,54 +362,69 @@ object Compiler:
 
 object Zip:
   import java.io.*
+  import java.nio.*, java.nio.file.*
   import java.util.zip.*
-  
-  case class Entry(path: Relative, get: () => DataStream):
-    def apply(): DataStream = get()
+
+  sealed trait ZipEntry:
+    def path: Relative
+
+  case class ZipPath(path: Relative, diskPath: Unix.DiskPath) extends ZipEntry
+  case class Entry(path: Relative, in: InputStream) extends ZipEntry
 
   def read(file: jovian.File): LazyList[Entry] =
     val zipFile = ZipFile(file.javaFile).nn
     zipFile.entries.nn.asScala.to(LazyList).filter(!_.getName.nn.endsWith("/")).map:
-      entry =>
-        def getEntry(): DataStream = Util.readInputStream(zipFile.getInputStream(entry).nn, 1.mb)
-        Entry(Relative.parse(entry.getName.nn.show), getEntry)
-  
-  def write(path: jovian.DiskPath, inputs: LazyList[Entry], prefix: Maybe[Bytes] = Unset)
+      entry => Entry(Relative.parse(entry.getName.nn.show), zipFile.getInputStream(entry).nn)
+
+  // 00:00:00, 1 January 2000
+  val epoch = attribute.FileTime.fromMillis(946684800000L)
+
+  def write(base: jovian.File, path: jovian.DiskPath, inputs: LazyList[ZipEntry], prefix: Maybe[Bytes] = Unset)
            (using Stdout)
-           : Unit throws StreamCutError =
-    val fileOut = FileOutputStream(path.javaFile).nn
-    prefix.option.foreach:
-      bytes =>
-        fileOut.write(bytes.unsafeMutable)
-        fileOut.flush()
-    
-    val zipOut = ZipOutputStream(fileOut).nn
-    
+           : Unit throws StreamCutError | IoError =
+    val tmpPath = path.rename { old => t".$old.tmp" }
+    base.copyTo(tmpPath)
+    val uri: java.net.URI = java.net.URI.create(t"jar:file:${tmpPath.show}".s).nn
+    val fs = FileSystems.newFileSystem(uri, Map("zipinfo-time" -> "false").asJava).nn
+
     val dirs = inputs.map(_.path).map(_.parent).to(Set).flatMap:
       dir => (0 to dir.parts.length).map { n => Relative(0, dir.parts.take(n)) }.to(Set)
     .to(List).map(_.show+t"/").sorted
-    
-    val epoch = java.nio.file.attribute.FileTime.fromMillis(946684800000L)
-    Out.println(t"Writing $path...")
-    for dir <- dirs do
-      val entry = ZipEntry(dir.s).nn.setLastAccessTime(epoch).nn.setCreationTime(epoch).nn
-          .setLastModifiedTime(epoch).nn
-      
-      zipOut.putNextEntry(entry)
-      zipOut.closeEntry()
-    
-    val entries = inputs.to(List).distinctBy(_.path.show).sortBy(_.path.show)
-    
-    for entry <- entries do
-      val zipEntry = ZipEntry(entry.path.show.s).nn.setLastAccessTime(epoch).nn.setCreationTime(
-          epoch).nn.setLastModifiedTime(epoch).nn
-      
-      zipOut.putNextEntry(zipEntry)
-      Util.write(entry(), zipOut)
-      zipOut.closeEntry()
 
-    zipOut.close()
+    for dir <- dirs do
+      val dirPath = fs.getPath(dir.s).nn
+      if Files.notExists(dirPath) then
+        Files.createDirectory(dirPath)
+        Files.setAttribute(dirPath, "creationTime", epoch)
+        Files.setAttribute(dirPath, "lastAccessTime", epoch)
+        Files.setAttribute(dirPath, "lastModifiedTime", epoch)
+
+    inputs.foreach:
+      case Entry(path, in) =>
+        val entryPath = fs.getPath(path.show.s).nn
+        Files.copy(in, entryPath, StandardCopyOption.REPLACE_EXISTING)
+        Files.setAttribute(entryPath, "creationTime", epoch)
+        Files.setAttribute(entryPath, "lastAccessTime", epoch)
+        Files.setAttribute(entryPath, "lastModifiedTime", epoch)
+      case ZipPath(path, file) =>
+        val filePath = fs.getPath(path.show.s).nn
+        Files.copy(file.javaPath, filePath, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        Files.setAttribute(filePath, "creationTime", epoch)
+        Files.setAttribute(filePath, "lastAccessTime", epoch)
+        Files.setAttribute(filePath, "lastModifiedTime", epoch)
+    
+    fs.close()
+
+
+    val fileOut = BufferedOutputStream(FileOutputStream(path.javaFile).nn)
+    prefix.option.foreach:
+      prefix =>
+        fileOut.write(prefix.unsafeMutable)
+        fileOut.flush()
+    
+    fileOut.write(java.nio.file.Files.readAllBytes(tmpPath.javaPath))
     fileOut.close()
+    java.nio.file.Files.delete(tmpPath.javaPath)
 
 object Cache:
   import scala.collection.mutable.HashMap
@@ -988,3 +459,66 @@ object Cache:
           
           latest(key) = hash
           workDir
+
+
+object Progress:
+  enum Update:
+    case Add(name: AnsiText)
+    case Remove(success: Boolean, name: AnsiText)
+    case Print
+
+case class Progress(active: TreeMap[AnsiText, Long], completed: List[(AnsiText, Long, Boolean)],
+                        started: Boolean = false, done: Int = 0):
+  private def add(name: AnsiText): Progress = copy(active = active.updated(name, System.currentTimeMillis))
+  
+  private def remove(success: Boolean, name: AnsiText): Progress = copy(
+    active = active - name,
+    completed = (name, active(name), success) :: completed
+  )
+
+  def titleText(title: Text): Text = t"\e]0;$title\u0007\r"
+
+  def apply(update: Progress.Update)(using Stdout): Progress = update match
+    case Progress.Update.Add(name) =>
+      add(name)
+    
+    case Progress.Update.Remove(success, name) =>
+      remove(success, name)
+    
+    case Progress.Update.Print =>
+      val starting = if !Irk.githubActions then
+        val starting = !started && completed.nonEmpty
+        if starting then Out.println(t"─"*120)
+        status.foreach(Out.println(_))
+        if active.size > 0 then Out.print(t"\e[${active.size + 1}A")
+        
+        Out.print(t"\e[?25l")
+        if completed.size > 0 then Out.print(titleText(t"Irk, compiling ($done) "))
+        starting
+      else
+        completed.foreach:
+          case (task, start, success) =>
+            Out.println(ansi"$task (${palette.Number}(${System.currentTimeMillis - start}ms))")
+        false
+        
+      copy(completed = Nil, started = started || starting, done = done + completed.size)
+
+  val braille = IArray(t"⡀", t"⡄", t"⡆", t"⡇", t"⡏", t"⡟", t"⡿", t"⣿", t"⢿", t"⢻", t"⢹", t"⢸", t"⢰", t"⢠", t"⢀")
+
+  private def status: List[AnsiText] =
+    def line(name: AnsiText, start: Long, success: Boolean, active: Boolean): AnsiText =
+      val ds = (System.currentTimeMillis - start).show.drop(2, Rtl)
+      val fractional = if ds.length == 0 then t"0" else ds.take(1, Rtl)
+      val time = ansi"${if ds.length < 2 then t"0" else ds.drop(1, Rtl)}.${fractional}s"
+      val padding = ansi" "*(6 - time.length.min(6))
+      
+      if active then
+        val anim = braille(((System.currentTimeMillis/100)%braille.length).toInt)
+        ansi"${colors.White}([$Yellow($anim)] ${name.padTo(110, ' ')}$padding${palette.Number}($time))"
+      else
+        val finish = if success then ansi"[$Green(✓)]" else ansi"[$Red(✗)]"
+        ansi"$Bold($finish) ${name.padTo(110, ' ')}$padding${palette.Number}($time)"
+    
+    completed.map(line(_, _, _, false)) ++ List(ansi"─"*120) ++
+      active.to(List).map(line(_, _, true, true))
+        

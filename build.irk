@@ -1,26 +1,5 @@
 {
-  "imports": [
-    "one/build.irk"
-  ],
-  "config": {
-    "scalac": {
-      "version": "3.1.2-RC1-bin-SNAPSHOT",
-      "options": [
-        "-language:experimental.erasedDefinitions",
-        "-language:experimental.fewerBraces",
-        "-language:experimental.saferExceptions",
-        "-Wunused:all",
-        "-O", "-deprecation",
-        "-O", "-feature",
-        "-O", "-new-syntax",
-        "-Yrequire-targetName",
-        "-Ysafe-init",
-        "-Ycheck-all-patmat",
-        "-Yexplicit-nulls",
-	"-Yno-predef"
-      ]
-    }
-  },
+  "imports": ["one/build.irk"],
   "publishing": {
     "username": "propensive",
     "group": "com.propensive",
@@ -44,11 +23,11 @@
       "id": "irk/core",
       "links": ["harlequin/core", "xylophone/core", "profanity/core", "guillotine/core",
           "acyclicity/core", "jovian/core", "scintillate/core", "euphemism/core", "honeycomb/core",
-          "exoskeleton/core", "clairvoyant/time"],
+          "exoskeleton/core", "clairvoyant/time", "imperial/core"],
       "sources": ["src/core"],
-      "version": "0.3.2",
+      "version": "0.4.0",
       "docs": ["doc"],
-      "artifact": "irk-0.3.2",
+      "artifact": "irk",
       "main": "irk.Irk"
     }
   ]

@@ -1,4 +1,4 @@
-VERSION = 0.3.2
+VERSION = $(shell cat doc/.version)
 
 distribution: dist/irk-$(VERSION) dist/launcher-$(VERSION)
 
