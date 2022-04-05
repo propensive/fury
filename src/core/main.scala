@@ -38,7 +38,7 @@ object Irk extends Daemon():
   
   def javaVersion: Text = try Sys.java.version() catch case err: KeyNotFoundError => t"unknown"
   
-  def githubActions: Boolean = Option(System.getenv("GITHUB_ACTIONS")).isEmpty
+  def githubActions: Boolean = Option(System.getenv("GITHUB_ACTIONS")).isDefined
 
   def scalaVersion: Text =
     val props = java.util.Properties()
