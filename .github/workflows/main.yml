@@ -16,6 +16,7 @@ jobs:
       run: docker build --tag=irk .
     - name: Docker Run
       run: |
+        env
         docker run --name irk irk /bin/true
         docker cp irk:/irk/irk irk
         docker rm irk
