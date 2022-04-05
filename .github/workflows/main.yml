@@ -17,6 +17,6 @@ jobs:
     - name: Docker Run
       run: |
         env
-        docker run --name irk irk /bin/true
+        docker run -e GITHUB_ACTIONS --name irk irk /bin/true
         docker cp irk:/irk/irk irk
         docker rm irk
