@@ -486,14 +486,21 @@ case class Progress(active: TreeMap[AnsiText, Long], completed: List[(AnsiText, 
       remove(success, name)
     
     case Progress.Update.Print =>
-      val starting = !started && completed.nonEmpty
-      if starting then Out.println(t"─"*120)
-      status.foreach(Out.println(_))
-      if active.size > 0 then Out.print(t"\e[${active.size + 1}A")
-      
-      Out.print(t"\e[?25l")
-      if completed.size > 0 then Out.print(titleText(t"Irk, compiling ($done) "))
-      
+      val starting = if !Irk.githubActions then
+        val starting = !started && completed.nonEmpty
+        if starting then Out.println(t"─"*120)
+        status.foreach(Out.println(_))
+        if active.size > 0 then Out.print(t"\e[${active.size + 1}A")
+        
+        Out.print(t"\e[?25l")
+        if completed.size > 0 then Out.print(titleText(t"Irk, compiling ($done) "))
+        starting
+      else
+        completed.foreach:
+          case (task, start, success) =>
+            Out.println(ansi"$task (${palette.Number}(${System.currentTimeMillis - start}ms))")
+        false
+        
       copy(completed = Nil, started = started || starting, done = done + completed.size)
 
   val braille = IArray(t"⡀", t"⡄", t"⡆", t"⡇", t"⡏", t"⡟", t"⡿", t"⣿", t"⢿", t"⢻", t"⢹", t"⢸", t"⢰", t"⢠", t"⢀")
