@@ -49,12 +49,12 @@ object Irk extends Daemon():
   def homeDir: Directory = Home()
       
   def cacheDir: Directory =
-    try (Home.Cache[jovian.Directory]() / t"irk").directory(Ensure)
+    try (Home.Cache[jovian.DiskPath]() / t"irk").directory(Ensure)
     catch case err: IoError =>
       throw AppError(t"The user's cache directory could not be created", err)
 
   def libDir: Directory =
-    try (Home.Cache[jovian.Directory]() / t"lib").directory(Ensure)
+    try (Home.Cache[jovian.DiskPath]() / t"lib").directory(Ensure)
     catch case err: IoError =>
       throw AppError(t"The user's cache directory could not be created", err)
 
