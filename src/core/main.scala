@@ -184,7 +184,7 @@ object Irk extends Daemon():
           def digest: Text = hashFile(path.file()).encode[Base64]
           if path.exists() && seen.contains(digest) then readBuilds(build, seen, tail*)
           else if path.exists() then
-            Out.println(ansi"Reading build file ${palette.File}(${path.relativeTo(build.pwd.path).get.show})")
+            Out.println(ansi"Reading build file ${palette.File}(${path.relativeTo(build.pwd.path).get.show})".render)
             val buildConfig = Json.parse(path.file().read[Text](1.mb)).as[BuildConfig]
             buildConfig.gen(build, seen + digest, files*)
           else throw AppError(txt"""Build contains an import reference to a nonexistant build""")
@@ -457,7 +457,7 @@ object Irk extends Daemon():
             case Unix.FileEvent.Modify(_)  => t"modified"
             case Unix.FileEvent.NewFile(_) => t"created"
           .foreach:
-            changed => Out.println(ansi"The file ${palette.File}(${event.path.relativeTo(pwd.path)}) was $changed")
+            changed => Out.println(ansi"The file ${palette.File}(${event.path.relativeTo(pwd.path)}) was $changed".render)
           
           Changes(event.path.fullname.endsWith(t".irk"), event.path.fullname.endsWith(t".scala"))
 
@@ -494,7 +494,7 @@ object Irk extends Daemon():
                   Out.println(err.message)
                   None
                 case err: IoError =>
-                  Out.println(ansi"The build file could not be read")
+                  Out.println(ansi"The build file could not be read".render)
                   None
             else oldBuild
           
@@ -503,9 +503,9 @@ object Irk extends Daemon():
               import unsafeExceptions.canThrowAny
               val oldHashes = build.cache
               Out.println(t"")
-              Out.print(ansi"${colors.Black}(${Bg(colors.YellowGreen)}( Build #${count + 1} ))")
-              Out.print(ansi"${colors.YellowGreen}(${Bg(colors.Gold)}( ${colors.Black}(${build.pwd.path}) ))")
-              Out.println(ansi"${colors.Gold}()")
+              Out.print(ansi"${colors.Black}(${Bg(colors.YellowGreen)}( Build #${count + 1} ))".render)
+              Out.print(ansi"${colors.YellowGreen}(${Bg(colors.Gold)}( ${colors.Black}(${build.pwd.path}) ))".render)
+              Out.println(ansi"${colors.Gold}()".render)
               
               val funnel = Funnel[Progress.Update]()
               val totalTasks = build.steps.size
@@ -620,8 +620,8 @@ object Irk extends Daemon():
               uiReady.future.await()
               Out.print(reportMessages(messages))
               
-              if messages.nonEmpty then Out.println(ansi"Build ${colors.OrangeRed}(failed) with ${colors.Gold}(${messages.size}) issue${if messages.size == 1 then t"" else t"s"}")
-              else Out.println(ansi"Build #${count + 1} ${colors.Green}(succeeded)")
+              if messages.nonEmpty then Out.println(ansi"Build ${colors.OrangeRed}(failed) with ${colors.Gold}(${messages.size}) issue${if messages.size == 1 then t"" else t"s"}".render)
+              else Out.println(ansi"Build #${count + 1} ${colors.Green}(succeeded)".render)
               
               Out.println(t"\e[0m\e[?25h\e[A")
               
@@ -630,7 +630,7 @@ object Irk extends Daemon():
           buffer.usePrimary()
           if watch then
             Out.print(Progress.titleText(t"Irk: waiting for changes"))
-            Out.println(ansi"${t"\n"}Watching ${colors.Gold}(${watcher.directories.size}) directories for changes...")
+            Out.println(ansi"${t"\n"}Watching ${colors.Gold}(${watcher.directories.size}) directories for changes...".render)
           tap.open()
           recur(stream.tail, newBuild, succeeded, browser, subprocesses, count + 1)
       

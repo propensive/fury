@@ -293,7 +293,7 @@ case class BuildConfig(imports: Option[List[Text]], publishing: Option[Publishin
       case Repo(base, uri) =>
         val root = build.pwd.path + Relative.parse(base)
         if !root.exists() then
-          Out.println(ansi"Cloning repository $uri to $base")
+          Out.println(ansi"Cloning repository $uri to $base".render)
           Irk.cloneRepo(root, uri)
 
     files.to(List) match
@@ -491,7 +491,7 @@ case class Progress(active: TreeMap[Verb, (Text, Long)],
       val starting = if !Irk.githubActions then
         val starting = !started && completed.nonEmpty
         if done == 0 && completed.size > 0 then Out.println(t"─"*120)
-        status.foreach(Out.println(_))
+        status.map(_.render).foreach(Out.println(_))
         Out.println(t"\e[?25l\e[${active.size + 2}A")
         starting
       else
@@ -499,7 +499,7 @@ case class Progress(active: TreeMap[Verb, (Text, Long)],
           case (task, hash, start, success) =>
             val hashText = ansi"${palette.Hash}(${hash})"
             val time = ansi"${palette.Number}(${now() - start}ms)"
-            Out.println(ansi"$task $hashText ($time)")
+            Out.println(ansi"${task.past} $hashText ($time)".render)
         false
         
       copy(completed = Nil, started = started || starting, done = done + completed.size)
@@ -523,7 +523,6 @@ case class Progress(active: TreeMap[Verb, (Text, Long)],
     
     val title =
       Progress.titleText(t"Irk: building (${(done*100)/(totalTasks max 1)}%)")
-
 
     completed.map(line(_, _, _, _, false)) ++ List(ansi"${title}${t"\e[0G"}${t"─"*120}") ++
       active.to(List).map:
