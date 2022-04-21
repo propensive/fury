@@ -5,7 +5,8 @@ on:
   pull_request:
     branches: [ main ]
 jobs:
-  build:
+  full:
+    name: Full build
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
@@ -19,7 +20,8 @@ jobs:
         docker run --name irk irk /bin/true
         docker cp irk:/irk/irk irk
         docker rm irk
-  build:
+  quick:
+    name: Quick build
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
