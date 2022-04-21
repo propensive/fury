@@ -12,8 +12,8 @@ case class Target(name: Text, module: Text, run: Text, parallel: Boolean, trigge
 case class Publishing(username: Text, group: Text, url: Text, organization: Organization,
                           developers: List[Developer])
 
-case class Message(module: Text, path: Text, line: Int, from: Int, to: Int, message: Text,
-                       content: IArray[Char])
+case class Message(module: Text, path: Text, startLine: Int, from: Int, to: Int, endLine: Int,
+                       message: Text, content: IArray[Char])
 
 case class Repo(base: Text, url: Text):
   def basePath(dir: DiskPath): DiskPath = dir + Relative.parse(base)
@@ -21,7 +21,11 @@ case class Repo(base: Text, url: Text):
 case class Module(name: Text, id: Text, links: Option[Set[Text]], resources: Option[Set[Text]],
                       sources: Set[Text], jars: Option[Set[Text]], docs: Option[List[Text]],
                       dependencies: Option[Set[Dependency]], version: Option[Text],
-                      artifact: Option[Text], main: Option[Text])
+                      artifact: Option[ArtifactSpec], webdev: Option[WebDev])
+
+case class ArtifactSpec(path: Text, main: Option[Text], format: Option[Text])
+
+case class WebDev(browsers: List[Text], url: Text, start: Text, stop: Option[Text])
 
 case class AppError(message: Text, cause: Maybe[Error] = Unset) extends Error(cause)
 

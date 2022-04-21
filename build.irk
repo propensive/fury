@@ -23,12 +23,19 @@
       "id": "irk/core",
       "links": ["harlequin/core", "xylophone/core", "profanity/core", "guillotine/core",
           "acyclicity/core", "jovian/core", "scintillate/core", "euphemism/core", "honeycomb/core",
-          "exoskeleton/core", "clairvoyant/time", "imperial/core"],
+          "exoskeleton/core", "clairvoyant/time", "imperial/core", "tarantula/core"],
       "sources": ["src/core"],
       "version": "0.4.0",
       "docs": ["doc"],
-      "artifact": "irk",
-      "main": "irk.Irk"
+      "artifact": {
+        "main": "irk.Irk",
+        "path": "irk",
+        "format": "daemon-app"
+      },
+      "webdev": {
+        "browsers": ["chromium"],
+        "url": "http://localhost:8080/"
+      }
     }
   ]
 }

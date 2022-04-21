@@ -61,6 +61,7 @@ RUN cd /irk && scala/bin/scalac \
   one/mod/clairvoyant/src/file/*.scala \
   one/mod/clairvoyant/src/html/*.scala \
   one/mod/clairvoyant/src/http/*.scala \
+  one/mod/clairvoyant/src/uri/*.scala \
   one/mod/contextual/src/core/*.scala \
   one/mod/cosmopolite/src/core/*.scala \
   one/mod/escapade/src/core/*.scala \
@@ -87,10 +88,12 @@ RUN cd /irk && scala/bin/scalac \
   one/mod/profanity/src/java/**/*.java \
   one/mod/profanity/src/core/*.scala \
   one/mod/rudiments/src/core/*.scala \
+  one/mod/scintillate/src/uri/*.scala \
   one/mod/scintillate/src/core/*.scala \
   one/mod/scintillate/src/server/*.scala \
   one/mod/scintillate/src/servlet/*.scala \
   one/mod/slalom/src/core/*.scala \
+  one/mod/tarantula/src/core/*.scala \
   one/mod/turbulence/src/core/*.scala \
   one/mod/wisteria/src/core/*.scala \
   one/mod/xylophone/src/core/*.scala
@@ -154,6 +157,7 @@ RUN jar cmf /irk/manifest /irk/irk.jar \
   -C /irk/bin rudiments \
   -C /irk/bin scintillate \
   -C /irk/bin slalom \
+  -C /irk/bin tarantula \
   -C /irk/bin turbulence \
   -C /irk/bin irk \
   -C /irk/bin wisteria \
