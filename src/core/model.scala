@@ -27,11 +27,15 @@ case class ArtifactSpec(path: Text, main: Option[Text], format: Option[Text])
 
 case class WebDev(browsers: List[Text], url: Text, start: Text, stop: Option[Text])
 
-case class AppError(message: Text, cause: Maybe[Error] = Unset) extends Error(cause)
+case class AppError(msg: Text, cause: Maybe[Error[?]] = Unset)
+extends Error[(Text, Text)]((t"an application error occurred: ", msg)):
+  def message: Text = t"an application error occurred: $msg"
 
-case class BuildfileError(message: Text) extends Error
+case class BuildfileError(message: Text)
+extends Error((t"the build file contained an error: ", message))
 
-case class BrokenLinkError(link: Text) extends Error:
+case class BrokenLinkError(link: Text)
+extends Error((t"the reference to ", link, t" cannot be resolved")):
   def message: Text = t"The reference to $link cannot be resolved"
 
 @xmlLabel("organization")

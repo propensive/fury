@@ -2,10 +2,12 @@ VERSION = $(shell cat doc/.version)
 
 distribution: dist/irk-$(VERSION) dist/launcher-$(VERSION)
 
-local-one:
+one.jar:
 	rsync -a --delete --delete-excluded --exclude 'mod/*/out' --exclude '.*' --exclude scala ../one ./
+	zip -q -r one.jar one && rm -r one
 
-.image: one src/*/*.scala Dockerfile
+
+.image: one.jar src/*/*.scala Dockerfile
 	docker build --tag=irk .
 	touch .image
 
@@ -39,4 +41,4 @@ test:
 	  cd ../../ ; \
 	done
 
-.PHONY: local-one one quick distribution test
+.PHONY: one quick distribution test

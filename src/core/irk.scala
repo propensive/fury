@@ -69,7 +69,7 @@ case class Build(pwd: Directory, repos: Map[DiskPath, Text], publishing: Option[
         val newHash = (inputsHash ++ linksHash).digest[Crc32].encode[Base256]
         
         recur(todo.tail, hashes.updated(step, newHash))
-      catch case err: Error => throw AppError(t"An unknown error occurred", err)
+      catch case err: Error[?] => throw AppError(t"An unknown error occurred", err)
     val t0 = now()
     val result = recur(linearization, Map())
     val time = now() - t0
@@ -112,8 +112,8 @@ case class Build(pwd: Directory, repos: Map[DiskPath, Text], publishing: Option[
       case err: JsonAccessError =>
         throw AppError(t"The cache file did not contain the correct JSON format", err)
       
-      case err: Error =>
-        throw AppError(t"An unexpected error occurred", err)
+      case err: Exception =>
+        throw AppError(t"An unexpected error occurred")
   
 
   def updateCache(step: Step, binDigest: Text): Unit =
@@ -146,8 +146,8 @@ case class Build(pwd: Directory, repos: Map[DiskPath, Text], publishing: Option[
         case err: JsonAccessError =>
           throw AppError(t"The cache file did not contain the correct JSON format", err)
         
-        case err: Error =>
-          throw AppError(t"An unexpected error occurred", err)
+        case err: Exception =>
+          throw AppError(t"An unexpected error occurred")
 
 object Format:
   def unapply(value: Text): Option[Format] = value match
@@ -279,7 +279,7 @@ case class Step(path: File, publishing: Option[Publishing], name: Text,
         case BrokenLinkError(ref) =>
           throw AppError(t"There was an unsatisfied reference to $ref", err)
 
-      case err: Error =>
+      case err: Error[?] =>
         throw AppError(t"An unexpected error occurred", err)
 
 case class BuildConfig(imports: Option[List[Text]], publishing: Option[Publishing],
@@ -344,6 +344,7 @@ class FileCache[T]:
   def apply(filename: Text, modified: Long)(calc: => T): T throws IoError =
     if !files.get(filename).fold(false)(_(0) == modified) then files(filename) = modified -> calc
     files(filename)(1)
+
 given realm: Realm = Realm(t"irk")
 
 object Zip:
@@ -368,7 +369,7 @@ object Zip:
   def write(base: jovian.File, path: jovian.DiskPath, inputs: LazyList[ZipEntry], prefix: Maybe[Bytes] = Unset)
            (using Stdout)
            : Unit throws StreamCutError | IoError =
-    val tmpPath = path.parent.directory(Expect).tmpPath()
+    val tmpPath = Irk.tmpDir.tmpPath()
     base.copyTo(tmpPath)
     val uri: java.net.URI = java.net.URI.create(t"jar:file:${tmpPath.show}".s).nn
     val fs = FileSystems.newFileSystem(uri, Map("zipinfo-time" -> "false").asJava).nn
@@ -536,6 +537,4 @@ object Base256:
       t"ϐϑϔϕϖϗϘϙϚϛϜϝϞϟϠϡϢϣϤϥϦϧϨϪϫϬϭϮϯϰϱϵ϶ϷϸϻϼϽϾϿ123456789").join
  
   given ByteEncoder[Base256] = bytes =>
-    bytes.map(_.toInt + 128).map[Char]:
-      byte => try charset(byte) catch case err: Error => '?'
-    .map(_.show).join
+    bytes.map(_.toInt + 128).map[Char] { byte => unsafely(charset(byte)) }.map(_.show).join

@@ -37,7 +37,8 @@ RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/flexmark-formatter-0
 RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/flexmark-ext-tables-0.42.12.jar
 RUN rm -r /irk/bin/META-INF
 ADD src /irk/src
-ADD one /irk/one
+ADD one.jar /irk/one.jar
+RUN unzip -q /irk/one.jar -d /irk
 
 RUN javac -classpath /irk/lib/jna.jar \
   -d /irk/bin \
