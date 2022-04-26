@@ -82,12 +82,6 @@ case class Build(pwd: Directory, repos: Map[DiskPath, Text], publishing: Option[
   def resolve(id: Text): Step throws BrokenLinkError = index.get(id).getOrElse:
     throw BrokenLinkError(id)
   
-  def transitive[T](fn: Step => Set[T])(step: Step): Set[T] throws BrokenLinkError =
-    graph.reachable(step).flatMap(fn)
-  
-  def transitiveIn[T](fn: Step => Set[T])(step: Step): Set[T] throws BrokenLinkError =
-    (graph.reachable(step) - step).flatMap(fn)
-
   def bases: Set[Directory] = steps.map(_.pwd).to(Set)
 
   def cache: Map[Step, Text] =
@@ -244,26 +238,28 @@ case class Step(path: File, publishing: Option[Publishing], name: Text,
 
   def pomDependency(build: Build): Dependency = Dependency(group(build), dashed, version)
 
+
   def pomDependencies(build: Build): List[Dependency] =
     try links.map(build.resolve(_)).map(_.pomDependency(build)).to(List) ++ dependencies
     catch case err: BrokenLinkError => throw AppError(t"Couldn't resolve dependencies", err)
 
-  def compile(hashes: Map[Step, Text], oldHashes: Map[Step, Text], build: Build, scriptFile: File)
+  def compile(hashes: Map[Step, Text], oldHashes: Map[Step, Text], build: Build, scriptFile: File,
+                  cancel: Promise[Unit])
              (using Stdout)
-             : List[irk.Message] =
+             : Result =
     try
       val t0 = now()
       classesDir.children.foreach(_.delete())
       val cp = compileClasspath(build)
-      val messages = Compiler.compile(id, srcFiles.to(List), cp, classesDir, scriptFile)
+      val result = Compiler.compile(id, srcFiles.to(List), cp, classesDir, scriptFile, cancel)
       val time = now() - t0
       
-      if messages.isEmpty then
+      if result.success then
         val digestFiles = classesDir.path.descendantFiles().to(List).sortBy(_.name).to(LazyList)
         val digest = digestFiles.map(_.read[Bytes](1.mb).digest[Crc32]).to(List).digest[Crc32]
         build.updateCache(this, digest.encode[Base64])
       
-      messages
+      if cancel.isCompleted then Result.Aborted else result
     
     catch
       case err: IoError =>
@@ -286,12 +282,12 @@ case class BuildConfig(imports: Option[List[Text]], publishing: Option[Publishin
                            modules: List[Module], repos: Option[List[Repo]],
                            targets: Option[List[Target]]):
   
-  def gen(build: Build, seen: Set[Text], files: DiskPath*)(using Stdout)
+  def gen(current: DiskPath, build: Build, seen: Set[Text], files: DiskPath*)(using Stdout)
          : Build throws IoError | AppError | BuildfileError =
     
     repos.getOrElse(Nil).foreach:
       case Repo(base, uri) =>
-        val root = build.pwd.path + Relative.parse(base)
+        val root = current.parent + Relative.parse(base)
         if !root.exists() then
           Out.println(ansi"Cloning repository $uri to $base".render)
           Irk.cloneRepo(root, uri)
@@ -450,31 +446,36 @@ object Cache:
 object Progress:
   enum Update:
     case Add(verb: Verb, hash: Text)
-    case Remove(verb: Verb, success: Boolean)
+    case Remove(verb: Verb, result: Result)
     case Put(text: Text)
     case Print
     case SkipOne
+    case Sigwinch
     case Switch(primary: Boolean)
 
   def titleText(title: Text): Text = t"\e]0;$title\u0007\b \b"
 
 case class Progress(active: TreeMap[Verb, (Text, Long)],
-                        completed: List[(Verb, Text, Long, Boolean)],
-                        started: Boolean = false, done: Int = 0, totalTasks: Int):
+                        completed: List[(Verb, Text, Long, Result)],
+                        started: Boolean = false, done: Int = 0, totalTasks: Int, columns: Int = 120)(using Tty):
   private def add(verb: Verb, hash: Text): Progress =
     copy(active = active.updated(verb, (hash, now())))
   
-  private def remove(verb: Verb, success: Boolean): Progress = copy(
+  private def remove(verb: Verb, result: Result): Progress = copy(
     active = active - verb,
-    completed = (verb, active(verb)(0), active(verb)(1), success) :: completed
+    completed = (verb, active(verb)(0), active(verb)(1), result) :: completed
   )
 
   def apply(update: Progress.Update, buffer: StreamBuffer[?])(using Stdout): Progress = update match
+    case Progress.Update.Sigwinch =>
+      Out.println(t"resized")
+      this
+
     case Progress.Update.Add(verb, hash) =>
       add(verb, hash)
     
-    case Progress.Update.Remove(verb, success) =>
-      remove(verb, success)
+    case Progress.Update.Remove(verb, result) =>
+      remove(verb, result)
     
     case Progress.Update.SkipOne =>
       copy(totalTasks = totalTasks - 1)
@@ -491,7 +492,7 @@ case class Progress(active: TreeMap[Verb, (Text, Long)],
     case Progress.Update.Print =>
       val starting = if !Irk.githubActions then
         val starting = !started && completed.nonEmpty
-        if done == 0 && completed.size > 0 then Out.println(t"─"*120)
+        if done == 0 && completed.size > 0 then Out.println(t"─"*columns)
         status.map(_.render).foreach(Out.println(_))
         Out.println(t"\e[?25l\e[${active.size + 2}A")
         starting
@@ -508,7 +509,7 @@ case class Progress(active: TreeMap[Verb, (Text, Long)],
   val braille = t"⡀⡄⠆⠇⠋⠛⠹⢹⣸⣼⣶⣷⣯⣿⣻⣽⣼⣶⣦⣇⡇⠏⠋⠙⠘⠰⠠ "
 
   private def status: List[AnsiText] =
-    def line(verb: Verb, hash: Text, start: Long, success: Boolean, active: Boolean): AnsiText =
+    def line(verb: Verb, hash: Text, start: Long, result: Result, active: Boolean): AnsiText =
       val ds = (now() - start).show.drop(2, Rtl)
       val fractional = if ds.length == 0 then t"0" else ds.take(1, Rtl)
       val time = ansi"${if ds.length < 2 then t"0" else ds.drop(1, Rtl)}.${fractional}s"
@@ -517,19 +518,25 @@ case class Progress(active: TreeMap[Verb, (Text, Long)],
       
       if active then
         val anim = unsafely(braille((((now() - start)/100)%braille.length).toInt))
-        ansi"${colors.White}([$Yellow($anim)] $hashText ${verb.present.padTo(103, ' ')} $padding${palette.ActiveNumber}($time))"
+        ansi"${colors.White}([$Yellow($anim)] $hashText ${verb.present.padTo(columns - 17, ' ')} $padding${palette.ActiveNumber}($time))"
       else
-        val finish = if success then ansi"[$Green(✓)]" else ansi"[$Red(✗)]"
-        ansi"$Bold($finish) $hashText ${verb.past.padTo(103, ' ')} $padding${palette.Number}($time)"
+        val finish = result match
+          case Result.Complete(_)   => if result.errors.isEmpty then ansi"[$Green(✓)]" else ansi"[$Red(✗)]"
+          case Result.Terminal(_)   => ansi"[${colors.Crimson}(‼)]"
+          case Result.Aborted       => ansi"[$Blue(⤹)]"
+          case Result.Incomplete    => ansi"[${colors.Orange}(?)]"
+          case _                    => ansi"[$Red(✗)]"
+        
+        ansi"$Bold($finish) $hashText ${verb.past.padTo(columns - 17, ' ')} $padding${palette.Number}($time)"
     
-    val title =
-      Progress.titleText(t"Irk: building (${(done*100)/(totalTasks max 1)}%)")
+    val title = Progress.titleText(t"Irk: building (${(done*100)/(totalTasks max 1)}%)")
 
-    completed.map(line(_, _, _, _, false)) ++ List(ansi"${title}${t"\e[0G"}${t"─"*120}") ++
+    completed.map(line(_, _, _, _, false)) ++ List(ansi"${title}${t"\e[0G"}${t"─"*columns}") ++
       active.to(List).map:
-        case (name, (hash, start)) => line(name, hash, start, true, true)
+        case (name, (hash, start)) => line(name, hash, start, Result.Incomplete, true)
 
 trait Base256 extends EncodingScheme
+
 object Base256:
   private val charset: Text = List(t"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
       t"ႠႡႢႣႤႥႦႧႨႩႪႫႬႮႯႰႱႲႴႵႶႷႸႹႻႼႾႿჀჁჂჃჄჅაბგდევზთიკლმნოპჟრსტუფქღყშჩცძწჭხჯჰჱჲჳჴჵჶჷჸჹჺჾ",

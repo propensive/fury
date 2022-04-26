@@ -6,14 +6,15 @@ import jovian.*
 import slalom.*
 import xylophone.*
 import euphemism.*
+import escapade.*
 
 case class Target(name: Text, module: Text, run: Text, parallel: Boolean, trigger: Boolean)
 
 case class Publishing(username: Text, group: Text, url: Text, organization: Organization,
                           developers: List[Developer])
 
-case class Message(module: Text, path: Text, startLine: Int, from: Int, to: Int, endLine: Int,
-                       message: Text, content: IArray[Char])
+case class Issue(level: Level, module: Text, path: Text, startLine: Int, from: Int, to: Int,
+                     endLine: Int, message: Text, content: IArray[Char])
 
 case class Repo(base: Text, url: Text):
   def basePath(dir: DiskPath): DiskPath = dir + Relative.parse(base)
@@ -81,3 +82,37 @@ object Pom:
       developers = publishing.developers,
       dependencies = step.pomDependencies(build)
     )
+
+enum Event:
+  case Changeset(changes: List[Unix.FileEvent])
+  case Interrupt
+  case Resize(width: Int)
+
+enum Result:
+  case Aborted
+  case Incomplete
+  case Complete(issueList: List[Issue])
+  case Terminal(message: AnsiText)
+
+  def +(result: Result): Result = this match
+    case Aborted        => Aborted
+    case Incomplete     => result
+    case Terminal(msg)  => this
+    case Complete(msgs) => result match
+      case Aborted          => Aborted
+      case Complete(msgs2)  => Complete(msgs ++ msgs2)
+      case Incomplete       => this
+      case Terminal(msg)    => result
+
+  def success: Boolean = this match
+    case Complete(_) | Incomplete => issues.count(_.level == Level.Error) == 0
+    case _                        => false
+  
+  def issues: List[Issue] = this match
+    case Complete(issues) => issues
+    case _                => Nil
+  
+  def errors: List[Issue] = issues.filter(_.level == Level.Error)
+
+enum Level:
+  case Error, Warn, Info

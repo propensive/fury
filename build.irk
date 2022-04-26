@@ -1,5 +1,5 @@
 {
-  "imports": ["one/build.irk"],
+  "imports": ["../one/build.irk"],
   "publishing": {
     "username": "propensive",
     "group": "com.propensive",
@@ -39,3 +39,4 @@
     }
   ]
 }
+

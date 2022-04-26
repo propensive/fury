@@ -78,6 +78,7 @@ object Sonatype:
             
             sh"jar cf ${step.docFile} $docFiles".exec[ExitStatus]()
 
+
             List(step.docFile, step.pomFile, /*step.pkg,*/ step.srcsPkg).foreach:
               file => sh"gpg -ab $file".exec[ExitStatus]()
 
