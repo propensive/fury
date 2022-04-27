@@ -49,22 +49,22 @@ object Irk extends Daemon():
   def homeDir: Directory = Home()
       
   def cacheDir: Directory =
-    try (Home.Cache[jovian.DiskPath]() / t"irk").directory(Ensure)
+    try unsafely(Home.Cache[jovian.DiskPath]() / t"irk").directory(Ensure)
     catch case err: IoError =>
       throw AppError(t"The user's cache directory could not be created", err)
 
   def libDir: Directory =
-    try (Home.Cache[jovian.DiskPath]() / t"lib").directory(Ensure)
+    try unsafely(Home.Cache[jovian.DiskPath]() / t"lib").directory(Ensure)
     catch case err: IoError =>
       throw AppError(t"The user's cache directory could not be created", err)
 
   def tmpDir: Directory =
-    try (cacheDir / t"tmp").directory(Ensure)
+    try unsafely(cacheDir / t"tmp").directory(Ensure)
     catch case err: IoError =>
       throw AppError(t"The user's temporary directory could not be created", err)
   
   def hashesDir: Directory =
-    try (cacheDir / t"hashes").directory(Ensure)
+    try unsafely(cacheDir / t"hashes").directory(Ensure)
     catch case err: IoError =>
       throw AppError(t"The user's cache directory could not be created", err)
 
@@ -73,11 +73,11 @@ object Irk extends Daemon():
 
   private lazy val scriptSize: Int =
     import unsafeExceptions.canThrowAny
-    (Classpath() / t"exoskeleton" / t"invoke").resource.read[Bytes](100.kb).size
+    unsafely(Classpath() / t"exoskeleton" / t"invoke").resource.read[Bytes](100.kb).size
 
   def irkJar(scriptFile: File)(using Stdout): File throws StreamCutError = synchronized:
     import java.nio.file.*
-    val jarPath = libDir.path / t"base-$version.jar"
+    val jarPath = unsafely(libDir.path / t"base-$version.jar")
 
     try if jarPath.exists() then jarPath.file(Expect) else
       val buf = Files.readAllBytes(scriptFile.javaPath).nn
@@ -94,7 +94,7 @@ object Irk extends Daemon():
           try
             if !keep(file.nn.toString.show) then Files.delete(file.nn)
             else Files.setLastModifiedTime(file.nn, Zip.epoch)
-          catch case err: Exception => Out.println(t"Got a NPE on ${file.nn.toString.show}")
+          catch case err: Exception => () //Out.println(t"Got a NPE on ${file.nn.toString.show}")
       
       fs.close()
       
@@ -103,10 +103,10 @@ object Irk extends Daemon():
       throw AppError(t"The Irk binary could not be copied to the user's cache directory")
 
   def fetchFile(ref: Text, funnel: Option[Funnel[Progress.Update]])(using Stdout): Future[File] =
-    val libDir = cacheDir / t"lib"
+    val libDir = unsafely(cacheDir / t"lib")
     if ref.startsWith(t"https:") then
       val hash = ref.digest[Crc32].encode[Base256]
-      val dest = libDir / t"${ref.digest[Crc32].encode[Hex].lower}.jar"
+      val dest = unsafely(libDir / t"${ref.digest[Crc32].encode[Hex].lower}.jar")
       if dest.exists() then Future:
         try dest.file(Expect) catch case err: IoError =>
           // FIXME: This exception is thrown inside a Future
@@ -135,11 +135,6 @@ object Irk extends Daemon():
           throw AppError(t"Could not access the dependency JAR, $ref", err)
 
   def main(using CommandLine): ExitStatus = try
-    val buffer = StreamBuffer[Bytes throws StreamCutError]()
-    val output = Task(cli.stdout(buffer.stream))()
-    Task(cli.resize.foreach(_ => Out.println("RESIZED")))()
-    given Stdout = Stdout(buffer)
-
     System.setProperty("scala.concurrent.context.maxExtraThreads", "800")
     System.setProperty("scala.concurrent.context.maxThreads", "1000")
     System.setProperty("scala.concurrent.context.minThreads", "100")
@@ -152,17 +147,15 @@ object Irk extends Daemon():
       case t"build" :: params   =>
         val target = params.headOption.filter(!_.startsWith(t"-"))
         val watch = params.contains(t"-w") || params.contains(t"--watch")
-        val webdev = params.contains(t"-b") || params.contains(t"--browser")
-        Irk.build(target, false, watch, cli.pwd, cli.env, cli.script, webdev, buffer)
+        val exec = params.contains(t"-b") || params.contains(t"--browser")
+        Irk.build(target, false, watch, cli.pwd, cli.env, cli.script, exec)
       case t"stop" :: params    => Irk.stop(cli)
       case params               =>
         val target = params.headOption.filter(!_.startsWith(t"-"))
         val watch = params.contains(t"-w") || params.contains(t"--watch")
-        val webdev = params.contains(t"-b") || params.contains(t"--browser")
-        Irk.build(target, false, watch, cli.pwd, cli.env, cli.script, webdev, buffer)
+        val exec = params.contains(t"-b") || params.contains(t"--browser")
+        Irk.build(target, false, watch, cli.pwd, cli.env, cli.script, exec)
 
-    buffer.close()
-    output.future.await()
     exitStatus
   
   catch
@@ -173,7 +166,7 @@ object Irk extends Daemon():
   private lazy val fileHashes: FileCache[Bytes] = new FileCache()
 
   private def initBuild(pwd: Directory)(using Stdout): Build throws IoError | BuildfileError =
-    val path = pwd / t"build.irk"
+    val path = unsafely(pwd / t"build.irk")
     readBuilds(Build(pwd, Map(), None, Map(), Map()), Set(), path)
   
   def hashFile(file: File): Bytes throws IoError | AppError =
@@ -232,21 +225,21 @@ object Irk extends Daemon():
           case file :: tail =>
             val importFiles: List[File] = imports.getOrElse(Nil).flatMap:
               path =>
-                val ref = file.parent.path + Relative.parse(path)
+                val ref = unsafely(file.parent.path + Relative.parse(path))
                 try
                   if ref.exists() then
-                    List((file.parent.path + Relative.parse(path)).file(Expect))
+                    List(unsafely(file.parent.path + Relative.parse(path)).file(Expect))
                   else
                     Out.println(t"Build file $ref does not exist; attempting to clone")
-                    if ref.parent.exists()
-                    then throw AppError(t"The build ${ref.name} does not exist in ${ref.parent}")
+                    if unsafely(ref.parent).exists()
+                    then throw AppError(t"The build ${ref.name} does not exist in ${unsafely(ref.parent)}")
                     else
-                      repoList.find(_.basePath(file.parent.path) == ref.parent) match
+                      repoList.find(_.basePath(unsafely(file.parent).path) == unsafely(ref.parent)) match
                         case None =>
                           throw AppError(txt"""Could not find a remote repository containing the import $path""")
                         
                         case Some(repo) =>
-                          Irk.cloneRepo(ref.parent, repo.url)
+                          Irk.cloneRepo(unsafely(ref.parent), repo.url)
                           List(ref.file(Expect))
                           
                 catch case err: IoError =>
@@ -301,7 +294,7 @@ object Irk extends Daemon():
     ExitStatus.Ok
 
   def init(pwd: Directory, name: Text)(using Stdout): ExitStatus =
-    val buildPath = pwd / t"build.irk"
+    val buildPath = unsafely(pwd / t"build.irk")
     if buildPath.exists() then
       Out.println(t"Build file build.irk already exists")
       ExitStatus.Fail(1)
@@ -442,12 +435,11 @@ object Irk extends Daemon():
       case Resource  => t"resource"
 
   def build(target: Option[Text], publishSonatype: Boolean, watch: Boolean = false, pwd: Directory,
-                env: Map[Text, Text], scriptFile: File, webdev: Boolean,
-                buffer: StreamBuffer[Bytes throws StreamCutError])
+                env: Map[Text, Text], scriptFile: File, exec: Boolean)
            (using Stdout, InputSource)
            : ExitStatus throws AppError = unsafely:
     Tty.capture:
-      val rootBuild = pwd / t"build.irk"
+      val rootBuild = unsafely(pwd / t"build.irk")
       val tap: Tap = Tap(true)
       val abortFunnel: Funnel[Event] = Funnel()
       
@@ -513,7 +505,7 @@ object Irk extends Daemon():
                    : ExitStatus =
         import unsafeExceptions.canThrowAny
         tap.open()
-        if cancel.isCompleted then cancel = Promise[Unit]()
+        val cancel: Promise[Unit] = Promise()
 
         if stream.isEmpty then
           if lastSuccess then ExitStatus.Ok else ExitStatus.Fail(1)
@@ -612,7 +604,7 @@ object Irk extends Daemon():
               val ui = Task:
                 funnel.stream.multiplexWith:
                   pulsar.stream.map { _ => Progress.Update.Print }
-                .foldLeft(Progress(TreeMap(), Nil, totalTasks = totalTasks))(_(_, buffer))
+                .foldLeft(Progress(TreeMap(), Nil, totalTasks = totalTasks))(_(_))
               
               val uiReady = ui()
               val result = Future.sequence(futures.values).await().to(Set).foldLeft(Result.Complete(Nil))(_ + _)
@@ -620,42 +612,45 @@ object Irk extends Daemon():
               val subprocesses: List[Subprocess] = if !result.success then Nil else
                 build.linearization.map:
                   step =>
-                    val subprocess: Option[Subprocess] = step.webdev.fold[Option[Subprocess]](None):
-                      case WebDev(browsers, url, start, stop) =>
+                    val subprocess: Option[Subprocess] = step.exec.fold[Option[Subprocess]](None):
+                      case Exec(browsers, url, start, stop) =>
+                        val verb = Verb.Exec(ansi"main class ${palette.Class}($start)")
                         val mainTask = Task:
                           val hash = t"${build.hashes.get(step)}${start}".digest[Crc32].encode[Base256]
-                          val verb = Verb.Exec(ansi"main class ${palette.Class}($start)")
-                          //funnel.put(Progress.Update.Add(verb, hash))
-                          //funnel.put(Progress.Update.Switch(false))
+                          funnel.put(Progress.Update.Add(verb, hash))
                           running.foreach(_.stop())
                           val resources = step.allResources(build).map(_.path)
                           
                           val result = Irk.synchronized:
-                            buffer.useSecondary()
                             val oldOut = System.out.nn
                             
                             val out = java.io.PrintStream(new java.io.OutputStream:
-                              override def write(byte: Int): Unit =
-                                buffer.putSecondary(IArray(byte.toByte))
+                              override def write(byte: Int): Unit = write(Array[Byte](byte.toByte))
                               
                               override def write(bytes: Array[Byte], off: Int, len: Int): Unit =
-                                buffer.putSecondary(bytes.unsafeImmutable.slice(off, off + len))
+                                funnel.put(Progress.Update.Stdout(verb, bytes.unsafeImmutable.slice(off, off + len)))
                             )
   
                             System.setOut(out)
                             val classpath = (step.classpath(build) ++ resources).to(List)
                             val result = Run.main(classpath)(start, stop)
                             System.setOut(oldOut)
-                            buffer.usePrimary()
                             result
                           
-                          //funnel.put(Progress.Update.Switch(true))
-                          //funnel.put(Progress.Update.Remove(verb, result))
                           result
                         
-                        val result = Some(mainTask().future.await())
-                        browser.foreach(_.navigateTo(Url.parse(url)))
-                        result
+                        val subprocess = mainTask().future.await()
+                        
+                        val newResult = subprocess.status match
+                          case None | Some(ExitStatus.Ok) =>
+                            result
+                          case Some(ExitStatus.Fail(n)) =>
+                            Result.Terminal(ansi"Process returned exit status $n")
+                        
+                        funnel.put(Progress.Update.Remove(verb, newResult))
+                        for b <- browser; u <- url do b.navigateTo(Url.parse(u))
+                        
+                        Some(subprocess)
   
                     step.artifact.foreach:
                       artifact =>
@@ -696,7 +691,6 @@ object Irk extends Daemon():
                 else Out.println(ansi"")
 
               Out.println(t"\e[0m\e[?25h\e[A")
-              buffer.usePrimary()
 
               if watch then
                 Out.print(Progress.titleText(t"Irk: waiting for changes"))
@@ -713,7 +707,7 @@ object Irk extends Daemon():
       
       val build = generateBuild()
       
-      if webdev then Chrome.session(8869):
+      if exec then Chrome.session(8869):
         buildLoop(true, Event.Changeset(Nil) #:: fileChanges, build, false, List(browser))
       else buildLoop(true, Event.Changeset(Nil) #:: fileChanges, build, false, Nil)
 
@@ -751,6 +745,7 @@ object Run:
     catch
       case err: TrapExitError => Subprocess(Some(err.status))
       case err: Exception     => Subprocess(Some(ExitStatus(1)))
+      case err: Throwable     => Subprocess(Some(ExitStatus(2)))
     
     val term = stop.map { stop => () => try invoke(stop).unit catch case err: Exception => () }
     subprocess.copy(terminate = term)

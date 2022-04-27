@@ -25,7 +25,7 @@ import scala.concurrent.*
 import scala.collection.convert.ImplicitConversions.given
 import scala.util.chaining.scalaUtilChainingOps
 
-erased given CanThrow[AppError | RootParentError] = compiletime.erasedValue
+erased given CanThrow[AppError] = compiletime.erasedValue
 
 import timekeeping.long
 import encodings.Utf8
@@ -203,19 +203,19 @@ case class Step(path: File, publishing: Option[Publishing], name: Text,
                     id: Text, links: Set[Text], resources: Set[Directory],
                     sources: Set[Directory], jars: Set[Text], dependencies: Set[Dependency],
                     version: Text, docs: List[DiskPath], artifact: Option[Artifact],
-                    webdev: Option[WebDev]):
+                    exec: Option[Exec]):
   def publish(build: Build): Publishing = publishing.orElse(build.publishing).getOrElse:
     throw AppError(t"There are no publishing details for $id")
-
+ 
   def projectId: Text = id.cut(t"/").head
   def moduleId: Text = id.cut(t"/").last
   def dashed: Text = t"$projectId-$moduleId"
-  def pwd: Directory = path.parent
+  def pwd: Directory = unsafely(path.parent)
   def group(build: Build): Text = publish(build).group
   def docFile: DiskPath = output(t"-javadoc.jar")
   def srcsPkg: DiskPath = output(t"-sources.jar")
   def pomFile: DiskPath = output(t".pom")
-  private def output(extension: Text): DiskPath = pwd / t"bin" / t"$dashed-$version$extension"
+  private def output(extension: Text): DiskPath = unsafely(pwd / t"bin" / t"$dashed-$version$extension")
   
   def compilable(f: File): Boolean = f.name.endsWith(t".scala") || f.name.endsWith(t".java")
 
@@ -233,7 +233,8 @@ case class Step(path: File, publishing: Option[Publishing], name: Text,
     classpath(build) - classesDir.path
 
   def classesDir: Directory = synchronized:
-    try (Irk.cacheDir / t"cls" / projectId / moduleId).directory(Ensure) catch case err: IoError =>
+    try unsafely(Irk.cacheDir / t"cls" / projectId / moduleId).directory(Ensure)
+    catch case err: IoError =>
       throw AppError(t"Could not write to the user's home directory", err)
 
   def pomDependency(build: Build): Dependency = Dependency(group(build), dashed, version)
@@ -287,7 +288,7 @@ case class BuildConfig(imports: Option[List[Text]], publishing: Option[Publishin
     
     repos.getOrElse(Nil).foreach:
       case Repo(base, uri) =>
-        val root = current.parent + Relative.parse(base)
+        val root = unsafely(current.parent + Relative.parse(base))
         if !root.exists() then
           Out.println(ansi"Cloning repository $uri to $base".render)
           Irk.cloneRepo(root, uri)
@@ -299,7 +300,7 @@ case class BuildConfig(imports: Option[List[Text]], publishing: Option[Publishin
       case path :: tail =>
         val steps: Map[Text, Step] = modules.map:
           module =>
-            def relativize(text: Text): DiskPath = path.file(Expect).parent.path + Relative.parse(text)
+            def relativize(text: Text): DiskPath = unsafely(path.file(Expect).parent.path + Relative.parse(text))
             val links = module.links.getOrElse(Set())
             val resources = module.resources.getOrElse(Set()).map(relativize).map(_.directory(Expect))
             val sources = module.sources.map(relativize).map(_.directory(Expect))
@@ -309,18 +310,18 @@ case class BuildConfig(imports: Option[List[Text]], publishing: Option[Publishin
             val artifact = module.artifact.map:
               spec =>
                 val format = spec.format.flatMap(Format.unapply(_)).getOrElse(Format.FatJar)
-                Artifact(path.parent + Relative.parse(spec.path), spec.main, format)
+                Artifact(unsafely(path.parent + Relative.parse(spec.path)), spec.main, format)
             
             Step(path.file(), publishing, module.name, module.id, links, resources, sources,
                 module.jars.getOrElse(Set()), dependencies, version, docs, artifact,
-                module.webdev)
+                module.exec)
         .mtwin.map(_.id -> _).to(Map)
         
         val importPaths = imports.getOrElse(Nil).map:
-          p => (path.parent + Relative.parse(p))
+          p => unsafely(path.parent + Relative.parse(p))
         
         val reposMap = repos.getOrElse(Nil).map:
-          repo => (build.pwd.path + Relative.parse(repo.base)) -> repo.url
+          repo => unsafely(build.pwd.path + Relative.parse(repo.base)) -> repo.url
         .to(Map)
 
         Irk.readBuilds(build ++ Build(build.pwd, reposMap, build.publishing, steps), seen,
@@ -370,7 +371,7 @@ object Zip:
     val uri: java.net.URI = java.net.URI.create(t"jar:file:${tmpPath.show}".s).nn
     val fs = FileSystems.newFileSystem(uri, Map("zipinfo-time" -> "false").asJava).nn
 
-    val dirs = inputs.map(_.path).map(_.parent).to(Set).flatMap:
+    val dirs = unsafely(inputs.map(_.path).map(_.parent)).to(Set).flatMap:
       dir => (0 to dir.parts.length).map { n => Relative(0, dir.parts.take(n)) }.to(Set)
     .to(List).map(_.show+t"/").sorted
 
@@ -432,13 +433,13 @@ object Cache:
            : Directory throws IoError =
     val hash = input.digest[Crc32].encode[Hex].lower
     
-    synchronously(Irk.cacheDir / hash):
+    synchronously(unsafely(Irk.cacheDir / hash)):
       workDir =>
         make(input, workDir)
         
         Cache.synchronized:
           latest.get(key).foreach:
-            oldHash => if oldHash != hash then (Irk.cacheDir / hash).directory().delete()
+            oldHash => if oldHash != hash then unsafely(Irk.cacheDir / hash).directory().delete()
           
           latest(key) = hash
           workDir
@@ -451,13 +452,15 @@ object Progress:
     case Print
     case SkipOne
     case Sigwinch
-    case Switch(primary: Boolean)
+    case Stdout(verb: Verb, data: Bytes)
 
   def titleText(title: Text): Text = t"\e]0;$title\u0007\b \b"
 
 case class Progress(active: TreeMap[Verb, (Text, Long)],
                         completed: List[(Verb, Text, Long, Result)],
-                        started: Boolean = false, done: Int = 0, totalTasks: Int, columns: Int = 120)(using Tty):
+                        started: Boolean = false, done: Int = 0, totalTasks: Int,
+                        columns: Int = 120, buffers: Map[Verb, StringBuilder] = Map())
+                   (using Tty):
   private def add(verb: Verb, hash: Text): Progress =
     copy(active = active.updated(verb, (hash, now())))
   
@@ -466,7 +469,7 @@ case class Progress(active: TreeMap[Verb, (Text, Long)],
     completed = (verb, active(verb)(0), active(verb)(1), result) :: completed
   )
 
-  def apply(update: Progress.Update, buffer: StreamBuffer[?])(using Stdout): Progress = update match
+  def apply(update: Progress.Update)(using Stdout): Progress = update match
     case Progress.Update.Sigwinch =>
       Out.println(t"resized")
       this
@@ -480,14 +483,15 @@ case class Progress(active: TreeMap[Verb, (Text, Long)],
     case Progress.Update.SkipOne =>
       copy(totalTasks = totalTasks - 1)
 
-    case Progress.Update.Switch(primary) =>
-      if primary then buffer.usePrimary() else buffer.useSecondary()
-      Out.println(t"\e[J\e[B")
-      this
-    
     case Progress.Update.Put(text) =>
       Out.println(text)
       this
+    
+    case Progress.Update.Stdout(verb, data) =>
+      if buffers.contains(verb) then
+        buffers(verb).append(data.uString.s)
+        this
+      else copy(buffers = buffers.updated(verb, StringBuilder(data.uString.s)))
 
     case Progress.Update.Print =>
       val starting = if !Irk.githubActions then
@@ -502,6 +506,7 @@ case class Progress(active: TreeMap[Verb, (Text, Long)],
             val hashText = ansi"${palette.Hash}(${hash})"
             val time = ansi"${palette.Number}(${now() - start}ms)"
             Out.println(ansi"${task.past} $hashText ($time)".render)
+            buffers
         false
         
       copy(completed = Nil, started = started || starting, done = done + completed.size)
@@ -525,13 +530,23 @@ case class Progress(active: TreeMap[Verb, (Text, Long)],
           case Result.Terminal(_)   => ansi"[${colors.Crimson}(‼)]"
           case Result.Aborted       => ansi"[$Blue(⤹)]"
           case Result.Incomplete    => ansi"[${colors.Orange}(?)]"
-          case _                    => ansi"[$Red(✗)]"
         
         ansi"$Bold($finish) $hashText ${verb.past.padTo(columns - 17, ' ')} $padding${palette.Number}($time)"
     
     val title = Progress.titleText(t"Irk: building (${(done*100)/(totalTasks max 1)}%)")
 
-    completed.map(line(_, _, _, _, false)) ++ List(ansi"${title}${t"\e[0G"}${t"─"*columns}") ++
+    val content: List[AnsiText] = completed.flatMap:
+      case (task, _, start, _) =>
+        val description = task match
+          case Verb.Exec(cls) => t"Output from ${cls.plain}"
+          case _              => t"Output"
+
+        if buffers.contains(task) && !buffers(task).isEmpty then List(
+          ansi"${Bg(colors.SaddleBrown)}(  )${Bg(colors.SandyBrown)}(${colors.SaddleBrown}()${colors.Black}( $description ))${Bg(colors.Black)}(${colors.SandyBrown}())${escapes.Reset}",
+          AnsiText(buffers(task).toString.show)
+        ) else Nil
+
+    completed.map(line(_, _, _, _, false)) ++ content ++ List(ansi"${title}${t"\e[0G"}${t"─"*columns}") ++
       active.to(List).map:
         case (name, (hash, start)) => line(name, hash, start, Result.Incomplete, true)
 

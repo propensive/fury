@@ -17,16 +17,16 @@ case class Issue(level: Level, module: Text, path: Text, startLine: Int, from: I
                      endLine: Int, message: Text, content: IArray[Char])
 
 case class Repo(base: Text, url: Text):
-  def basePath(dir: DiskPath): DiskPath = dir + Relative.parse(base)
+  def basePath(dir: DiskPath): DiskPath = unsafely(dir + Relative.parse(base))
 
 case class Module(name: Text, id: Text, links: Option[Set[Text]], resources: Option[Set[Text]],
                       sources: Set[Text], jars: Option[Set[Text]], docs: Option[List[Text]],
                       dependencies: Option[Set[Dependency]], version: Option[Text],
-                      artifact: Option[ArtifactSpec], webdev: Option[WebDev])
+                      artifact: Option[ArtifactSpec], exec: Option[Exec])
 
 case class ArtifactSpec(path: Text, main: Option[Text], format: Option[Text])
 
-case class WebDev(browsers: List[Text], url: Text, start: Text, stop: Option[Text])
+case class Exec(browsers: List[Text], url: Option[Text], start: Text, stop: Option[Text])
 
 case class AppError(msg: Text, cause: Maybe[Error[?]] = Unset)
 extends Error[(Text, Text)]((t"an application error occurred: ", msg)):
@@ -54,6 +54,7 @@ case class Developer(id: Text, name: Text, url: Text)
 object Dependency:
   given Json.Reader[Dependency] = summon[Json.Reader[Text]].map:
     case s"$group:$artifact:$version" => Dependency(group.show, artifact.show, version.show)
+    case value                        => throw AppError(t"Could not parse dependency $value")
 
 @xmlLabel("dependency")
 case class Dependency(groupId: Text, artifactId: Text, version: Text)
@@ -94,6 +95,7 @@ enum Result:
   case Complete(issueList: List[Issue])
   case Terminal(message: AnsiText)
 
+  @targetName("plus")
   def +(result: Result): Result = this match
     case Aborted        => Aborted
     case Incomplete     => result
