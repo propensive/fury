@@ -51,7 +51,8 @@ object Compiler:
           val ctx = initCtx.fresh
           setup(Array[String]("-d", out.fullname.s, "-deprecation", "-feature", "-Wunused:all",
               "-new-syntax", "-Yrequire-targetName", "-Ysafe-init", "-Yexplicit-nulls",
-              "-Ycheck-all-patmat", ""), ctx).map(_(1)).get
+              "-Xmax-inlines", "64",
+              "-Ycheck-all-patmat", "-classpath", classpathText.s, ""), ctx).map(_(1)).get
         
         def run(files: List[File], classpath: Text): List[Diagnostic] =
           val ctx = currentCtx.fresh
@@ -64,10 +65,10 @@ object Compiler:
           val sources = files.to(List).map:
             file => PlainFile(Path(file.fullname.s))
           
-
           val run: Run = Scala3.newRun(using ctx2)
           cancel.future.andThen:
             _ => run.isCancelled = true
+          
           run.compile(sources)
           finish(Scala3, run)(using ctx2)
           reporter.errors.to(List)
@@ -92,7 +93,9 @@ object Compiler:
     catch case err: Throwable =>
       if !cancel.isCompleted then
         Out.println(StackTrace(err).ansi)
+        
         Compiler.synchronized:
           Scala3 = new dotty.tools.dotc.Compiler()
+        
         Result.Terminal(ansi"The compiler crashed")
       else Result.Aborted

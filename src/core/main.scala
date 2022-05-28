@@ -46,25 +46,33 @@ object Irk extends Daemon():
     props.load(getClass.nn.getClassLoader.nn.getResourceAsStream("compiler.properties").nn)
     props.get("version.number").toString.show
  
-  def homeDir: Directory = Home()
+  def homeDir: Unix.Directory = Home()
       
-  def cacheDir: Directory =
-    try unsafely(Home.Cache[jovian.DiskPath]() / t"irk").directory(Ensure)
+  def cacheDir: Unix.Directory =
+    try
+      unsafely(Home.Cache[jovian.DiskPath]() / t"irk").directory(Ensure) match
+        case dir: Unix.Directory => dir
     catch case err: IoError =>
       throw AppError(t"The user's cache directory could not be created", err)
 
-  def libDir: Directory =
-    try unsafely(Home.Cache[jovian.DiskPath]() / t"lib").directory(Ensure)
+  def libDir: Unix.Directory =
+    try
+      unsafely(cacheDir / t"lib").directory(Ensure) match
+        case dir: Unix.Directory => dir
     catch case err: IoError =>
       throw AppError(t"The user's cache directory could not be created", err)
 
-  def tmpDir: Directory =
-    try unsafely(cacheDir / t"tmp").directory(Ensure)
+  def tmpDir: Unix.Directory =
+    try
+      unsafely(cacheDir / t"tmp").directory(Ensure) match
+        case dir: Unix.Directory => dir
     catch case err: IoError =>
       throw AppError(t"The user's temporary directory could not be created", err)
   
-  def hashesDir: Directory =
-    try unsafely(cacheDir / t"hashes").directory(Ensure)
+  def hashesDir: Unix.Directory =
+    try
+      unsafely(cacheDir / t"hashes").directory(Ensure) match
+        case dir: Unix.Directory => dir
     catch case err: IoError =>
       throw AppError(t"The user's cache directory could not be created", err)
 
@@ -193,7 +201,9 @@ object Irk extends Daemon():
           if path.exists() && seen.contains(digest) then readBuilds(build, seen, tail*)
           else if path.exists() then
             Out.println(ansi"Reading build file ${palette.File}(${path.relativeTo(build.pwd.path).get.show})")
-            val buildConfig = Json.parse(path.file().read[Text](1.mb)).as[BuildConfig]
+            val buildConfig = locally:
+              import unsafeExceptions.canThrowAny
+              Json.parse(path.file().read[Text](1.mb)).as[BuildConfig]
             buildConfig.gen(path, build, seen + digest, files*)
           else throw AppError(txt"""Build contains an import reference to a nonexistant build""")
             

@@ -2,7 +2,7 @@ FROM openjdk:11
 RUN apt update
 RUN apt install -y make
 RUN mkdir /irk
-RUN git clone https://github.com/propensive/dotty /irk/scala
+RUN git clone https://github.com/lampepfl/dotty /irk/scala
 RUN mkdir -p /irk/bin
 RUN curl -Lo /irk/sbt.tgz https://github.com/sbt/sbt/releases/download/v1.6.1/sbt-1.6.1.tgz
 RUN tar xvf /irk/sbt.tgz -C /irk
@@ -48,20 +48,20 @@ RUN cp -r /irk/one/mod/gesticulate/res/gesticulate /irk/bin/
 
 RUN cd /irk && scala/bin/scalac \
   -classpath bin \
+  -Xmax-inlines 64 \
   -language:experimental.fewerBraces \
   -language:experimental.saferExceptions \
   -language:experimental.erasedDefinitions \
   -d bin \
-  src/core/*.scala \
   one/mod/acyclicity/src/core/*.scala \
   one/mod/adversaria/src/core/*.scala \
   one/mod/caesura/src/core/*.scala \
   one/mod/cataract/src/core/*.scala \
   one/mod/clairvoyant/src/css/*.scala \
-  one/mod/clairvoyant/src/time/*.scala \
   one/mod/clairvoyant/src/file/*.scala \
   one/mod/clairvoyant/src/html/*.scala \
   one/mod/clairvoyant/src/http/*.scala \
+  one/mod/clairvoyant/src/time/*.scala \
   one/mod/clairvoyant/src/uri/*.scala \
   one/mod/contextual/src/core/*.scala \
   one/mod/cosmopolite/src/core/*.scala \
@@ -75,29 +75,54 @@ RUN cd /irk && scala/bin/scalac \
   one/mod/gossamer/src/core/*.scala \
   one/mod/guillotine/src/core/*.scala \
   one/mod/harlequin/src/core/*.scala \
-  one/mod/honeycomb/src/core/*.scala \
   one/mod/imperial/src/core/*.scala \
   one/mod/iridescence/src/core/*.scala \
   one/mod/jovian/src/core/*.scala \
   one/mod/kaleidoscope/src/core/*.scala \
-  one/mod/probably/src/core/*.scala \
   one/mod/probably/src/cli/*.scala \
+  one/mod/probably/src/core/*.scala \
   one/mod/probably/src/tolerance/*.scala \
-  one/mod/punctuation/src/core/*.scala \
-  one/mod/punctuation/src/ansi/*.scala \
-  one/mod/punctuation/src/html/*.scala \
-  one/mod/profanity/src/java/**/*.java \
   one/mod/profanity/src/core/*.scala \
+  one/mod/profanity/src/java/**/*.java \
   one/mod/rudiments/src/core/*.scala \
-  one/mod/scintillate/src/uri/*.scala \
-  one/mod/scintillate/src/core/*.scala \
-  one/mod/scintillate/src/server/*.scala \
-  one/mod/scintillate/src/servlet/*.scala \
   one/mod/slalom/src/core/*.scala \
-  one/mod/tarantula/src/core/*.scala \
   one/mod/turbulence/src/core/*.scala \
   one/mod/wisteria/src/core/*.scala \
   one/mod/xylophone/src/core/*.scala
+
+RUN cd /irk && scala/bin/scalac \
+  -classpath bin \
+  -Xmax-inlines 64 \
+  -language:experimental.fewerBraces \
+  -language:experimental.saferExceptions \
+  -language:experimental.erasedDefinitions \
+  -d bin \
+  one/mod/honeycomb/src/core/*.scala
+
+RUN cd /irk && scala/bin/scalac \
+  -classpath bin \
+  -Xmax-inlines 64 \
+  -language:experimental.fewerBraces \
+  -language:experimental.saferExceptions \
+  -language:experimental.erasedDefinitions \
+  -d bin \
+  one/mod/punctuation/src/ansi/*.scala \
+  one/mod/punctuation/src/core/*.scala \
+  one/mod/punctuation/src/html/*.scala \
+  one/mod/scintillate/src/core/*.scala \
+  one/mod/scintillate/src/server/*.scala \
+  one/mod/scintillate/src/servlet/*.scala \
+  one/mod/scintillate/src/uri/*.scala \
+  one/mod/tarantula/src/core/*.scala
+
+RUN cd /irk && scala/bin/scalac \
+  -classpath bin \
+  -Xmax-inlines 64 \
+  -language:experimental.fewerBraces \
+  -language:experimental.saferExceptions \
+  -language:experimental.erasedDefinitions \
+  -d bin \
+  src/core/*.scala
 
 RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/tasty-core*.jar
 RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/compiler-interface*.jar

@@ -250,7 +250,9 @@ case class Step(path: File, publishing: Option[Publishing], name: Text,
              : Result =
     try
       val t0 = now()
-      classesDir.children.foreach(_.delete())
+      classesDir.children.foreach:
+        case file: Unix.File     => file.delete()
+        case dir: Unix.Directory => dir.delete()
       val cp = compileClasspath(build)
       val result = Compiler.compile(id, srcFiles.to(List), cp, classesDir, scriptFile, cancel)
       val time = now() - t0
