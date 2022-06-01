@@ -1,5 +1,5 @@
 {
-  "imports": ["one/build.irk"],
+  "imports": ["../one/build.irk"],
   "publishing": {
     "username": "propensive",
     "group": "com.propensive",
@@ -25,7 +25,7 @@
           "acyclicity/core", "jovian/core", "scintillate/core", "euphemism/core", "honeycomb/core",
           "exoskeleton/core", "clairvoyant/time", "imperial/core", "tarantula/core"],
       "sources": ["src/core"],
-      "version": "0.5.0",
+      "version": "0.5.1",
       "docs": ["doc"],
       "artifact": {
         "main": "irk.Irk",

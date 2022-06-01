@@ -1,3 +1,6 @@
 [submodule "one"]
 	path = one
 	url = https://github.com/propensive/one
+[submodule "dotty"]
+	path = dotty
+	url = https://github.com/lampepfl/dotty
