@@ -23,9 +23,10 @@
       "id": "irk/core",
       "links": ["harlequin/core", "xylophone/core", "profanity/core", "guillotine/core",
           "acyclicity/core", "jovian/core", "scintillate/core", "euphemism/core", "honeycomb/core",
-          "exoskeleton/core", "clairvoyant/time", "imperial/core", "tarantula/core"],
+          "exoskeleton/core", "clairvoyant/time", "imperial/core", "tarantula/core",
+          "escritoire/core"],
       "sources": ["src/core"],
-      "version": "0.5.1",
+      "version": "0.5.3",
       "docs": ["doc"],
       "artifact": {
         "main": "irk.Irk",

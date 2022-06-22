@@ -38,57 +38,13 @@ RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/flexmark-ext-tables-
 RUN rm -r /irk/bin/META-INF
 ADD src /irk/src
 ADD one.jar /irk/one.jar
-RUN unzip -q /irk/one.jar -d /irk
+RUN unzip -q /irk/one.jar -d /
 
 RUN javac -classpath /irk/lib/jna.jar \
   -d /irk/bin \
-  /irk/one/mod/profanity/src/java/profanity/Termios.java
+  /one/mod/profanity/src/java/profanity/Termios.java
 
-RUN cp -r /irk/one/mod/gesticulate/res/gesticulate /irk/bin/
-
-RUN cd /irk && scala/bin/scalac \
-  -classpath bin \
-  -Xmax-inlines 64 \
-  -language:experimental.fewerBraces \
-  -language:experimental.saferExceptions \
-  -language:experimental.erasedDefinitions \
-  -d bin \
-  one/mod/acyclicity/src/core/*.scala \
-  one/mod/adversaria/src/core/*.scala \
-  one/mod/caesura/src/core/*.scala \
-  one/mod/cataract/src/core/*.scala \
-  one/mod/clairvoyant/src/css/*.scala \
-  one/mod/clairvoyant/src/file/*.scala \
-  one/mod/clairvoyant/src/html/*.scala \
-  one/mod/clairvoyant/src/http/*.scala \
-  one/mod/clairvoyant/src/time/*.scala \
-  one/mod/clairvoyant/src/uri/*.scala \
-  one/mod/contextual/src/core/*.scala \
-  one/mod/cosmopolite/src/core/*.scala \
-  one/mod/escapade/src/core/*.scala \
-  one/mod/escritoire/src/core/*.scala \
-  one/mod/eucalyptus/src/core/*.scala \
-  one/mod/euphemism/src/core/*.scala \
-  one/mod/exoskeleton/src/core/*.scala \
-  one/mod/gastronomy/src/core/*.scala \
-  one/mod/gesticulate/src/core/*.scala \
-  one/mod/gossamer/src/core/*.scala \
-  one/mod/guillotine/src/core/*.scala \
-  one/mod/harlequin/src/core/*.scala \
-  one/mod/imperial/src/core/*.scala \
-  one/mod/iridescence/src/core/*.scala \
-  one/mod/jovian/src/core/*.scala \
-  one/mod/kaleidoscope/src/core/*.scala \
-  one/mod/probably/src/cli/*.scala \
-  one/mod/probably/src/core/*.scala \
-  one/mod/probably/src/tolerance/*.scala \
-  one/mod/profanity/src/core/*.scala \
-  one/mod/profanity/src/java/**/*.java \
-  one/mod/rudiments/src/core/*.scala \
-  one/mod/slalom/src/core/*.scala \
-  one/mod/turbulence/src/core/*.scala \
-  one/mod/wisteria/src/core/*.scala \
-  one/mod/xylophone/src/core/*.scala
+RUN cp -r /one/mod/gesticulate/res/gesticulate /irk/bin/
 
 RUN cd /irk && scala/bin/scalac \
   -classpath bin \
@@ -97,7 +53,42 @@ RUN cd /irk && scala/bin/scalac \
   -language:experimental.saferExceptions \
   -language:experimental.erasedDefinitions \
   -d bin \
-  one/mod/honeycomb/src/core/*.scala
+  /one/mod/acyclicity/src/core/*.scala \
+  /one/mod/adversaria/src/core/*.scala \
+  /one/mod/caesura/src/core/*.scala \
+  /one/mod/cataract/src/core/*.scala \
+  /one/mod/clairvoyant/src/css/*.scala \
+  /one/mod/clairvoyant/src/file/*.scala \
+  /one/mod/clairvoyant/src/html/*.scala \
+  /one/mod/clairvoyant/src/http/*.scala \
+  /one/mod/clairvoyant/src/time/*.scala \
+  /one/mod/clairvoyant/src/uri/*.scala \
+  /one/mod/contextual/src/core/*.scala \
+  /one/mod/cosmopolite/src/core/*.scala \
+  /one/mod/escapade/src/core/*.scala \
+  /one/mod/escritoire/src/core/*.scala \
+  /one/mod/eucalyptus/src/core/*.scala \
+  /one/mod/euphemism/src/core/*.scala \
+  /one/mod/exoskeleton/src/core/*.scala \
+  /one/mod/gastronomy/src/core/*.scala \
+  /one/mod/gesticulate/src/core/*.scala \
+  /one/mod/gossamer/src/core/*.scala \
+  /one/mod/guillotine/src/core/*.scala \
+  /one/mod/harlequin/src/core/*.scala \
+  /one/mod/imperial/src/core/*.scala \
+  /one/mod/iridescence/src/core/*.scala \
+  /one/mod/jovian/src/core/*.scala \
+  /one/mod/kaleidoscope/src/core/*.scala \
+  /one/mod/probably/src/cli/*.scala \
+  /one/mod/probably/src/core/*.scala \
+  /one/mod/probably/src/tolerance/*.scala \
+  /one/mod/profanity/src/core/*.scala \
+  /one/mod/profanity/src/java/**/*.java \
+  /one/mod/rudiments/src/core/*.scala \
+  /one/mod/slalom/src/core/*.scala \
+  /one/mod/turbulence/src/core/*.scala \
+  /one/mod/wisteria/src/core/*.scala \
+  /one/mod/xylophone/src/core/*.scala
 
 RUN cd /irk && scala/bin/scalac \
   -classpath bin \
@@ -106,14 +97,23 @@ RUN cd /irk && scala/bin/scalac \
   -language:experimental.saferExceptions \
   -language:experimental.erasedDefinitions \
   -d bin \
-  one/mod/punctuation/src/ansi/*.scala \
-  one/mod/punctuation/src/core/*.scala \
-  one/mod/punctuation/src/html/*.scala \
-  one/mod/scintillate/src/core/*.scala \
-  one/mod/scintillate/src/server/*.scala \
-  one/mod/scintillate/src/servlet/*.scala \
-  one/mod/scintillate/src/uri/*.scala \
-  one/mod/tarantula/src/core/*.scala
+  /one/mod/honeycomb/src/core/*.scala
+
+RUN cd /irk && scala/bin/scalac \
+  -classpath bin \
+  -Xmax-inlines 64 \
+  -language:experimental.fewerBraces \
+  -language:experimental.saferExceptions \
+  -language:experimental.erasedDefinitions \
+  -d bin \
+  /one/mod/punctuation/src/ansi/*.scala \
+  /one/mod/punctuation/src/core/*.scala \
+  /one/mod/punctuation/src/html/*.scala \
+  /one/mod/scintillate/src/core/*.scala \
+  /one/mod/scintillate/src/server/*.scala \
+  /one/mod/scintillate/src/servlet/*.scala \
+  /one/mod/scintillate/src/uri/*.scala \
+  /one/mod/tarantula/src/core/*.scala
 
 RUN cd /irk && scala/bin/scalac \
   -classpath bin \
@@ -133,7 +133,7 @@ RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala3-staging*.jar
 RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala3-interfaces*.jar
 RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala3-tasty-inspector*.jar
 RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala-asm*.jar
-RUN cp /irk/one/mod/exoskeleton/res/exoskeleton/invoke /irk/bin/exoskeleton/invoke
+RUN cp /one/mod/exoskeleton/res/exoskeleton/invoke /irk/bin/exoskeleton/invoke
 ADD doc/.version /irk/.version
 RUN echo 'Manifest-Version: 1.0' > /irk/manifest
 RUN echo -n 'Created-By: Irk ' >> /irk/manifest
@@ -189,7 +189,7 @@ RUN jar cmf /irk/manifest /irk/irk.jar \
   -C /irk/bin wisteria \
   -C /irk/bin xylophone
 
-RUN cat /irk/one/mod/exoskeleton/res/exoskeleton/invoke /irk/irk.jar > /irk/bootstrap
+RUN cat /one/mod/exoskeleton/res/exoskeleton/invoke /irk/irk.jar > /irk/bootstrap
 RUN chmod +x /irk/bootstrap
 RUN rm /irk/irk.jar
 ADD build.irk /irk/build.irk

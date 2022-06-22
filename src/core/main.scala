@@ -20,17 +20,18 @@ import profanity.*
 import xylophone.*
 import scintillate.*
 import clairvoyant.*
-import java.nio.BufferOverflowException
+import escritoire.*
+
+import timekeeping.long
+import encodings.Utf8
+import rendering.ansi
 
 import scala.collection.mutable as scm
 import scala.concurrent.*
 import scala.collection.convert.ImplicitConversions.given
 import scala.util.chaining.scalaUtilChainingOps
 
-import timekeeping.long
-import encodings.Utf8
-
-import rendering.ansi
+import java.nio.BufferOverflowException
 
 object Irk extends Daemon():
 
@@ -49,9 +50,9 @@ object Irk extends Daemon():
       
   def cacheDir: Unix.Directory =
     try
-      unsafely(Home.Cache[jovian.DiskPath]() / t"irk").directory(Ensure) match
+      (Home.Cache[jovian.DiskPath]() / t"irk").directory(Ensure) match
         case dir: Unix.Directory => dir
-    catch case err: IoError =>
+    catch case err: (IoError | RootParentError) =>
       throw AppError(t"The user's cache directory could not be created", err)
 
   def libDir: Unix.Directory =
@@ -136,15 +137,18 @@ object Irk extends Daemon():
         
     else
       Future:
-        try Unix.parse(ref).get.file(Expect) catch case err: IoError =>
-          throw AppError(t"Could not access the dependency JAR, $ref", err)
+        try Unix.parse(ref).file(Expect) catch
+          case err: InvalidPathError =>
+            throw AppError(t"Could not access the dependency JAR, $ref", err)
+          case err: IoError =>
+            throw AppError(t"Could not access the dependency JAR, $ref", err)
 
   def main(using CommandLine): ExitStatus =
-    try
-      System.setProperty("scala.concurrent.context.maxExtraThreads", "800")
-      System.setProperty("scala.concurrent.context.maxThreads", "1000")
-      System.setProperty("scala.concurrent.context.minThreads", "100")
+    Sys.scala.concurrent.context.maxExtraThreads() = t"800"
+    Sys.scala.concurrent.context.maxThreads() = t"1000"
+    Sys.scala.concurrent.context.minThreads() = t"100"
   
+    try
       cli.args match
         case t"about" :: _        => Irk.about()
         case t"help" :: _         => Irk.help()
@@ -168,8 +172,16 @@ object Irk extends Daemon():
           Out.println(message)
           ExitStatus.Fail(1)
       case err: Throwable =>
-        Out.println(StackTrace(err).ansi)
-        ExitStatus.Fail(1)
+        try
+          Out.println(StackTrace(err).ansi)
+          ExitStatus.Fail(1)
+        catch case err2: Throwable =>
+          System.out.nn.println(err2.toString)
+          err2.printStackTrace()
+          System.out.nn.println("Caused by:")
+          System.out.nn.println(err.toString)
+          err.printStackTrace()
+          ExitStatus.Fail(2)
   
   private lazy val fileHashes: FileCache[Bytes] = new FileCache()
 
@@ -337,9 +349,11 @@ object Irk extends Daemon():
       buf.append(text.render)
       buf.append('\n')
     
-    result.issues.groupBy(_.path).foreach:
+    val grouped = result.issues.groupBy(_.path)
+    
+    grouped.foreach:
       case (path, messages) =>
-        val syntax = ScalaSyntax.highlight(String(messages.head.content.unsafeMutable).show)
+        val syntax = ScalaSyntax.highlight(messages.head.content.text)
         result.issues.sortBy(-_.startLine).groupBy(_.startLine).foreach:
           case (ln, messages) => messages.last match
             case Issue(level, module, path, startLine, from, to, endLine, message, _) =>
@@ -372,7 +386,7 @@ object Irk extends Daemon():
                     case other                   => ansi"${code}"
                   case Token.Unparsed(txt)     => ansi"$txt"
                   case Token.Markup(_)         => ansi""
-                  case Token.Newline           => throw Impossible("Should not have a newline")
+                  case Token.Newline           => throw Mistake("Should not have a newline")
                 .join.take(columns - 2 - margin)
               
               if startLine > 1 then
@@ -385,7 +399,9 @@ object Irk extends Daemon():
                 if lineNo < (startLine + 2) || lineNo > (endLine - 2) then
                   val code = format(lineNo)
                   val before = if lineNo == startLine then code.take(from) else ansi""
-                  val after = if lineNo == endLine then code.drop(to) else ansi""
+                  
+                  val after =
+                    if lineNo == endLine then code.drop(if from == to then to + 4 else to) else ansi""
                   
                   val highlighted =
                     if lineNo == startLine then
@@ -635,7 +651,7 @@ object Irk extends Daemon():
                             override def write(byte: Int): Unit = write(Array[Byte](byte.toByte))
                             
                             override def write(bytes: Array[Byte], off: Int, len: Int): Unit =
-                              funnel.put(Progress.Update.Stdout(verb, bytes.unsafeImmutable.slice(off, off + len)))
+                              funnel.put(Progress.Update.Stdout(verb, bytes.immutable(using Unsafe).slice(off, off + len).immutable(using Unsafe)))
                           )
 
                           //System.setOut(out)

@@ -13,7 +13,7 @@ case class Target(name: Text, module: Text, run: Text, parallel: Boolean, trigge
 case class Publishing(username: Text, group: Text, url: Text, organization: Organization,
                           developers: List[Developer])
 
-case class Issue(level: Level, module: Text, path: Text, startLine: Int, from: Int, to: Int,
+case class Issue(level: Level, module: Text, path: Relative, startLine: Int, from: Int, to: Int,
                      endLine: Int, message: Text, content: IArray[Char])
 
 case class Repo(base: Text, url: Text):

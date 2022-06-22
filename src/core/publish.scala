@@ -60,7 +60,7 @@ object Sonatype:
                           List(t"-C", dir.show, filePath.relativeTo(dirPath).show)
                         case _ =>
                           Nil
-                      case _ => throw Impossible("Should never match")
+                      case _ => throw Mistake("Should never match")
             
             sh"jar cf ${step.srcsPkg} $srcFiles".exec[ExitStatus]()
             
@@ -76,7 +76,7 @@ object Sonatype:
                           List(t"-C", dir.show, filePath.relativeTo(dirPath).show)
                         case _ =>
                           Nil
-                      case _ => throw Impossible("Should never match")
+                      case _ => throw Mistake("Should never match")
             
             sh"jar cf ${step.docFile} $docFiles".exec[ExitStatus]()
 
