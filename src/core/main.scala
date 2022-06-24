@@ -19,7 +19,7 @@ import tarantula.*
 import profanity.*
 import xylophone.*
 import scintillate.*
-import clairvoyant.*
+import anticipation.*
 import escritoire.*
 
 import timekeeping.long

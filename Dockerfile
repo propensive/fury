@@ -57,12 +57,12 @@ RUN cd /irk && scala/bin/scalac \
   /one/mod/adversaria/src/core/*.scala \
   /one/mod/caesura/src/core/*.scala \
   /one/mod/cataract/src/core/*.scala \
-  /one/mod/clairvoyant/src/css/*.scala \
-  /one/mod/clairvoyant/src/file/*.scala \
-  /one/mod/clairvoyant/src/html/*.scala \
-  /one/mod/clairvoyant/src/http/*.scala \
-  /one/mod/clairvoyant/src/time/*.scala \
-  /one/mod/clairvoyant/src/uri/*.scala \
+  /one/mod/anticipation/src/css/*.scala \
+  /one/mod/anticipation/src/file/*.scala \
+  /one/mod/anticipation/src/html/*.scala \
+  /one/mod/anticipation/src/http/*.scala \
+  /one/mod/anticipation/src/time/*.scala \
+  /one/mod/anticipation/src/uri/*.scala \
   /one/mod/contextual/src/core/*.scala \
   /one/mod/cosmopolite/src/core/*.scala \
   /one/mod/escapade/src/core/*.scala \
@@ -156,7 +156,7 @@ RUN jar cmf /irk/manifest /irk/irk.jar \
   -C /irk/bin adversaria \
   -C /irk/bin caesura \
   -C /irk/bin cataract \
-  -C /irk/bin clairvoyant \
+  -C /irk/bin anticipation \
   -C /irk/bin com \
   -C /irk/bin contextual \
   -C /irk/bin cosmopolite \

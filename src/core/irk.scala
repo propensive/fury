@@ -17,7 +17,7 @@ import imperial.*
 import profanity.*
 import xylophone.*
 import scintillate.*
-import clairvoyant.*
+import anticipation.*
 import java.nio.BufferOverflowException
 
 import scala.collection.mutable as scm
