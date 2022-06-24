@@ -98,7 +98,7 @@ object Compiler:
             catch case err: InvalidPathError =>
               Relative.parse(file.show)
 
-          prev + Result.Complete(List(Issue(level, id, path, line, pos.startColumn, pos.endColumn,
+          prev + Result.Complete(List(Issue(level, id, pwd.path, path, line, pos.startColumn, pos.endColumn,
               pos.endLine, diagnostic.message.show, content.immutable(using Unsafe))))
         else prev + Result.Complete(Nil)
 

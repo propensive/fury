@@ -34,7 +34,6 @@ import scala.util.chaining.scalaUtilChainingOps
 import java.nio.BufferOverflowException
 
 object Irk extends Daemon():
-
   def version: Text =
     Option(getClass.nn.getPackage.nn.getImplementationVersion).fold(t"0")(_.nn.show)
   
@@ -348,15 +347,23 @@ object Irk extends Daemon():
     def appendln(text: AnsiText): Unit =
       buf.append(text.render)
       buf.append('\n')
+  
+    val sorted =
+      try
+        result.issues.groupBy(_.baseDir).to(List).map: (baseDir, issues) =>
+          issues.groupBy(_.path).to(List).map: (path, issues) =>
+            unsafely(baseDir + path).file(Expect) -> issues
+          .sortBy(_(0).modified)
+        .sortBy(_.last(0).modified).flatten
+        
+      catch case err: IoError => throw AppError(t"a file containing an error was deleted")
     
-    val grouped = result.issues.groupBy(_.path)
-    
-    grouped.foreach:
-      case (path, messages) =>
-        val syntax = ScalaSyntax.highlight(messages.head.content.text)
-        result.issues.sortBy(-_.startLine).groupBy(_.startLine).foreach:
-          case (ln, messages) => messages.last match
-            case Issue(level, module, path, startLine, from, to, endLine, message, _) =>
+    sorted.foreach:
+      case (file, issues) =>
+        val syntax = ScalaSyntax.highlight(issues.head.content.text)
+        issues.groupBy(_.startLine).to(List).sortBy(_(0)).foreach:
+          case (ln, issues) => issues.head match
+            case Issue(level, module, baseDir, path, startLine, from, to, endLine, message, _) =>
               val bg = Bg(Srgb(0.16, 0.06, 0.03))
               val margin = (endLine + 2).show.length
               val codeWidth = columns - 2 - margin
