@@ -10,6 +10,7 @@
 #
 # Irk, version ${VERSION}. Copyright 2021 Jon Pretty, Propensive OÜ.
 
+set -euo pipefail
 if [ ! "$(command -v java)" ]
 then
   echo "It does not look like Java is installed. The 'java' command must be available on the path."
@@ -21,7 +22,7 @@ then
   echo "The 'curl' command must be available to download Irk. Please install Curl and try again."
 else
   echo "Downloading Irk ${VERSION}..."
-  curl -Lso "$0.tmp" "https://github.com/propensive/irk/releases/download/v${VERSION}/irk-${VERSION}"
+  curl -Lso --show-error "$0.tmp" "https://github.com/propensive/irk/releases/download/v${VERSION}/irk-${VERSION}"
   echo "Downloaded $(du -sh "$0.tmp" | cut -d'	' -f1)"
   echo 'Launching Irk for the first time...'
   chmod +x "$0.tmp"
