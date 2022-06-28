@@ -21,7 +21,7 @@ then
   echo "The 'curl' command must be available to download Irk. Please install Curl and try again."
 else
   echo "Downloading Irk ${VERSION}..."
-  curl -Lso --show-error "$0.tmp" "https://github.com/propensive/irk/releases/download/v${VERSION}/irk-${VERSION}" || exit 1
+  curl -LSso "$0.tmp" "https://github.com/propensive/irk/releases/download/v${VERSION}/irk-${VERSION}" || exit 1
   echo "Downloaded $(du -sh "$0.tmp" | cut -d'	' -f1)"
   echo 'Launching Irk for the first time...'
   chmod +x "$0.tmp"
