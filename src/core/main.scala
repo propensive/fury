@@ -473,7 +473,7 @@ object Irk extends Daemon():
       val tap: Tap = Tap(true)
       val abortFunnel: Funnel[Event] = Funnel()
       
-      Tty.reportSize()
+      //Tty.reportSize()
 
       def interrupts = Tty.stream[Keypress].collect:
         case Keypress.Ctrl('C')        => Event.Interrupt
