@@ -3,9 +3,9 @@ package irk
 import rudiments.*
 import turbulence.*
 import gastronomy.*
-import scintillate.*
+import telekinesis.*
 import euphemism.*
-import jovian.*
+import joviality.*
 import gossamer.*
 import eucalyptus.*
 import gesticulate.*
@@ -46,43 +46,24 @@ object Sonatype:
             
             pomXml.show.bytes.writeTo(step.pomFile.file(Create))
             
-            val srcFiles: List[Text] = step.sources.to(List).flatMap:
-              dir =>
-                Out.println(t"Adding source dir $dir")
-                dir.path.descendantFiles(!_.name.startsWith(t".")).filter:
-                  file => file.name.endsWith(t".scala") || file.name.endsWith(t".java")
-                .flatMap:
-                  file =>
-                    val fs = file.path.filesystem
-                    file.path match
-                      case filePath: fs.DiskPath => dir.path match
-                        case dirPath: fs.DiskPath =>
-                          List(t"-C", dir.show, filePath.relativeTo(dirPath).show)
-                        case _ =>
-                          Nil
-                      case _ => throw Mistake("Should never match")
+            val srcFiles: List[Text] = step.sources.to(List).flatMap: dir =>
+              Out.println(t"Adding source dir $dir")
+              dir.path.descendantFiles(!_.name.startsWith(t".")).filter: file =>
+                file.name.endsWith(t".scala") || file.name.endsWith(t".java")
+              .flatMap: file =>
+                List(t"-C", dir.show, file.path.relativeTo(dir.path).show)
             
             sh"jar cf ${step.srcsPkg} $srcFiles".exec[ExitStatus]()
             
-            val docFiles: List[Text] = step.docs.to(List).flatMap:
-              dir =>
-                Out.println(t"Adding doc dir $dir")
-                dir.descendantFiles(!_.name.startsWith(t".")).flatMap:
-                  file =>
-                    val fs = file.path.filesystem
-                    file.path match
-                      case filePath: fs.DiskPath => dir match
-                        case dirPath: fs.DiskPath =>
-                          List(t"-C", dir.show, filePath.relativeTo(dirPath).show)
-                        case _ =>
-                          Nil
-                      case _ => throw Mistake("Should never match")
+            val docFiles: List[Text] = step.docs.to(List).flatMap: dir =>
+              Out.println(t"Adding doc dir $dir")
+              dir.descendantFiles(!_.name.startsWith(t".")).flatMap: file =>
+                List(t"-C", dir.show, file.path.relativeTo(dir).show)
             
             sh"jar cf ${step.docFile} $docFiles".exec[ExitStatus]()
 
-
-            List(step.docFile, step.pomFile, /*step.pkg,*/ step.srcsPkg).foreach:
-              file => sh"gpg -ab $file".exec[ExitStatus]()
+            List(step.docFile, step.pomFile, /*step.pkg,*/ step.srcsPkg).foreach: file =>
+              sh"gpg -ab $file".exec[ExitStatus]()
 
             Out.println(t"Publishing ${step.id}")
             val dir = t"${step.id.sub(t"/", t"-")}/${step.version}"
@@ -90,12 +71,10 @@ object Sonatype:
             val uploads = List(/*step.pkg, */step.pomFile, step.docFile, step.srcsPkg).map(_.file(Expect))
             val signedUploads = uploads ++ uploads.map(_.path.rename(_+t".asc").file(Expect))
 
-            val checksums =
-              signedUploads.map:
-                file =>
-                  val checksum = file.path.rename(_+t".sha1")
-                  sh"sha1sum $file".exec[Text]().take(40).bytes.writeTo(checksum.file(Create))
-                  checksum.file(Expect)
+            val checksums = signedUploads.map: file =>
+              val checksum = file.path.rename(_+t".sha1")
+              sh"sha1sum $file".exec[Text]().take(40).bytes.writeTo(checksum.file(Create))
+              checksum.file(Expect)
 
             sonatype.deploy(repoId, dir, signedUploads ++ checksums)
         
@@ -130,7 +109,7 @@ case class Sonatype(username: Text, password: Text, profileName: Text,
     Log.info(t"Got repository ID $output")
     RepoId(output)
   
-  def deploy(repoId: RepoId, dir: Text, files: List[File])(using Log): Unit =
+  def deploy(repoId: RepoId, dir: Text, files: List[File[Unix]])(using Log): Unit =
     val futures = for file <- files yield Future:
       val uri = uri"https://$domain/$servicePath/deployByRepositoryId/${repoId.id}/${profileName.sub(t".", t"/").nn}/$dir/${file.name}"
       Log.info(t"Uploading file $file to $uri")

@@ -5,24 +5,23 @@ import rudiments.*
 import turbulence.*
 import acyclicity.*
 import euphemism.*
-import jovian.*
+import joviality.*
+import serpentine.*
 import guillotine.*
 import kaleidoscope.*
 import escapade.*
 import gastronomy.*
 import iridescence.*, solarized.*
 import eucalyptus.*
-import slalom.*
 import imperial.*
 import profanity.*
 import xylophone.*
-import scintillate.*
+import telekinesis.*
 import anticipation.*
 import java.nio.BufferOverflowException
 
 import scala.collection.mutable as scm
 import scala.concurrent.*
-import scala.collection.convert.ImplicitConversions.given
 import scala.util.chaining.scalaUtilChainingOps
 
 erased given CanThrow[AppError] = compiletime.erasedValue
@@ -33,7 +32,7 @@ import encodings.Utf8
 given Env = envs.enclosing
 import rendering.ansi
 
-given LogFormat[SystemOut.type, AnsiText] = LogFormat.timed
+given LogFormat[SystemOut.type] = LogFormat.standardAnsi
 given Log()
 
 object palette:
@@ -43,7 +42,7 @@ object palette:
   val Hash = colors.MediumSeaGreen
   val Class = colors.MediumAquamarine
 
-case class Build(pwd: Directory, repos: Map[DiskPath, Text], publishing: Option[Publishing],
+case class Build(pwd: Directory[Unix], repos: Map[DiskPath[Unix], Text], publishing: Option[Publishing],
     index: Map[Text, Step] = Map(), targets: Map[Text, Target] = Map()):
   val steps: Set[Step] = index.values.to(Set)
   
@@ -54,22 +53,23 @@ case class Build(pwd: Directory, repos: Map[DiskPath, Text], publishing: Option[
     Dag(links.to(Seq)*)
 
   lazy val linearization: List[Step] throws BrokenLinkError = graph.sorted
-  def sourceDirs: List[Directory] = steps.flatMap(_.sources).to(List)
-  def resourceDirs: List[Directory] = steps.flatMap(_.resources).to(List)
+  def sourceDirs: List[Directory[Unix]] = steps.flatMap(_.sources).to(List)
+  def resourceDirs: List[Directory[Unix]] = steps.flatMap(_.resources).to(List)
 
-  def hashes: Map[Step, Text] throws BrokenLinkError | IoError | StreamCutError | ExcessDataError =
+  lazy val hashes: Map[Step, Text] throws BrokenLinkError | IoError | StreamCutError | ExcessDataError =
     def recur(todo: List[Step], hashes: Map[Step, Text])
              : Map[Step, Text] throws BrokenLinkError | StreamCutError | ExcessDataError =
       if todo.isEmpty then hashes
       else try
         val step = todo.head
-        val inputsHash: List[Bytes] = step.srcFiles.to(List).map(Irk.hashFile)
+        val inputsHash: List[Bytes] = step.srcFiles.to(List).sortBy(_.path.show).map(Irk.hashFile)
         val jarsHash: List[Bytes] = step.jars.to(List).map(_.digest[Crc32].bytes)
         val linksHash: List[Bytes] = step.links.to(List).map(index(_)).map(hashes(_).bytes)
         val newHash = (inputsHash ++ linksHash).digest[Crc32].encode[Base256]
         
         recur(todo.tail, hashes.updated(step, newHash))
       catch case err: Error[?] => throw AppError(t"An unknown error occurred", err)
+    
     val t0 = now()
     val result = recur(linearization, Map())
     val time = now() - t0
@@ -82,11 +82,11 @@ case class Build(pwd: Directory, repos: Map[DiskPath, Text], publishing: Option[
   def resolve(id: Text): Step throws BrokenLinkError = index.get(id).getOrElse:
     throw BrokenLinkError(id)
   
-  def bases: Set[Directory] = steps.map(_.pwd).to(Set)
+  def bases: Set[Directory[Unix]] = steps.map(_.pwd).to(Set)
 
   def cache: Map[Step, Text] =
     try
-      def encode(dir: Directory): DiskPath = Irk.hashesDir / dir.path.show.digest[Crc32].encode[Hex]
+      def encode(dir: Directory[Unix]): DiskPath[Unix] = Irk.hashesDir / dir.path.show.digest[Crc32].encode[Hex]
       
       val caches = bases.map(encode).filter(_.exists()).map: cacheFile =>
         Json.parse(cacheFile.file().read[Text](64.kb)).as[Cache].hashes
@@ -157,22 +157,22 @@ enum Format:
   case Jar, FatJar, App, DaemonApp
 
 object Artifact:
-  def build(artifact: Artifact, base: File, name: Text, version: Text, classpath: List[DiskPath],
-                resources: List[Directory]): Unit throws IoError =
+  def build(artifact: Artifact, base: File[Unix], name: Text, version: Text, classpath: List[DiskPath[Unix]],
+                resources: List[Directory[Unix]]): Unit throws IoError =
     import stdouts.drain
     
-    val zipStreams = (base.path :: classpath).to(LazyList).flatMap: path =>
+    val zipStreams = (base.path :: classpath.sortBy(_.show)).to(LazyList).flatMap: path =>
       if path.isFile then Zip.read(path.file(Expect)).filter(_.path.parts.last != t"MANIFEST.MF")
       else if path.isDirectory then
         path.descendantFiles().map: file =>
           val in = java.io.BufferedInputStream(java.io.FileInputStream(file.javaFile))
-          Zip.Entry(file.path.relativeTo(path).get, in)
+          Zip.Entry(file.path.relativeTo(path), in)
       else LazyList()
     
     val resourceStreams = resources.sortBy(_.path.show).flatMap: dir =>
       dir.path.descendantFiles().map: file =>
         val in = java.io.BufferedInputStream(java.io.FileInputStream(file.javaFile))
-        Zip.Entry(file.path.relativeTo(dir.path).get, in)
+        Zip.Entry(file.path.relativeTo(dir.path), in)
     .to(LazyList)
     
     val basicMf = ListMap(
@@ -198,10 +198,10 @@ object Artifact:
     
     artifact.path.file(Expect).setPermissions(executable = true)
 
-case class Step(path: File, publishing: Option[Publishing], name: Text,
-                    id: Text, links: Set[Text], resources: Set[Directory],
-                    sources: Set[Directory], jars: Set[Text], dependencies: Set[Dependency],
-                    version: Text, docs: List[DiskPath], artifact: Option[Artifact],
+case class Step(path: File[Unix], publishing: Option[Publishing], name: Text,
+                    id: Text, links: Set[Text], resources: Set[Directory[Unix]],
+                    sources: Set[Directory[Unix]], jars: Set[Text], dependencies: Set[Dependency],
+                    version: Text, docs: List[DiskPath[Unix]], artifact: Option[Artifact],
                     exec: Option[Exec]):
   
   def publish(build: Build): Publishing = publishing.orElse(build.publishing).getOrElse:
@@ -210,29 +210,29 @@ case class Step(path: File, publishing: Option[Publishing], name: Text,
   def projectId: Text = id.cut(t"/").head
   def moduleId: Text = id.cut(t"/").last
   def dashed: Text = t"$projectId-$moduleId"
-  def pwd: Directory = unsafely(path.parent)
+  def pwd: Directory[Unix] = unsafely(path.parent)
   def group(build: Build): Text = publish(build).group
-  def docFile: DiskPath = output(t"-javadoc.jar")
-  def srcsPkg: DiskPath = output(t"-sources.jar")
-  def pomFile: DiskPath = output(t".pom")
+  def docFile: DiskPath[Unix] = output(t"-javadoc.jar")
+  def srcsPkg: DiskPath[Unix] = output(t"-sources.jar")
+  def pomFile: DiskPath[Unix] = output(t".pom")
   
-  private def output(extension: Text): DiskPath = unsafely(pwd / t"bin" / t"$dashed-$version$extension")
-  private def compilable(f: File): Boolean = f.name.endsWith(t".scala") || f.name.endsWith(t".java")
+  private def output(extension: Text): DiskPath[Unix] = unsafely(pwd / t"bin" / t"$dashed-$version$extension")
+  private def compilable(f: File[Unix]): Boolean = f.name.endsWith(t".scala") || f.name.endsWith(t".java")
 
-  def srcFiles: Set[File] throws IoError =
+  def srcFiles: Set[File[Unix]] throws IoError =
     sources.flatMap(_.path.descendantFiles(!_.name.startsWith(t"."))).filter(compilable)
 
-  def classpath(build: Build)(using Stdout): Set[DiskPath] throws IoError | BrokenLinkError =
+  def classpath(build: Build)(using Stdout): Set[DiskPath[Unix]] throws IoError | BrokenLinkError =
     build.graph.reachable(this).flatMap: step =>
       step.jars.map(Irk.fetchFile(_, None).await()).map(_.path) + step.classesDir.path
   
-  def allResources(build: Build)(using Stdout): Set[Directory] throws IoError | BrokenLinkError =
+  def allResources(build: Build)(using Stdout): Set[Directory[Unix]] throws IoError | BrokenLinkError =
     build.graph.reachable(this).flatMap(_.resources)
 
-  def compileClasspath(build: Build)(using Stdout): Set[DiskPath] throws IoError | BrokenLinkError =
+  def compileClasspath(build: Build)(using Stdout): Set[DiskPath[Unix]] throws IoError | BrokenLinkError =
     classpath(build) - classesDir.path
 
-  def classesDir: Directory = synchronized:
+  def classesDir: Directory[Unix] = synchronized:
     try unsafely(Irk.cacheDir / t"cls" / projectId / moduleId).directory(Ensure)
     catch case err: IoError => throw AppError(t"Could not write to the user's home directory", err)
 
@@ -242,7 +242,7 @@ case class Step(path: File, publishing: Option[Publishing], name: Text,
     try links.map(build.resolve(_)).map(_.pomDependency(build)).to(List) ++ dependencies
     catch case err: BrokenLinkError => throw AppError(t"Couldn't resolve dependencies", err)
 
-  def compile(hashes: Map[Step, Text], oldHashes: Map[Step, Text], build: Build, scriptFile: File,
+  def compile(hashes: Map[Step, Text], oldHashes: Map[Step, Text], build: Build, scriptFile: File[Unix],
                   cancel: Promise[Unit])
              (using Stdout)
              : Result =
@@ -250,8 +250,9 @@ case class Step(path: File, publishing: Option[Publishing], name: Text,
       val t0 = now()
       
       classesDir.children.foreach:
-        case file: Unix.File     => file.delete()
-        case dir: Unix.Directory => dir.delete()
+        case file: File[Unix]       => file.delete()
+        case dir: Directory[Unix]   => dir.delete()
+        case symlink: Symlink[Unix] => symlink.delete()
       
       val cp = compileClasspath(build)
       val result = Compiler.compile(id, pwd, srcFiles.to(List), cp, classesDir, scriptFile, cancel)
@@ -286,7 +287,7 @@ case class BuildConfig(imports: Option[List[Text]], publishing: Option[Publishin
                            modules: List[Module], repos: Option[List[Repo]],
                            targets: Option[List[Target]]):
   
-  def gen(current: DiskPath, build: Build, seen: Set[Text], files: DiskPath*)(using Stdout)
+  def gen(current: DiskPath[Unix], build: Build, seen: Set[Text], files: DiskPath[Unix]*)(using Stdout)
          : Build throws IoError | AppError | BuildfileError =
     
     repos.getOrElse(Nil).foreach:
@@ -302,7 +303,7 @@ case class BuildConfig(imports: Option[List[Text]], publishing: Option[Publishin
       
       case path :: tail =>
         val steps: Map[Text, Step] = modules.map: module =>
-          def relativize(text: Text): DiskPath = unsafely(path.file(Expect).parent.path + Relative.parse(text))
+          def relativize(text: Text): DiskPath[Unix] = unsafely(path.file(Expect).parent.path + Relative.parse(text))
           val links = module.links.getOrElse(Set())
           val resources = module.resources.getOrElse(Set()).map(relativize).map(_.directory(Expect))
           val sources = module.sources.map(relativize).map(_.directory(Expect))
@@ -331,7 +332,7 @@ case class BuildConfig(imports: Option[List[Text]], publishing: Option[Publishin
 case class Hash(id: Text, digest: Text, bin: Text)
 case class Cache(hashes: Set[Hash])
 case class Versioning(versions: List[Version])
-case class Artifact(path: DiskPath, main: Option[Text], format: Format)
+case class Artifact(path: DiskPath[Unix], main: Option[Text], format: Format)
 
 case class Version(digest: Text, major: Int, minor: Int):
   def version: Text = t"$major.$minor"
@@ -353,10 +354,10 @@ object Zip:
   sealed trait ZipEntry:
     def path: Relative
 
-  case class ZipPath(path: Relative, diskPath: Unix.DiskPath) extends ZipEntry
+  case class ZipPath(path: Relative, diskPath: DiskPath[Unix]) extends ZipEntry
   case class Entry(path: Relative, in: InputStream) extends ZipEntry
 
-  def read(file: jovian.File): LazyList[Entry] =
+  def read(file: joviality.File[Unix]): LazyList[Entry] =
     val zipFile = ZipFile(file.javaFile).nn
     
     zipFile.entries.nn.asScala.to(LazyList).filter(!_.getName.nn.endsWith("/")).map: entry =>
@@ -365,13 +366,17 @@ object Zip:
   // 00:00:00, 1 January 2000
   val epoch = attribute.FileTime.fromMillis(946684800000L)
 
-  def write(base: jovian.File, path: jovian.DiskPath, inputs: LazyList[ZipEntry], prefix: Maybe[Bytes] = Unset)
+  def write(base: joviality.File[Unix], path: joviality.DiskPath[Unix], inputs: LazyList[ZipEntry], prefix: Maybe[Bytes] = Unset)
            (using Stdout)
            : Unit throws StreamCutError | IoError =
     val tmpPath = Irk.tmpDir.tmpPath()
     base.copyTo(tmpPath)
     val uri: java.net.URI = java.net.URI.create(t"jar:file:${tmpPath.show}".s).nn
-    val fs = FileSystems.newFileSystem(uri, Map("zipinfo-time" -> "false").asJava).nn
+    
+    val fs =
+      try FileSystems.newFileSystem(uri, Map("zipinfo-time" -> "false").asJava).nn
+      catch case exception: java.nio.file.ProviderNotFoundException =>
+        throw AppError(t"Could not create JAR filesystem: ${uri.toString}")
 
     val dirs = unsafely(inputs.map(_.path).map(_.parent)).to(Set).flatMap: dir =>
       (0 to dir.parts.length).map(dir.parts.take(_)).map(Relative(0, _)).to(Set)
@@ -414,11 +419,11 @@ object Zip:
 object Cache:
   import scala.collection.mutable.HashMap
   private val latest: HashMap[Text, Text] = HashMap()
-  private val locks: HashMap[DiskPath, Lock] = HashMap()
+  private val locks: HashMap[DiskPath[Unix], Lock] = HashMap()
   
   private class Lock()
 
-  private def synchronously(path: DiskPath)(block: Directory => Unit): Directory throws IoError =
+  private def synchronously(path: DiskPath[Unix])(block: Directory[Unix] => Unit): Directory[Unix] throws IoError =
     Cache.synchronized:
       locks.get(path).getOrElse:
         val lock = Lock()
@@ -430,8 +435,8 @@ object Cache:
         block(dir)
         dir
 
-  def apply[T: Hashable](key: Text, input: T)(make: (T, Directory) => Unit)
-           : Directory throws IoError =
+  def apply[T: Hashable](key: Text, input: T)(make: (T, Directory[Unix]) => Unit)
+           : Directory[Unix] throws IoError =
     val hash = input.digest[Crc32].encode[Hex].lower
     
     synchronously(unsafely(Irk.cacheDir / hash)): workDir =>
@@ -540,7 +545,7 @@ case class Progress(active: TreeMap[Verb, (Text, Long)],
         case Verb.Exec(cls) => t"Output from ${cls.plain}"
         case _              => t"Output"
 
-      if buffers.contains(task) && !buffers(task).isEmpty then List(
+      if buffers.contains(task) && !buffers(task).isEmpty then List(ansi"", ansi"",
         ansi"${Bg(colors.SaddleBrown)}(  )${Bg(colors.SandyBrown)}(${colors.SaddleBrown}()${colors.Black}( $description ))${Bg(colors.Black)}(${colors.SandyBrown}())${escapes.Reset}",
         AnsiText(buffers(task).toString.show)
       ) else Nil

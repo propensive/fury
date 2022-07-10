@@ -49,6 +49,14 @@ RUN cp -r /one/mod/gesticulate/res/gesticulate /irk/bin/
 RUN cd /irk && scala/bin/scalac \
   -classpath bin \
   -Xmax-inlines 64 \
+  -deprecation \
+  -feature \
+  -Wunused:all \
+  -new-syntax \
+  -Yrequire-targetName \
+  -Ysafe-init \
+  -Yexplicit-nulls \
+  -Ycheck-all-patmat \
   -language:experimental.fewerBraces \
   -language:experimental.saferExceptions \
   -language:experimental.erasedDefinitions \
@@ -56,7 +64,7 @@ RUN cd /irk && scala/bin/scalac \
   /one/mod/acyclicity/src/core/*.scala \
   /one/mod/adversaria/src/core/*.scala \
   /one/mod/caesura/src/core/*.scala \
-  /one/mod/cataract/src/core/*.scala \
+  /one/mod/cataclysm/src/core/*.scala \
   /one/mod/anticipation/src/css/*.scala \
   /one/mod/anticipation/src/file/*.scala \
   /one/mod/anticipation/src/html/*.scala \
@@ -77,7 +85,7 @@ RUN cd /irk && scala/bin/scalac \
   /one/mod/harlequin/src/core/*.scala \
   /one/mod/imperial/src/core/*.scala \
   /one/mod/iridescence/src/core/*.scala \
-  /one/mod/jovian/src/core/*.scala \
+  /one/mod/joviality/src/core/*.scala \
   /one/mod/kaleidoscope/src/core/*.scala \
   /one/mod/probably/src/cli/*.scala \
   /one/mod/probably/src/core/*.scala \
@@ -85,39 +93,32 @@ RUN cd /irk && scala/bin/scalac \
   /one/mod/profanity/src/core/*.scala \
   /one/mod/profanity/src/java/**/*.java \
   /one/mod/rudiments/src/core/*.scala \
-  /one/mod/slalom/src/core/*.scala \
+  /one/mod/serpentine/src/core/*.scala \
+  /one/mod/surveillance/src/core/*.scala \
+  /one/mod/telekinesis/src/client/*.scala \
+  /one/mod/telekinesis/src/uri/*.scala \
   /one/mod/turbulence/src/core/*.scala \
   /one/mod/wisteria/src/core/*.scala \
-  /one/mod/xylophone/src/core/*.scala
-
-RUN cd /irk && scala/bin/scalac \
-  -classpath bin \
-  -Xmax-inlines 64 \
-  -language:experimental.fewerBraces \
-  -language:experimental.saferExceptions \
-  -language:experimental.erasedDefinitions \
-  -d bin \
-  /one/mod/honeycomb/src/core/*.scala
-
-RUN cd /irk && scala/bin/scalac \
-  -classpath bin \
-  -Xmax-inlines 64 \
-  -language:experimental.fewerBraces \
-  -language:experimental.saferExceptions \
-  -language:experimental.erasedDefinitions \
-  -d bin \
+  /one/mod/xylophone/src/core/*.scala \
+  /one/mod/honeycomb/src/core/*.scala \
   /one/mod/punctuation/src/ansi/*.scala \
   /one/mod/punctuation/src/core/*.scala \
   /one/mod/punctuation/src/html/*.scala \
-  /one/mod/scintillate/src/core/*.scala \
   /one/mod/scintillate/src/server/*.scala \
   /one/mod/scintillate/src/servlet/*.scala \
-  /one/mod/scintillate/src/uri/*.scala \
   /one/mod/tarantula/src/core/*.scala
 
 RUN cd /irk && scala/bin/scalac \
   -classpath bin \
   -Xmax-inlines 64 \
+  -deprecation \
+  -feature \
+  -Wunused:all \
+  -new-syntax \
+  -Yrequire-targetName \
+  -Ysafe-init \
+  -Yexplicit-nulls \
+  -Ycheck-all-patmat \
   -language:experimental.fewerBraces \
   -language:experimental.saferExceptions \
   -language:experimental.erasedDefinitions \
@@ -154,9 +155,9 @@ RUN jar cmf /irk/manifest /irk/irk.jar \
   -C /irk/bin dotty \
   -C /irk/bin acyclicity \
   -C /irk/bin adversaria \
-  -C /irk/bin caesura \
-  -C /irk/bin cataract \
   -C /irk/bin anticipation \
+  -C /irk/bin caesura \
+  -C /irk/bin cataclysm \
   -C /irk/bin com \
   -C /irk/bin contextual \
   -C /irk/bin cosmopolite \
@@ -172,9 +173,10 @@ RUN jar cmf /irk/manifest /irk/irk.jar \
   -C /irk/bin harlequin \
   -C /irk/bin honeycomb \
   -C /irk/bin iridescence \
+  -C /irk/bin irk \
   -C /irk/bin imperial \
   -C /irk/bin javax \
-  -C /irk/bin jovian \
+  -C /irk/bin joviality \
   -C /irk/bin kaleidoscope \
   -C /irk/bin org \
   -C /irk/bin probably \
@@ -182,10 +184,11 @@ RUN jar cmf /irk/manifest /irk/irk.jar \
   -C /irk/bin punctuation \
   -C /irk/bin rudiments \
   -C /irk/bin scintillate \
-  -C /irk/bin slalom \
+  -C /irk/bin serpentine \
+  -C /irk/bin surveillance \
   -C /irk/bin tarantula \
+  -C /irk/bin telekinesis \
   -C /irk/bin turbulence \
-  -C /irk/bin irk \
   -C /irk/bin wisteria \
   -C /irk/bin xylophone
 

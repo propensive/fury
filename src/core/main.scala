@@ -5,22 +5,23 @@ import rudiments.*
 import turbulence.*
 import acyclicity.*
 import euphemism.*
-import jovian.*
+import joviality.*, DiskPath.provider, Directory.provider, File.provider, filesystems.unix
 import guillotine.*
 import kaleidoscope.*
 import escapade.*
 import gastronomy.*
 import harlequin.*
 import iridescence.*, solarized.*
-import slalom.*
+import serpentine.*
 import exoskeleton.*
 import imperial.*
 import tarantula.*
 import profanity.*
 import xylophone.*
-import scintillate.*
+import telekinesis.*
 import anticipation.*
 import escritoire.*
+import surveillance.*
 
 import timekeeping.long
 import encodings.Utf8
@@ -28,10 +29,11 @@ import rendering.ansi
 
 import scala.collection.mutable as scm
 import scala.concurrent.*
-import scala.collection.convert.ImplicitConversions.given
 import scala.util.chaining.scalaUtilChainingOps
 
 import java.nio.BufferOverflowException
+
+given Environment = environments.system
 
 object Irk extends Daemon():
   def version: Text =
@@ -45,33 +47,23 @@ object Irk extends Daemon():
     props.load(getClass.nn.getClassLoader.nn.getResourceAsStream("compiler.properties").nn)
     props.get("version.number").toString.show
  
-  def homeDir: Unix.Directory = Home()
+  def homeDir: Directory[Unix] = unsafely(Home().directory(Expect))
       
-  def cacheDir: Unix.Directory =
-    try
-      (Home.Cache[jovian.DiskPath]() / t"irk").directory(Ensure) match
-        case dir: Unix.Directory => dir
-    catch case err: (IoError | RootParentError) =>
-      throw AppError(t"The user's cache directory could not be created", err)
+  def cacheDir: Directory[Unix] =
+    try (Home.Cache() / p"irk").directory(Ensure)
+    catch case err: IoError => throw AppError(t"The user's cache directory could not be created", err)
 
-  def libDir: Unix.Directory =
-    try
-      unsafely(cacheDir / t"lib").directory(Ensure) match
-        case dir: Unix.Directory => dir
-    catch case err: IoError =>
-      throw AppError(t"The user's cache directory could not be created", err)
+  def libDir: Directory[Unix] =
+    try (cacheDir / p"lib").directory(Ensure)
+    catch case err: IoError => throw AppError(t"The user's cache directory could not be created", err)
 
-  def tmpDir: Unix.Directory =
-    try unsafely(cacheDir / t"tmp").directory(Ensure) match
-      case dir: Unix.Directory => dir
-    catch case err: IoError =>
-      throw AppError(t"The user's temporary directory could not be created", err)
+  def tmpDir: Directory[Unix] =
+    try (cacheDir / p"tmp").directory(Ensure)
+    catch case err: IoError => throw AppError(t"The user's temporary directory could not be created", err)
   
-  def hashesDir: Unix.Directory =
-    try unsafely(cacheDir / t"hashes").directory(Ensure) match
-      case dir: Unix.Directory => dir
-    catch case err: IoError =>
-      throw AppError(t"The user's cache directory could not be created", err)
+  def hashesDir: Directory[Unix] =
+    try (cacheDir / p"hashes").directory(Ensure)
+    catch case err: IoError => throw AppError(t"The user's cache directory could not be created", err)
 
   private val prefixes = Set(t"/scala", t"/dotty", t"/compiler.properties", t"/org/scalajs", t"/com",
       t"/incrementalcompiler.version.properties", t"/library.properties", t"/NOTICE")
@@ -80,7 +72,7 @@ object Irk extends Daemon():
     import unsafeExceptions.canThrowAny
     unsafely(Classpath() / t"exoskeleton" / t"invoke").resource.read[Bytes](100.kb).size
 
-  def irkJar(scriptFile: File)(using Stdout): File throws StreamCutError = synchronized:
+  def irkJar(scriptFile: File[Unix])(using Stdout): File[Unix] throws StreamCutError = synchronized:
     import java.nio.file.*
     val jarPath = unsafely(libDir.path / t"base-$version.jar")
 
@@ -107,7 +99,7 @@ object Irk extends Daemon():
     catch case err: IoError =>
       throw AppError(t"The Irk binary could not be copied to the user's cache directory")
 
-  def fetchFile(ref: Text, funnel: Option[Funnel[Progress.Update]])(using Stdout): Future[File] =
+  def fetchFile(ref: Text, funnel: Option[Funnel[Progress.Update]])(using Stdout): Future[File[Unix]] =
     val libDir = unsafely(cacheDir / t"lib")
     if ref.startsWith(t"https:") then
       val hash = ref.digest[Crc32].encode[Base256]
@@ -184,11 +176,11 @@ object Irk extends Daemon():
   
   private lazy val fileHashes: FileCache[Bytes] = new FileCache()
 
-  private def initBuild(pwd: Directory)(using Stdout): Build throws IoError | BuildfileError =
+  private def initBuild(pwd: Directory[Unix])(using Stdout): Build throws IoError | BuildfileError =
     val path = unsafely(pwd / t"build.irk")
     readBuilds(Build(pwd, Map(), None, Map(), Map()), Set(), path)
   
-  def hashFile(file: File): Bytes throws IoError | AppError =
+  def hashFile(file: File[Unix]): Bytes throws IoError | AppError =
     try fileHashes(file.path.show, file.modified):
       file.read[Bytes](1.mb).digest[Crc32].bytes
     catch
@@ -196,11 +188,11 @@ object Irk extends Daemon():
       case err: ExcessDataError => throw AppError(t"The file was too big to hash", err)
       case err: Error[?]        => throw AppError(t"An unexpected error occurred", err)
   
-  def cloneRepo(path: DiskPath, url: Text): Unit =
+  def cloneRepo(path: DiskPath[Unix], url: Text): Unit =
     try sh"git clone -q $url ${path.fullname}".exec[Unit]()
     catch case err: ExecError => throw AppError(t"Could not run `git clone` for repository $url")
 
-  def readBuilds(build: Build, seen: Set[Text], files: DiskPath*)(using Stdout)
+  def readBuilds(build: Build, seen: Set[Text], files: DiskPath[Unix]*)(using Stdout)
                 : Build throws BuildfileError | IoError =
     try
       files.to(List) match
@@ -211,7 +203,7 @@ object Irk extends Daemon():
           def digest: Text = hashFile(path.file()).encode[Base64]
           if path.exists() && seen.contains(digest) then readBuilds(build, seen, tail*)
           else if path.exists() then
-            Out.println(ansi"Reading build file ${palette.File}(${path.relativeTo(build.pwd.path).get.show})")
+            Out.println(ansi"Reading build file ${palette.File}(${path.relativeTo(build.pwd.path).show})")
             val buildConfig = locally:
               import unsafeExceptions.canThrowAny
               Json.parse(path.file().read[Text](1.mb)).as[BuildConfig]
@@ -238,12 +230,12 @@ object Irk extends Daemon():
       case err: AppError =>
         throw err
 
-  def readImports(seen: Map[Text, File], files: File*)(using Stdout): Set[File] =
+  def readImports(seen: Map[Text, File[Unix]], files: File[Unix]*)(using Stdout): Set[File[Unix]] =
     case class Imports(repos: Option[List[Repo]], imports: Option[List[Text]]):
       def repoList: List[Repo] = repos.getOrElse(Nil)
-      def gen(seen: Map[Text, File], files: File*): Set[File] = files.to(List) match
+      def gen(seen: Map[Text, File[Unix]], files: File[Unix]*): Set[File[Unix]] = files.to(List) match
         case file :: tail =>
-          val importFiles: List[File] = imports.getOrElse(Nil).flatMap: path =>
+          val importFiles: List[File[Unix]] = imports.getOrElse(Nil).flatMap: path =>
             val ref = unsafely(file.parent.path + Relative.parse(path))
             try
               if ref.exists() then
@@ -312,7 +304,7 @@ object Irk extends Daemon():
     Out.println(t"  -w, --watch    Wait for changes and re-run build.")
     ExitStatus.Ok
 
-  def init(pwd: Directory, name: Text)(using Stdout): ExitStatus =
+  def init(pwd: Directory[Unix], name: Text)(using Stdout): ExitStatus =
     val buildPath = unsafely(pwd / t"build.irk")
     if buildPath.exists() then
       Out.println(t"Build file build.irk already exists")
@@ -324,7 +316,7 @@ object Irk extends Daemon():
       val sourceDir = (src / t"core").directory(Ensure)
       
       val module = Module(name, t"${pwd.path.name}/core", None, None,
-          Set(sourceDir.path.relativeTo(pwd.path).get.show), None, None, None, None, None, None)
+          Set(sourceDir.path.relativeTo(pwd.path).show), None, None, None, None, None, None)
 
       val config = BuildConfig(None, None, List(module), None, None)
       try
@@ -352,11 +344,11 @@ object Irk extends Daemon():
       try
         result.issues.groupBy(_.baseDir).to(List).map: (baseDir, issues) =>
           issues.groupBy(_.path).to(List).map: (path, issues) =>
-            unsafely(baseDir + path).file(Expect) -> issues
+            unsafely(baseDir + path).file(Ensure) -> issues
           .sortBy(_(0).modified)
         .sortBy(_.last(0).modified).flatten
         
-      catch case err: IoError => throw AppError(t"a file containing an error was deleted")
+      catch case err: IoError => throw AppError(ansi"a file containing an error was deleted: ${err.toString.show}", err)//: ${err.ansi}", err)
     
     sorted.foreach:
       case (file, issues) =>
@@ -370,10 +362,12 @@ object Irk extends Daemon():
               
               append(ansi"${colors.Black}(${Bg(colors.Purple)}( $module ))")
               val pos = t"$path:${startLine + 1}:$from"
+              
               val shade = level match
                 case Level.Error => colors.Crimson
                 case Level.Warn  => colors.Orange
                 case Level.Info  => colors.SteelBlue
+              
               append(ansi"${colors.Purple}(${Bg(shade)}( ${colors.Black}($pos) ))")
               appendln(ansi"$bg$shade()$bg")
               
@@ -452,7 +446,7 @@ object Irk extends Daemon():
     
     buf.text
 
-  case class Change(changeType: ChangeType, path: DiskPath)
+  case class Change(changeType: ChangeType, path: DiskPath[Unix])
   enum ChangeType:
     case Build, Source, Resource
 
@@ -464,8 +458,8 @@ object Irk extends Daemon():
       case Source    => t"source"
       case Resource  => t"resource"
 
-  def build(target: Option[Text], publishSonatype: Boolean, watch: Boolean = false, pwd: Directory,
-                env: Map[Text, Text], scriptFile: File, exec: Boolean)
+  def build(target: Option[Text], publishSonatype: Boolean, watch: Boolean = false, pwd: Directory[Unix],
+                env: Map[Text, Text], scriptFile: File[Unix], exec: Boolean)
            (using Stdout, InputSource)
            : ExitStatus throws AppError = unsafely:
     Tty.capture:
@@ -488,12 +482,12 @@ object Irk extends Daemon():
         case _ =>
           true
 
-      lazy val watcher: Unix.Watcher = try  
-        val watcher = Unix.watch(Nil)
+      lazy val watcher: Watcher[Directory[Unix]] = try  
+        val watcher = List[Directory[Unix]]().watch()
         
         if watch then
           val dirs = readImports(Map(), rootBuild.file(Expect)).map(_.parent).to(Set)
-          dirs.sift[Unix.Directory].foreach(watcher.add(_))
+          dirs.sift[Directory[Unix]].foreach(watcher.add(_))
         
         watcher
       catch
@@ -502,9 +496,9 @@ object Irk extends Daemon():
 
       val suffixes = Set(t".scala", t".java", t".irk")
       
-      def updateWatches(watcher: => Unix.Watcher, build: Build): Build = try
+      def updateWatches(watcher: => Watcher[Directory[Unix]], build: Build): Build = try
         val buildDirs = readImports(Map(), rootBuild.file(Expect)).map(_.parent).to(Set)
-        val dirs = (buildDirs ++ build.sourceDirs ++ build.resourceDirs).sift[Unix.Directory]
+        val dirs = (buildDirs ++ build.sourceDirs ++ build.resourceDirs).sift[Directory[Unix]]
         
         (dirs -- watcher.directories).foreach(watcher.add(_))
         (watcher.directories -- dirs).foreach(watcher.remove(_))
@@ -548,18 +542,18 @@ object Irk extends Daemon():
           case Event.Changeset(fileChanges) =>
             tap.pause()
             
-            def ephemeral(events: List[Unix.FileEvent]): Boolean = events match
-              case Unix.FileEvent.NewFile(_, _) +: _ :+ Unix.FileEvent.Delete(_, _) => true
-              case _                                                                => false
+            def ephemeral(events: List[WatchEvent]): Boolean = events match
+              case WatchEvent.NewFile(_, _) +: _ :+ WatchEvent.Delete(_, _) => true
+              case _                                                        => false
             
             val changes: List[Change] =
               fileChanges.groupBy(_.path).collect:
                 case (path, es) if !ephemeral(es) => es.last
               .foldLeft[List[Change]](Nil): (changes, event) =>
                 Option(event).collect:
-                  case Unix.FileEvent.Delete(_, _)  => t"deleted"
-                  case Unix.FileEvent.Modify(_, _)  => t"modified"
-                  case Unix.FileEvent.NewFile(_, _) => t"created"
+                  case WatchEvent.Delete(_, _)  => t"deleted"
+                  case WatchEvent.Modify(_, _)  => t"modified"
+                  case WatchEvent.NewFile(_, _) => t"created"
                 .foreach: change =>
                   val file = ansi"${palette.File}(${event.path.relativeTo(pwd.path)})"
                   Out.println(ansi"The file $file was $change")
@@ -568,7 +562,7 @@ object Irk extends Daemon():
                 then Change(ChangeType.Build, event.path) :: changes
                 else if event.path.name.endsWith(t".scala")
                 then Change(ChangeType.Source, event.path) :: changes
-                else if oldBuild.resourceDirs.exists(_.path.ancestorOf(event.path))
+                else if oldBuild.resourceDirs.exists(_.path.precedes(event.path))
                 then Change(ChangeType.Resource, event.path) :: changes
                 else changes
             
@@ -658,13 +652,14 @@ object Irk extends Daemon():
                             override def write(byte: Int): Unit = write(Array[Byte](byte.toByte))
                             
                             override def write(bytes: Array[Byte], off: Int, len: Int): Unit =
-                              funnel.put(Progress.Update.Stdout(verb, bytes.immutable(using Unsafe).slice(off, off + len).immutable(using Unsafe)))
+                              val content = bytes.immutable(using Unsafe).slice(off, off + len).immutable(using Unsafe)
+                              funnel.put(Progress.Update.Stdout(verb, content))
                           )
 
-                          //System.setOut(out)
+                          System.setOut(out)
                           val classpath = (step.classpath(build) ++ resources).to(List)
                           val subprocess = Run.main(classpath)(start, stop)
-                          //System.setOut(oldOut)
+                          System.setOut(oldOut)
                           subprocess
                       
                       val subprocess = mainTask().future.await()
@@ -740,18 +735,15 @@ object Irk extends Daemon():
       else loop(true, Event.Changeset(Nil) #:: fileChanges, build, false, Nil)
 
 case class ExecError(err: Exception)
-extends Error((t"an exception was thrown while executing the task: ", err.getMessage.nn.show)):
-  def message: Text = t"An exception was thrown while executing the task"
+extends Error((t"an exception was thrown while executing the task: ", err.getMessage.nn.show))
 
 case class TrapExitError(status: ExitStatus)
-extends Error((t"a call to System.exit was trapped: ", status)):
-  def message: Text = t"A call to System.exit was trapped: ${status}"
-
+extends Error((t"a call to System.exit was trapped: ", status))
 
 object Run:
   import java.net.*
 
-  def main(classpath: List[DiskPath])(start: Text, stop: Option[Text])(using Stdout): Subprocess =
+  def main(classpath: List[DiskPath[Unix]])(start: Text, stop: Option[Text])(using Stdout): Subprocess =
     val urls = classpath.map { path => URL(t"file://${path.fullname}/".s) }
     val loader = URLClassLoader(urls.to(Array)).nn
 
@@ -769,6 +761,11 @@ object Run:
         Subprocess(None)
       catch
         case err: TrapExitError => Subprocess(Some(err.status))
+        case err: java.lang.reflect.InvocationTargetException => err.getCause match
+          case null               => Subprocess(Some(ExitStatus(2)))
+          case err: TrapExitError => Subprocess(Some(err.status))
+          case err: Exception     => Subprocess(Some(ExitStatus(1)))
+          case err: Throwable     => Subprocess(Some(ExitStatus(2)))
         case err: Exception     => Subprocess(Some(ExitStatus(1)))
         case err: Throwable     => Subprocess(Some(ExitStatus(2)))
     
@@ -790,7 +787,7 @@ object TrapExit extends SecurityManager:
   override def checkExit(status: Int): Unit =
     erased given CanThrow[TrapExitError] = compiletime.erasedValue
     super.checkExit(status)
-    if !disabled && status != 0 then throw TrapExitError(ExitStatus(status))
+    if !disabled then throw TrapExitError(ExitStatus(status))
   
   def terminate(status: ExitStatus): Unit =
     disabled = true

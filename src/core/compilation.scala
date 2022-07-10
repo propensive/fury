@@ -2,9 +2,9 @@ package irk
 
 import rudiments.*
 import gossamer.*
-import jovian.*
+import joviality.*
 import escapade.*
-import slalom.*
+import serpentine.*
 
 import rendering.ansi
 
@@ -21,7 +21,7 @@ object Compiler:
 
   private var Scala3 = new dotty.tools.dotc.Compiler()
 
-  def compile(id: Text, pwd: Directory, files: List[File], inputs: Set[DiskPath], out: Directory, script: File,
+  def compile(id: Text, pwd: Directory[Unix], files: List[File[Unix]], inputs: Set[DiskPath[Unix]], out: Directory[Unix], script: File[Unix],
                   cancel: Promise[Unit])
              (using Stdout)
              : Result =
@@ -55,7 +55,7 @@ object Compiler:
               "-Xmax-inlines", "64", "-Ycheck-all-patmat", "-classpath", classpathText.s, ""),
               ctx).map(_(1)).get
         
-        def run(files: List[File], classpath: Text): List[Diagnostic] =
+        def run(files: List[File[Unix]], classpath: Text): List[Diagnostic] =
           val ctx = currentCtx.fresh
           
           val features = List(t"fewerBraces", t"saferExceptions", t"erasedDefinitions").map:
@@ -93,10 +93,8 @@ object Compiler:
             case _ => Level.Info
           
           val path =
-            try
-              Unix.parse(file.show).relativeTo(pwd.path).getOrElse(Relative.Self)
-            catch case err: InvalidPathError =>
-              Relative.parse(file.show)
+            try Unix.parse(file.show).relativeTo(pwd.path)
+            catch case err: InvalidPathError => Relative.parse(file.show)
 
           prev + Result.Complete(List(Issue(level, id, pwd.path, path, line, pos.startColumn, pos.endColumn,
               pos.endLine, diagnostic.message.show, content.immutable(using Unsafe))))

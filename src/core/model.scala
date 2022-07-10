@@ -2,22 +2,23 @@ package irk
 
 import rudiments.*
 import gossamer.*
-import jovian.*
-import slalom.*
+import joviality.*
+import serpentine.*
 import xylophone.*
 import euphemism.*
 import escapade.*
+import surveillance.*
 
 case class Target(name: Text, module: Text, run: Text, parallel: Boolean, trigger: Boolean)
 
 case class Publishing(username: Text, group: Text, url: Text, organization: Organization,
                           developers: List[Developer])
 
-case class Issue(level: Level, module: Text, baseDir: DiskPath, path: Relative, startLine: Int, from: Int, to: Int,
+case class Issue(level: Level, module: Text, baseDir: DiskPath[Unix], path: Relative, startLine: Int, from: Int, to: Int,
                      endLine: Int, message: Text, content: IArray[Char])
 
 case class Repo(base: Text, url: Text):
-  def basePath(dir: DiskPath): DiskPath = unsafely(dir + Relative.parse(base))
+  def basePath(dir: DiskPath[Unix]): DiskPath[Unix] = unsafely(dir + Relative.parse(base))
 
 case class Module(name: Text, id: Text, links: Option[Set[Text]], resources: Option[Set[Text]],
                       sources: Set[Text], jars: Option[Set[Text]], docs: Option[List[Text]],
@@ -28,16 +29,17 @@ case class ArtifactSpec(path: Text, main: Option[Text], format: Option[Text])
 
 case class Exec(browsers: List[Text], url: Option[Text], start: Text, stop: Option[Text])
 
-case class AppError(msg: Text, cause: Maybe[Error[?]] = Unset)
-extends Error[(Text, Text)]((t"an application error occurred: ", msg)):
-  def message: Text = t"an application error occurred: $msg"
+object AppError:
+  def apply(msg: Text, originalCause: Maybe[Error[?]] = Unset): AppError =
+    AppError(msg.ansi, originalCause)
 
-case class BuildfileError(message: Text)
-extends Error((t"the build file contained an error: ", message))
+case class AppError(msg: AnsiText, originalCause: Maybe[Error[?]])
+extends Error((t"an application error occurred: ", msg), originalCause)
+
+case class BuildfileError(msg: Text) extends Error((t"the build file contained an error: ", msg))
 
 case class BrokenLinkError(link: Text)
-extends Error((t"the reference to ", link, t" cannot be resolved")):
-  def message: Text = t"The reference to $link cannot be resolved"
+extends Error((t"the reference to ", link, t" cannot be resolved"))
 
 @xmlLabel("organization")
 case class Organization(name: Text, url: Text)
@@ -85,7 +87,7 @@ object Pom:
     )
 
 enum Event:
-  case Changeset(changes: List[Unix.FileEvent])
+  case Changeset(changes: List[WatchEvent])
   case Interrupt
   case Resize(width: Int)
 
