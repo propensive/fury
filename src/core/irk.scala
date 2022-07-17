@@ -222,14 +222,14 @@ case class Step(path: File[Unix], publishing: Option[Publishing], name: Text,
   def srcFiles: Set[File[Unix]] throws IoError =
     sources.flatMap(_.path.descendantFiles(!_.name.startsWith(t"."))).filter(compilable)
 
-  def classpath(build: Build)(using Stdout): Set[DiskPath[Unix]] throws IoError | BrokenLinkError =
+  def classpath(build: Build)(using Stdout, Internet): Set[DiskPath[Unix]] throws IoError | BrokenLinkError =
     build.graph.reachable(this).flatMap: step =>
       step.jars.map(Irk.fetchFile(_, None).await()).map(_.path) + step.classesDir.path
   
   def allResources(build: Build)(using Stdout): Set[Directory[Unix]] throws IoError | BrokenLinkError =
     build.graph.reachable(this).flatMap(_.resources)
 
-  def compileClasspath(build: Build)(using Stdout): Set[DiskPath[Unix]] throws IoError | BrokenLinkError =
+  def compileClasspath(build: Build)(using Stdout, Internet): Set[DiskPath[Unix]] throws IoError | BrokenLinkError =
     classpath(build) - classesDir.path
 
   def classesDir: Directory[Unix] = synchronized:
@@ -244,7 +244,7 @@ case class Step(path: File[Unix], publishing: Option[Publishing], name: Text,
 
   def compile(hashes: Map[Step, Text], oldHashes: Map[Step, Text], build: Build, scriptFile: File[Unix],
                   cancel: Promise[Unit])
-             (using Stdout)
+             (using Stdout, Internet)
              : Result =
     try
       val t0 = now()

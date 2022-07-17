@@ -25,7 +25,7 @@ case class ProfileId(id: Text, repoTargetId: Text)
 case class RepoId(id: Text)
 
 object Sonatype:
-  def publish(build: Build, passwordOpt: Option[Text])(using Stdout): Unit =
+  def publish(build: Build, passwordOpt: Option[Text])(using Stdout, Internet): Unit =
     val password = passwordOpt.getOrElse:
       throw AppError(t"The environment variable SONATYPE_PASSWORD is not set")
     
@@ -91,7 +91,7 @@ case class Sonatype(username: Text, password: Text, profileName: Text,
   val acceptJson = RequestHeader.Accept(media"application/json".show)
   val jsonContent = RequestHeader.ContentType(media"application/json".show)
 
-  def profile(): ProfileId throws AppError =
+  def profile()(using Internet): ProfileId throws AppError =
     Log.info(t"Getting Profile ID for $username")
     val json = Json.parse(uri"https://$domain/$servicePath/profiles".get(auth, acceptJson).as[Text])
     val profile = json.data.as[List[Json]].find(_.name.as[Text] == profileName).getOrElse(throw UnknownProfile(profileName))
@@ -99,7 +99,7 @@ case class Sonatype(username: Text, password: Text, profileName: Text,
     Log.info(t"Got profile ID ${profileId.id} and target ID ${profileId.repoTargetId}")
     profileId
 
-  def start(profileId: ProfileId)(using Log): RepoId throws AppError =
+  def start(profileId: ProfileId)(using Log, Internet): RepoId throws AppError =
     case class Payload(description: Text)
     case class Data(data: Payload)
     val input = Data(Payload(t"")).json
@@ -109,7 +109,7 @@ case class Sonatype(username: Text, password: Text, profileName: Text,
     Log.info(t"Got repository ID $output")
     RepoId(output)
   
-  def deploy(repoId: RepoId, dir: Text, files: List[File[Unix]])(using Log): Unit =
+  def deploy(repoId: RepoId, dir: Text, files: List[File[Unix]])(using Log, Internet): Unit =
     val futures = for file <- files yield Future:
       val uri = uri"https://$domain/$servicePath/deployByRepositoryId/${repoId.id}/${profileName.sub(t".", t"/").nn}/$dir/${file.name}"
       Log.info(t"Uploading file $file to $uri")
@@ -118,12 +118,12 @@ case class Sonatype(username: Text, password: Text, profileName: Text,
 
     Await.result(Future.sequence(futures), duration.Duration.Inf)
 
-  def finish(profileId: ProfileId, repoId: RepoId): Text =
+  def finish(profileId: ProfileId, repoId: RepoId)(using Internet): Text =
     case class Data(data: Payload)
     case class Payload(description: Text, stagedRepositoryId: Text, targetRepositoryId: Text)
     uri"https://$domain/$servicePath/profiles/${profileId.id}/finish".post(auth, jsonContent, acceptJson)(Data(Payload(t"", repoId.id, profileId.repoTargetId)).json).as[Text]
   
-  def activity(repoId: RepoId): Unit =
+  def activity(repoId: RepoId)(using Internet): Unit =
     val events = Json.parse(uri"https://$domain/$servicePath/repository/${repoId.id}".get(auth, acceptJson).as[Text])
     if !events.transitioning.as[Boolean] || events.`type`.as[Text] == t"closed"
     then Log.info("Finished")
@@ -132,7 +132,7 @@ case class Sonatype(username: Text, password: Text, profileName: Text,
       Thread.sleep(1000)
       activity(repoId)
 
-  def promote(profileId: ProfileId, repoId: RepoId): Text =
+  def promote(profileId: ProfileId, repoId: RepoId)(using Internet): Text =
     case class Data(data: Payload)
     case class Payload(description: Text, stagedRepositoryId: Text, targetRepositoryId: Text)
     uri"https://$domain/$servicePath/profiles/${profileId.id}/promote".post(auth, jsonContent, acceptJson)(Data(Payload(t"", repoId.id, profileId.repoTargetId)).json).as[Text]

@@ -99,8 +99,9 @@ object Irk extends Daemon():
     catch case err: IoError =>
       throw AppError(t"The Irk binary could not be copied to the user's cache directory")
 
-  def fetchFile(ref: Text, funnel: Option[Funnel[Progress.Update]])(using Stdout): Future[File[Unix]] =
+  def fetchFile(ref: Text, funnel: Option[Funnel[Progress.Update]])(using Stdout, Internet): Future[File[Unix]] =
     val libDir = unsafely(cacheDir / t"lib")
+    
     if ref.startsWith(t"https:") then
       val hash = ref.digest[Crc32].encode[Base256]
       val dest = unsafely(libDir / t"${ref.digest[Crc32].encode[Hex].lower}.jar")
@@ -126,13 +127,10 @@ object Irk extends Daemon():
             funnel.foreach(_.put(Progress.Update.Remove(verb, Result.Terminal(ansi"An I/O error occurred"))))
             throw AppError(t"The downloaded file could not be written to ${dest.fullname}", err)
         
-    else
-      Future:
-        try Unix.parse(ref).file(Expect) catch
-          case err: InvalidPathError =>
-            throw AppError(t"Could not access the dependency JAR, $ref", err)
-          case err: IoError =>
-            throw AppError(t"Could not access the dependency JAR, $ref", err)
+    else Future:
+      try Unix.parse(ref).file(Expect) catch
+        case err: InvalidPathError => throw AppError(t"Could not access the dependency JAR, $ref", err)
+        case err: IoError          => throw AppError(t"Could not access the dependency JAR, $ref", err)
 
   def main(using CommandLine): ExitStatus =
     Sys.scala.concurrent.context.maxExtraThreads() = t"800"
@@ -525,7 +523,7 @@ object Irk extends Daemon():
       @tailrec
       def loop(first: Boolean, stream: LazyList[Event], oldBuild: Build, lastSuccess: Boolean,
                         browser: List[WebDriver#Session], running: List[Subprocess] = Nil,
-                        count: Int = 1, columns: Int = 120)
+                        count: Int = 1, columns: Int = 120)(using Internet)
                    : ExitStatus =
         import unsafeExceptions.canThrowAny
         tap.open()
@@ -730,9 +728,10 @@ object Irk extends Daemon():
       
       val build = generateBuild()
       
-      if exec then Chrome.session(8869):
-        loop(true, Event.Changeset(Nil) #:: fileChanges, build, false, List(browser))
-      else loop(true, Event.Changeset(Nil) #:: fileChanges, build, false, Nil)
+      internet:
+        if exec then Chrome.session(8869):
+          loop(true, Event.Changeset(Nil) #:: fileChanges, build, false, List(browser))
+        else loop(true, Event.Changeset(Nil) #:: fileChanges, build, false, Nil)
 
 case class ExecError(err: Exception)
 extends Error((t"an exception was thrown while executing the task: ", err.getMessage.nn.show))
