@@ -146,15 +146,10 @@ case class Build(pwd: Directory[Unix], repos: Map[DiskPath[Unix], Text], publish
         //throw AppError(t"An unexpected error occurred")
 
 object Format:
-  def unapply(value: Text): Option[Format] = value match
-    case t"jar"        => Some(Format.Jar)
-    case t"fat-jar"    => Some(Format.FatJar)
-    case t"app"        => Some(Format.App)
-    case t"daemon-app" => Some(Format.DaemonApp)
-    case _             => None
+  def unapply(value: Text): Option[Format] = safely(Format.valueOf(value.unkebab.pascal.s)).option
 
 enum Format:
-  case Jar, FatJar, App, DaemonApp
+  case Jar, FatJar, App, DaemonApp, CompilerPlugin
 
 object Artifact:
   def build(artifact: Artifact, base: File[Unix], name: Text, version: Text, classpath: List[DiskPath[Unix]],
@@ -190,11 +185,20 @@ object Artifact:
     val in = java.io.BufferedInputStream(java.io.ByteArrayInputStream(manifest.bytes.mutable(using Unsafe)))
     val mfEntry = Zip.Entry(Relative.parse(t"META-INF/MANIFEST.MF"), in)
     
-    val header = if artifact.path.name.endsWith(t".jar") then Bytes.empty else
-        unsafely((Classpath() / t"exoskeleton" / t"invoke").resource.read[Bytes](100.kb))
+    val header = artifact.format match
+      case Format.DaemonApp => unsafely((Classpath() / t"exoskeleton" / t"invoke").resource.read[Bytes](100.kb))
+      case Format.App       => unsafely((Classpath() / t"exoskeleton" / t"invoke").resource.read[Bytes](100.kb))
+      case _                => Bytes.empty
+    
+    val extraResources: LazyList[Zip.Entry] = artifact.format match
+      case Format.CompilerPlugin =>
+        val propertiesIn = java.io.ByteArrayInputStream(t"pluginClass=${artifact.main}\n".bytes.mutable(using Unsafe))
+        LazyList(Zip.Entry(Relative.parse(t"plugin.properties"), propertiesIn))
+      case _ =>
+        LazyList()
     
     unsafely:
-      Zip.write(base, artifact.path, mfEntry #:: resourceStreams #::: zipStreams, header)
+      Zip.write(base, artifact.path, mfEntry #:: extraResources #::: resourceStreams #::: zipStreams, header)
     
     artifact.path.file(Expect).setPermissions(executable = true)
 
