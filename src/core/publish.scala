@@ -40,9 +40,9 @@ object Sonatype:
           step =>
             Out.println(t"Generating POM file for ${step.id}")
             
-            val pomXml = Pom(build, step, 2021,
-                t"https://propensive.com/opensource/${step.projectId}",
-                t"github.com/${step.projectId}", pub).xml
+            val pomXml = Pom(build, step, 2022,
+                t"https://propensive.com/opensource/${step.id.project}",
+                t"github.com/${step.id.project}", pub).xml
             
             pomXml.show.bytes.writeTo(step.pomFile.file(Create))
             
@@ -66,7 +66,7 @@ object Sonatype:
               sh"gpg -ab $file".exec[ExitStatus]()
 
             Out.println(t"Publishing ${step.id}")
-            val dir = t"${step.id.sub(t"/", t"-")}/${step.version}"
+            val dir = t"${step.id.dashed}/${step.version}"
 
             val uploads = List(/*step.pkg, */step.pomFile, step.docFile, step.srcsPkg).map(_.file(Expect))
             val signedUploads = uploads ++ uploads.map(_.path.rename(_+t".asc").file(Expect))

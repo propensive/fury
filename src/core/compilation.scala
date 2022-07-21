@@ -8,7 +8,7 @@ import serpentine.*
 
 import rendering.ansi
 
-import dotty.tools.dotc.*, reporting.*
+import dotty.tools.dotc.*, reporting.*, interfaces as dtdi, util as dtdu
 
 import scala.collection.mutable as scm
 import scala.concurrent.*
@@ -21,8 +21,9 @@ object Compiler:
 
   private var Scala3 = new dotty.tools.dotc.Compiler()
 
-  def compile(id: Text, pwd: Directory[Unix], files: List[File[Unix]], inputs: Set[DiskPath[Unix]], out: Directory[Unix], script: File[Unix],
-                  cancel: Promise[Unit])
+  def compile(id: Ref, pwd: Directory[Unix], files: List[File[Unix]], inputs: Set[DiskPath[Unix]],
+                  out: Directory[Unix], script: File[Unix], plugins: List[PluginRef], cancel: Promise[Unit],
+                  owners: Map[DiskPath[Unix], Step])
              (using Stdout)
              : Result =
     import unsafeExceptions.canThrowAny
@@ -49,26 +50,25 @@ object Compiler:
       object driver extends dotc.Driver:
         val currentCtx =
           val ctx = initCtx.fresh
+          val pluginParams = plugins.map(_.jarFile.show).map(t"-Xplugin:"+_).ss.to(Array)
 
-          setup(Array[String]("-d", out.fullname.s, "-deprecation", "-feature", "-Wunused:all",
-              "-new-syntax", "-Yrequire-targetName", "-Ysafe-init", "-Yexplicit-nulls",
-              "-Xmax-inlines", "64", "-Ycheck-all-patmat", "-classpath", classpathText.s, ""),
-              ctx).map(_(1)).get
+          setup(pluginParams ++ Array[String]("-d", out.fullname.s, "-deprecation", "-feature", "-Wunused:all",
+              "-new-syntax", "-Yrequire-targetName", "-Ysafe-init", "-Yexplicit-nulls", "-Xmax-inlines", "64",
+              "-Ycheck-all-patmat", "-classpath", classpathText.s, ""), ctx).map(_(1)).get
         
         def run(files: List[File[Unix]], classpath: Text): List[Diagnostic] =
           val ctx = currentCtx.fresh
+          val featureList = List(t"fewerBraces", t"saferExceptions", t"erasedDefinitions", t"namedTypeArguments")
+          val features = featureList.map(t"experimental."+_)
           
-          val features = List(t"fewerBraces", t"saferExceptions", t"erasedDefinitions").map:
-            f => t"experimental.$f".s
-
           val ctx2 = ctx
             .setReporter(reporter)
             .setCompilerCallback(callbackApi)
-            .setSetting(ctx.settings.language, features)
+            .setSetting(ctx.settings.language, features.ss)
             .setSetting(ctx.settings.classpath, classpath.s)
           
-          val sources = files.to(List).map:
-            file => PlainFile(Path(file.fullname.s))
+          val sources = files.to(List).map: file =>
+            PlainFile(Path(file.fullname.s))
           
           val run: Run = Scala3.newRun(using ctx2)
           
@@ -79,25 +79,27 @@ object Compiler:
           finish(Scala3, run)(using ctx2)
           reporter.errors.to(List)
 
+      def codeRange(pos: dtdi.SourcePosition): CodeRange =
+        val file = pos.source.nn.path.nn.show
+        val absPath = Unix.parse(file)
+        val (root: DiskPath[Unix], step: Step) = owners.filter(_(0).precedes(absPath)).maxBy(_(0).parts.length)
+        val path = safely(absPath.relativeTo(root)).otherwise(Relative.parse(file))
+        val content = pos.source.nn.content.nn.immutable(using Unsafe)
+        CodeRange(step.id, path, pos.line, pos.startColumn, pos.endColumn, pos.endLine, content)
+
+      def getRanges(pos: dtdu.SourcePosition | Null, acc: List[CodeRange] = Nil): List[CodeRange] =
+        if pos == dtdu.NoSourcePosition || pos == null then acc else getRanges(pos.outer, codeRange(pos) :: acc)
+
       driver.run(files, classpathText).foldLeft(Result.Complete(Nil)): (prev, diagnostic) =>
         if diagnostic.position.isPresent then
-          val pos = diagnostic.position.get.nn
-          val line = pos.line
-          val file = pos.source.nn.path.nn
-          val content = pos.source.nn.content.nn
+          val level = Level.fromOrdinal(diagnostic.level)
           
-          val level = diagnostic.level match
-            case 0 => Level.Info
-            case 1 => Level.Warn
-            case 2 => Level.Error
-            case _ => Level.Info
+          val stack = diagnostic.position.get.nn match
+            case pos: dtdu.SourcePosition => getRanges(pos)
+            case pos: dtdi.SourcePosition => List(codeRange(pos))
           
-          val path =
-            try Unix.parse(file.show).relativeTo(pwd.path)
-            catch case err: InvalidPathError => Relative.parse(file.show)
-
-          prev + Result.Complete(List(Issue(level, id, pwd.path, path, line, pos.startColumn, pos.endColumn,
-              pos.endLine, diagnostic.message.show, content.immutable(using Unsafe))))
+          prev + Result.Complete(List(Issue(level, pwd.path, stack.head, stack.tail, diagnostic.message.show)))
+        
         else prev + Result.Complete(Nil)
 
     catch case err: Throwable =>
@@ -109,3 +111,6 @@ object Compiler:
         
         Result.Terminal(ansi"The compiler crashed")
       else Result.Aborted
+
+enum Level:
+  case Info, Warn, Error

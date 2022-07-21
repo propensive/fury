@@ -35,11 +35,12 @@ import java.nio.BufferOverflowException
 
 given Environment = environments.system
 
+
 object Irk extends Daemon():
   def version: Text =
     Option(getClass.nn.getPackage.nn.getImplementationVersion).fold(t"0")(_.nn.show)
   
-  def javaVersion: Text = try Sys.java.version() catch case err: KeyNotFoundError => t"unknown"
+  def javaVersion: Text = safely(Sys.java.version()).otherwise(t"unknown")
   def githubActions: Boolean = Option(System.getenv("GITHUB_ACTIONS")).isDefined
 
   def scalaVersion: Text =
@@ -55,15 +56,15 @@ object Irk extends Daemon():
 
   def libDir: Directory[Unix] =
     try (cacheDir / p"lib").directory(Ensure)
-    catch case err: IoError => throw AppError(t"The user's cache directory could not be created", err)
+    catch case err: IoError => throw AppError(t"The user's lib directory could not be created", err)
 
   def tmpDir: Directory[Unix] =
     try (cacheDir / p"tmp").directory(Ensure)
-    catch case err: IoError => throw AppError(t"The user's temporary directory could not be created", err)
+    catch case err: IoError => throw AppError(t"The user's tmp directory could not be created", err)
   
-  def hashesDir: Directory[Unix] =
-    try (cacheDir / p"hashes").directory(Ensure)
-    catch case err: IoError => throw AppError(t"The user's cache directory could not be created", err)
+  def hashDir: Directory[Unix] =
+    try (cacheDir / p"hash").directory(Ensure)
+    catch case err: IoError => throw AppError(t"The user's hash directory could not be created", err)
 
   private val prefixes = Set(t"/scala", t"/dotty", t"/compiler.properties", t"/org/scalajs", t"/com",
       t"/incrementalcompiler.version.properties", t"/library.properties", t"/NOTICE")
@@ -209,31 +210,19 @@ object Irk extends Daemon():
           else throw AppError(txt"""Build contains an import reference to a nonexistant build""")
             
     catch
-      case err: IoError => err match
-        case IoError(op, reason, path) =>
-          throw AppError(t"There was an I/O error", err)
-      
-      case err: ExcessDataError =>
-        throw BuildfileError(t"The build file was larger than 1MB")
-      
-      case err: StreamCutError =>
-        throw AppError(t"The configuration file could not be read completely", err)
-      
-      case err: JsonParseError =>
-        throw BuildfileError(err.message)
-      
-      case err: JsonAccessError =>
-        throw BuildfileError(err.message)
-      
-      case err: AppError =>
-        throw err
+      case err: IoError         => throw AppError(t"There was an I/O error", err)
+      case err: ExcessDataError => throw BuildfileError(t"The build file was larger than 1MB")
+      case err: StreamCutError  => throw AppError(t"The configuration file could not be read completely", err)
+      case err: JsonParseError  => throw BuildfileError(err.message)
+      case err: JsonAccessError => throw BuildfileError(err.message)
+      case err: AppError        => throw err
 
   def readImports(seen: Map[Text, File[Unix]], files: File[Unix]*)(using Stdout): Set[File[Unix]] =
     case class Imports(repos: Option[List[Repo]], imports: Option[List[Text]]):
-      def repoList: List[Repo] = repos.getOrElse(Nil)
+      def repoList: List[Repo] = repos.presume
       def gen(seen: Map[Text, File[Unix]], files: File[Unix]*): Set[File[Unix]] = files.to(List) match
         case file :: tail =>
-          val importFiles: List[File[Unix]] = imports.getOrElse(Nil).flatMap: path =>
+          val importFiles: List[File[Unix]] = imports.presume.flatMap: path =>
             val ref = unsafely(file.parent.path + Relative.parse(path))
             try
               if ref.exists() then
@@ -314,7 +303,7 @@ object Irk extends Daemon():
       val sourceDir = (src / t"core").directory(Ensure)
       
       val module = Module(name, t"${pwd.path.name}/core", None, None,
-          Set(sourceDir.path.relativeTo(pwd.path).show), None, None, None, None, None, None)
+          Set(sourceDir.path.relativeTo(pwd.path).show), None, None, None, None, None, None, None)
 
       val config = BuildConfig(None, None, List(module), None, None)
       try
@@ -337,77 +326,85 @@ object Irk extends Daemon():
     def appendln(text: AnsiText): Unit =
       buf.append(text.render)
       buf.append('\n')
-  
+    
     val sorted =
       try
         result.issues.groupBy(_.baseDir).to(List).map: (baseDir, issues) =>
-          issues.groupBy(_.path).to(List).map: (path, issues) =>
+          issues.groupBy(_.code.path).to(List).map: (path, issues) =>
             unsafely(baseDir + path).file(Ensure) -> issues
           .sortBy(_(0).modified)
         .sortBy(_.last(0).modified).flatten
         
       catch case err: IoError => throw AppError(ansi"a file containing an error was deleted: ${err.toString.show}", err)//: ${err.ansi}", err)
     
+    def arrow(k1: (Srgb, Text), k2: (Srgb, Text)): AnsiText =
+      def hc(c: Srgb): Srgb = if c.hsl.lightness > 0.5 then colors.Black else colors.White
+      ansi"${Bg(k1(0))}( ${hc(k1(0))}(${k1(1)}) )${Bg(k2(0))}(${k1(0)}() ${hc(k2(0))}(${k2(1)}) )${k2(0)}()"
+
+    val highlighting: scm.Map[Text, IArray[Seq[Token]]] = scm.HashMap[Text, IArray[Seq[Token]]]()
+    
+    def highlight(text: Text): IArray[Seq[Token]] = if highlighting.contains(text) then highlighting(text) else
+      highlighting(text) = ScalaSyntax.highlight(text)
+      highlighting(text)
+    
+    val bg = Bg(Srgb(0.1, 0.0, 0.1))
+    
+    def format(text: Text, line: Int, margin: Int) =
+      val syntax = highlight(text)
+      if line >= syntax.length then ansi""
+      else syntax(line).map:
+        case Token.Code(code, flair) => flair match
+          case Flair.Type              => ansi"${colors.YellowGreen}(${code})"
+          case Flair.Term              => ansi"${colors.CadetBlue}(${code})"
+          case Flair.Symbol            => ansi"${colors.Turquoise}(${code})"
+          case Flair.Keyword           => ansi"${colors.DarkOrange}(${code})"
+          case Flair.Modifier          => ansi"${colors.Chocolate}(${code})"
+          case Flair.Ident             => ansi"${colors.BurlyWood}(${code})"
+          case Flair.Error             => ansi"${colors.OrangeRed}($Underline(${code}))"
+          case Flair.Number            => ansi"${colors.Gold}(${code})"
+          case Flair.String            => ansi"${colors.Plum}(${code})"
+          case other                   => ansi"${code}"
+        case Token.Unparsed(txt)     => ansi"$txt"
+        case Token.Markup(_)         => ansi""
+        case Token.Newline           => throw Mistake("Should not have a newline")
+      .join.take(columns - 2 - margin)
+              
+    def codeLine(margin: Int, codeText: Text, line: Int): AnsiText =
+      val lineNo = ansi"${colors.Orange}(${line.show.pad(margin, Rtl)})"
+      val bar = ansi"${colors.DarkSlateGray}(║)$bg "
+      val code = format(codeText, line - 1, margin)
+      ansi"$lineNo$bar$code${t" "*(columns - 2 - margin - code.length)}"
+
     sorted.foreach:
       case (file, issues) =>
-        val syntax = ScalaSyntax.highlight(issues.head.content.text)
-        issues.groupBy(_.startLine).to(List).sortBy(_(0)).foreach:
+        val codeText = issues.head.code.content.text
+        //val syntax: IArray[Seq[Token]] = highlight(codeText)
+        issues.groupBy(_.code.startLine).to(List).sortBy(_(0)).foreach:
           case (ln, issues) => issues.head match
-            case Issue(level, module, baseDir, path, startLine, from, to, endLine, message, _) =>
-              val bg = Bg(Srgb(0.16, 0.06, 0.03))
-              val margin = (endLine + 2).show.length
+            case Issue(level, baseDir, pos, stack, message) =>
+              val margin = (pos.endLine + 2).show.length
               val codeWidth = columns - 2 - margin
-              
-              append(ansi"${colors.Black}(${Bg(colors.Purple)}( $module ))")
-              val pos = t"$path:${startLine + 1}:$from"
+              val posText = t"${pos.path}:${pos.startLine + 1}:${pos.from}"
               
               val shade = level match
                 case Level.Error => colors.Crimson
                 case Level.Warn  => colors.Orange
                 case Level.Info  => colors.SteelBlue
               
-              append(ansi"${colors.Purple}(${Bg(shade)}( ${colors.Black}($pos) ))")
-              appendln(ansi"$bg$shade()$bg")
+              appendln(arrow(colors.Purple -> pos.module.option.fold(t"[external]")(_.show), shade -> posText))
               
-              def format(line: Int) =
-                if line >= syntax.length then ansi""
-                else syntax(line).map:
-                  case Token.Code(code, flair) => flair match
-                    case Flair.Type              => ansi"${colors.YellowGreen}(${code})"
-                    case Flair.Term              => ansi"${colors.CadetBlue}(${code})"
-                    case Flair.Symbol            => ansi"${colors.Turquoise}(${code})"
-                    case Flair.Keyword           => ansi"${colors.DarkOrange}(${code})"
-                    case Flair.Modifier          => ansi"${colors.Chocolate}(${code})"
-                    case Flair.Ident             => ansi"${colors.BurlyWood}(${code})"
-                    case Flair.Error             => ansi"${colors.OrangeRed}($Underline(${code}))"
-                    case Flair.Number            => ansi"${colors.Gold}(${code})"
-                    case Flair.String            => ansi"${colors.Plum}(${code})"
-                    case other                   => ansi"${code}"
-                  case Token.Unparsed(txt)     => ansi"$txt"
-                  case Token.Markup(_)         => ansi""
-                  case Token.Newline           => throw Mistake("Should not have a newline")
-                .join.take(columns - 2 - margin)
-              
-              if startLine > 1 then
-                append(ansi"${colors.Orange}(${startLine.show.pad(margin, Rtl)})")
-                append(ansi"${colors.DarkSlateGray}(║)$bg ")
-                val code = format(startLine - 1)
-                appendln(ansi"$code${t" "*(codeWidth - code.length)}")
-              
-              (startLine to endLine).foreach: lineNo =>
-                if lineNo < (startLine + 2) || lineNo > (endLine - 2) then
-                  val code = format(lineNo)
-                  val before = if lineNo == startLine then code.take(from) else ansi""
-                  
-                  val after =
-                    if lineNo == endLine then code.drop(if from == to then to + 4 else to) else ansi""
+              if pos.startLine > 1 then appendln(codeLine(margin, codeText, pos.startLine))
+
+              (pos.startLine to pos.endLine).foreach: lineNo =>
+                if lineNo < (pos.startLine + 2) || lineNo > (pos.endLine - 2) then
+                  val code = format(codeText, lineNo, margin)
+                  val before = if lineNo == pos.startLine then code.take(pos.from) else ansi""
+                  val after = if lineNo == pos.endLine then code.drop(pos.to) else ansi""
                   
                   val highlighted =
-                    if lineNo == startLine then
-                      if lineNo == endLine then
-                        if from == to then ansi"▎❮❮❮" else code.slice(from, to)
-                      else code.drop(from)
-                    else if lineNo == endLine then code.take(to) else code
+                    if lineNo == pos.startLine then
+                      if lineNo == pos.endLine then code.slice(pos.from, pos.to) else code.drop(pos.from)
+                    else if lineNo == pos.endLine then code.take(pos.to) else code
 
                   append(ansi"${colors.Orange}($Bold(${(lineNo + 1).show.pad(margin, Rtl)}))")
                   append(ansi"${colors.DarkSlateGray}(║)$bg ")
@@ -415,33 +412,40 @@ object Irk extends Daemon():
                   append(ansi"${colors.OrangeRed}(${highlighted.plain})")
                   val width = highlighted.length + before.length + after.length
                   appendln(ansi"$after${t" "*(codeWidth - width)}")
-                else if lineNo == startLine + 2
-                then
-                  val code = format(startLine + 1)
+                else if lineNo == pos.startLine + 2 then
+                  val code = format(codeText, pos.startLine + 1, margin)
                   val break = snip.take(codeWidth)
                   append(ansi"${t"".pad(margin, Rtl)}${colors.DarkSlateGray}(╫)$bg ")
                   appendln(ansi"${colors.RebeccaPurple}($break)")
+
+              if pos.endLine + 1 < highlight(codeText).length
+              then appendln(codeLine(margin, codeText, pos.endLine + 2))
               
-              if endLine + 1 < syntax.length
-              then
-                append(ansi"${colors.Orange}(${(endLine + 2).show.pad(margin, Rtl)})")
-                append(ansi"${colors.DarkSlateGray}(║)$bg ")
-                val code = format(endLine + 1)
-                appendln(ansi"$code${t" "*(codeWidth - code.length)}${escapes.Reset}")
-              
-              if startLine == endLine
-              then
-                append(ansi"${colors.DarkSlateGray}(${t" "*margin}╟${t"─"*from}┴${t"─"*(to - from)}┘)")
+              if pos.startLine == pos.endLine then
+                append(ansi"${colors.DarkSlateGray}(${t" "*margin}╟${t"─"*pos.from}┴${t"─"*(pos.to - pos.from)}┘)")
                 appendln(ansi"${t"\e[K"}")
               else appendln(ansi"${t" "*margin}${colors.DarkSlateGray}(║)")
               
-              message.cut(t"\n").foreach:
-                line =>
-                  appendln(ansi"${t" "*margin}${colors.DarkSlateGray}(║) ${Bold}($line)")
+              message.cut(t"\n").foreach: line =>
+                appendln(ansi"${t" "*margin}${colors.DarkSlateGray}(║) ${Bold}($line)")
               
               appendln(ansi"${t" "*margin}${colors.DarkSlateGray}(╨)")
               appendln(ansi"${escapes.Reset}")
-    
+              
+              if !stack.isEmpty then
+                appendln(ansi"This includes inlined code from:")
+                val pathWidth = stack.map(_.path.show.length).max
+                val refWidth = stack.map(_.module.option.fold(10)(_.show.length)).max
+                val indent = pathWidth + refWidth + 7
+                
+                stack.foreach: pos =>
+                  val ref = pos.module.option.fold(t"[external]")(_.show).pad(refWidth, Rtl)
+                  val path = pos.path.show.pad(pathWidth, Rtl)
+                  val code = codeLine(margin + indent, pos.content.text, pos.startLine).drop(indent)
+                  appendln(ansi"${arrow(colors.DarkCyan -> ref, colors.LightSeaGreen -> path)} $code")
+                
+                appendln(ansi"")
+
     buf.text
 
   case class Change(changeType: ChangeType, path: DiskPath[Unix])
@@ -518,7 +522,7 @@ object Irk extends Daemon():
         if !cancel.isCompleted then cancel.complete(util.Success(()))
 
 
-      Task(abortFunnel.stream.foreach { _ => abort() })()
+      Task(abortFunnel.stream.foreach(abort().waive))()
 
       @tailrec
       def loop(first: Boolean, stream: LazyList[Event], oldBuild: Build, lastSuccess: Boolean,
@@ -529,8 +533,7 @@ object Irk extends Daemon():
         tap.open()
         val cancel: Promise[Unit] = Promise()
 
-        if stream.isEmpty then
-          if lastSuccess then ExitStatus.Ok else ExitStatus.Fail(1)
+        if stream.isEmpty then if lastSuccess then ExitStatus.Ok else ExitStatus.Fail(1)
         else stream.head match
           case Event.Interrupt =>
             running.foreach(_.stop())
@@ -583,6 +586,10 @@ object Irk extends Daemon():
               
               val funnel: Funnel[Progress.Update] = Funnel()
               val totalTasks: Int = build.steps.size
+
+              val owners: Map[DiskPath[Unix], Step] = build.steps.flatMap: step =>
+                step.sources.map(_.path -> step)
+              .to(Map)
               
               val futures = build.graph.traversal[Future[Result]]: (set, step) =>
                 Future.sequence(set).flatMap: results =>
@@ -601,8 +608,9 @@ object Irk extends Daemon():
                             if oldHashes.get(step) != build.hashes.get(step)
                             then
                               funnel.put(Progress.Update.Add(verb, hash))
-                              val newResult: Result = step.compile(build.hashes, oldHashes, build, scriptFile, cancel)
-                              funnel.put(Progress.Update.Remove(verb, if cancel.isCompleted then Result.Aborted else newResult))
+                              val newResult = step.compile(build.hashes, oldHashes, build, scriptFile, cancel, owners)
+                              val status = if cancel.isCompleted then Result.Aborted else newResult
+                              funnel.put(Progress.Update.Remove(verb, status))
                               result + newResult
                             else
                               funnel.put(Progress.Update.SkipOne)
@@ -624,7 +632,7 @@ object Irk extends Daemon():
               
               val ui = Task:
                 funnel.stream.multiplexWith:
-                  pulsar.stream.map { _ => Progress.Update.Print }
+                  pulsar.stream.map(Progress.Update.Print.waive)
                 .foldLeft(Progress(TreeMap(), Nil, totalTasks = totalTasks))(_(_))
               
               val uiReady = ui()
@@ -733,11 +741,11 @@ object Irk extends Daemon():
           loop(true, Event.Changeset(Nil) #:: fileChanges, build, false, List(browser))
         else loop(true, Event.Changeset(Nil) #:: fileChanges, build, false, Nil)
 
-case class ExecError(err: Exception)
-extends Error((t"an exception was thrown while executing the task: ", err.getMessage.nn.show))
+case class ExecError(err: Exception)(using Codepoint)
+extends Error(err"an exception was thrown while executing the task: ${err.getMessage.nn.show}")(pos)
 
-case class TrapExitError(status: ExitStatus)
-extends Error((t"a call to System.exit was trapped: ", status))
+case class TrapExitError(status: ExitStatus)(using Codepoint)
+extends Error(err"a call to System.exit was trapped: $status")(pos)
 
 object Run:
   import java.net.*
