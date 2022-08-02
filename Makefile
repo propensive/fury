@@ -9,6 +9,7 @@ one.jar:
 
 .image: one.jar src/*/*.scala Dockerfile
 	docker build --tag=irk .
+	#docker build --tag=irk . --no-cache
 	touch .image
 
 dist:

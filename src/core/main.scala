@@ -7,6 +7,7 @@ import acyclicity.*
 import euphemism.*
 import joviality.*, DiskPath.provider, Directory.provider, File.provider, filesystems.unix
 import guillotine.*
+import parasitism.*
 import kaleidoscope.*
 import escapade.*
 import gastronomy.*
@@ -21,6 +22,7 @@ import xylophone.*
 import telekinesis.*
 import anticipation.*
 import escritoire.*
+import tetromino.*
 import surveillance.*
 
 import timekeeping.long
@@ -28,13 +30,11 @@ import encodings.Utf8
 import rendering.ansi
 
 import scala.collection.mutable as scm
-import scala.concurrent.*
 import scala.util.chaining.scalaUtilChainingOps
 
 import java.nio.BufferOverflowException
 
 given Environment = environments.system
-
 
 object Irk extends Daemon():
   def version: Text =
@@ -57,7 +57,9 @@ object Irk extends Daemon():
   def libDir: Directory[Unix] =
     try (cacheDir / p"lib").directory(Ensure)
     catch case err: IoError => throw AppError(t"The user's lib directory could not be created", err)
-
+  
+  def libJar(hash: Digest[Crc32]): DiskPath[Unix] = unsafely(libDir / t"${hash.encode[Hex].lower}.jar")
+  
   def tmpDir: Directory[Unix] =
     try (cacheDir / p"tmp").directory(Ensure)
     catch case err: IoError => throw AppError(t"The user's tmp directory could not be created", err)
@@ -69,18 +71,21 @@ object Irk extends Daemon():
   private val prefixes = Set(t"/scala", t"/dotty", t"/compiler.properties", t"/org/scalajs", t"/com",
       t"/incrementalcompiler.version.properties", t"/library.properties", t"/NOTICE")
 
-  private lazy val scriptSize: Int =
-    import unsafeExceptions.canThrowAny
-    unsafely(Classpath() / t"exoskeleton" / t"invoke").resource.read[Bytes](100.kb).size
+  private def scriptSize(using Allocator): Int throws StreamCutError | ClasspathRefError =
+    unsafely(Classpath() / p"exoskeleton" / p"invoke").resource.read[Bytes]().size
 
-  def irkJar(scriptFile: File[Unix])(using Stdout): File[Unix] throws StreamCutError = synchronized:
+  def irkJar(scriptFile: File[Unix])(using Stdout, Allocator): File[Unix] throws StreamCutError = synchronized:
     import java.nio.file.*
     val jarPath = unsafely(libDir.path / t"base-$version.jar")
 
     try if jarPath.exists() then jarPath.file(Expect) else
       val buf = Files.readAllBytes(scriptFile.javaPath).nn
       val output = java.io.BufferedOutputStream(java.io.FileOutputStream(jarPath.javaFile).nn)
-      output.write(buf, scriptSize, buf.length - scriptSize)
+      
+      try output.write(buf, scriptSize, buf.length - scriptSize)
+      catch case err: ClasspathRefError =>
+        throw AppError(t"Could not determine the size of the bootloader script")
+      
       output.close()
       val fs = FileSystems.newFileSystem(java.net.URI(t"jar:file:${jarPath.show}".s), Map("zipinfo-time" -> "false").asJava).nn
       
@@ -100,24 +105,22 @@ object Irk extends Daemon():
     catch case err: IoError =>
       throw AppError(t"The Irk binary could not be copied to the user's cache directory")
 
-  def fetchFile(ref: Text, funnel: Option[Funnel[Progress.Update]])(using Stdout, Internet): Future[File[Unix]] =
-    val libDir = unsafely(cacheDir / t"lib")
-    
+  def getFile(ref: Text): File[Unix] = unsafely(libJar(ref.digest[Crc32]).file(Expect))
+
+  def fetchFile(ref: Text, funnel: Option[Funnel[Progress.Update]])(using Stdout, Internet, Monitor)
+               : Task[File[Unix]] =
     if ref.startsWith(t"https:") then
-      val hash = ref.digest[Crc32].encode[Base256]
-      val dest = unsafely(libDir / t"${ref.digest[Crc32].encode[Hex].lower}.jar")
-      if dest.exists() then Future:
-        try dest.file(Expect) catch case err: IoError =>
-          // FIXME: This exception is thrown inside a Future
+      val hash = ref.digest[Crc32]
+      if libJar(hash).exists() then Task(t"hash"):
+        try libJar(hash).file(Expect) catch case err: IoError =>
           throw AppError(t"Could not access the dependency JAR, $ref", err)
-      else Future:
+      else Task(t"download"):
         val verb = Verb.Download(ansi"${colors.CornflowerBlue}($ref)")
         funnel.foreach(_.put(Progress.Update.Add(verb, (hash))))
         try
-          libDir.directory()
-          val file = dest.file(Create)
+          val file = libJar(hash).file(Create)
           Uri(ref).writeTo(file)
-          funnel.foreach(_.put(Progress.Update.Remove(verb, Result.Complete(Nil))))
+          funnel.foreach(_.put(Progress.Update.Remove(verb, Result.Complete())))
           file
         catch
           case err: StreamCutError =>
@@ -126,19 +129,23 @@ object Irk extends Daemon():
           
           case err: IoError =>
             funnel.foreach(_.put(Progress.Update.Remove(verb, Result.Terminal(ansi"An I/O error occurred"))))
-            throw AppError(t"The downloaded file could not be written to ${dest.fullname}", err)
+            throw AppError(t"The downloaded file could not be written to ${libJar(hash).fullname}", err)
         
-    else Future:
+    else Task(t"parse"):
       try Unix.parse(ref).file(Expect) catch
         case err: InvalidPathError => throw AppError(t"Could not access the dependency JAR, $ref", err)
         case err: IoError          => throw AppError(t"Could not access the dependency JAR, $ref", err)
+
+  val sessionCount: Counter = Counter(0)
 
   def main(using CommandLine): ExitStatus =
     Sys.scala.concurrent.context.maxExtraThreads() = t"800"
     Sys.scala.concurrent.context.maxThreads() = t"1000"
     Sys.scala.concurrent.context.minThreads() = t"100"
-  
-    try
+
+
+    try supervise(t"session-${sessionCount()}"):
+      given Allocator = allocators.default
       cli.args match
         case t"about" :: _        => Irk.about()
         case t"help" :: _         => Irk.help()
@@ -173,15 +180,16 @@ object Irk extends Daemon():
           err.printStackTrace()
           ExitStatus.Fail(2)
   
-  private lazy val fileHashes: FileCache[Bytes] = new FileCache()
+  private lazy val fileHashes: FileCache[Digest[Crc32]] = new FileCache()
 
-  private def initBuild(pwd: Directory[Unix])(using Stdout): Build throws IoError | BuildfileError =
+  private def initBuild(pwd: Directory[Unix])(using Stdout, Monitor, Allocator)
+                       : Build throws IoError | BuildfileError =
     val path = unsafely(pwd / t"build.irk")
     readBuilds(Build(pwd, Map(), None, Map(), Map()), Set(), path)
   
-  def hashFile(file: File[Unix]): Bytes throws IoError | AppError =
+  def hashFile(file: File[Unix])(using Allocator): Digest[Crc32] throws IoError | AppError =
     try fileHashes(file.path.show, file.modified):
-      file.read[Bytes](1.mb).digest[Crc32].bytes
+      file.read[Bytes]().digest[Crc32]
     catch
       case err: StreamCutError  => throw AppError(t"The stream was cut while hashing a file", err)
       case err: ExcessDataError => throw AppError(t"The file was too big to hash", err)
@@ -191,7 +199,7 @@ object Irk extends Daemon():
     try sh"git clone -q $url ${path.fullname}".exec[Unit]()
     catch case err: ExecError => throw AppError(t"Could not run `git clone` for repository $url")
 
-  def readBuilds(build: Build, seen: Set[Text], files: DiskPath[Unix]*)(using Stdout)
+  def readBuilds(build: Build, seen: Set[Digest[Crc32]], files: DiskPath[Unix]*)(using Stdout, Allocator)
                 : Build throws BuildfileError | IoError =
     try
       files.to(List) match
@@ -199,28 +207,25 @@ object Irk extends Daemon():
           build
         
         case path :: tail =>
-          def digest: Text = hashFile(path.file()).encode[Base64]
+          def digest: Digest[Crc32] = hashFile(path.file())
           if path.exists() && seen.contains(digest) then readBuilds(build, seen, tail*)
           else if path.exists() then
             Out.println(ansi"Reading build file ${palette.File}(${path.relativeTo(build.pwd.path).show})")
-            val buildConfig = locally:
-              import unsafeExceptions.canThrowAny
-              Json.parse(path.file().read[Text](1.mb)).as[BuildConfig]
+            val buildConfig = Json.parse(path.file().read[Text]()).as[BuildConfig]
             buildConfig.gen(path, build, seen + digest, files*)
           else throw AppError(txt"""Build contains an import reference to a nonexistant build""")
-            
     catch
       case err: IoError         => throw AppError(t"There was an I/O error", err)
       case err: ExcessDataError => throw BuildfileError(t"The build file was larger than 1MB")
       case err: StreamCutError  => throw AppError(t"The configuration file could not be read completely", err)
       case err: JsonParseError  => throw BuildfileError(err.message)
       case err: JsonAccessError => throw BuildfileError(err.message)
-      case err: AppError        => throw err
 
-  def readImports(seen: Map[Text, File[Unix]], files: File[Unix]*)(using Stdout): Set[File[Unix]] =
+  def readImports(seen: Map[Digest[Crc32], File[Unix]], files: File[Unix]*)(using Stdout, Allocator)
+                 : Set[File[Unix]] =
     case class Imports(repos: Option[List[Repo]], imports: Option[List[Text]]):
       def repoList: List[Repo] = repos.presume
-      def gen(seen: Map[Text, File[Unix]], files: File[Unix]*): Set[File[Unix]] = files.to(List) match
+      def gen(seen: Map[Digest[Crc32], File[Unix]], files: File[Unix]*): Set[File[Unix]] = files.to(List) match
         case file :: tail =>
           val importFiles: List[File[Unix]] = imports.presume.flatMap: path =>
             val ref = unsafely(file.parent.path + Relative.parse(path))
@@ -253,11 +258,11 @@ object Irk extends Daemon():
       
       case file :: tail =>
         try
-          def interpret(digest: Option[Text]) =
-            Json.parse(file.read[Text](1.mb)).as[Imports].gen(digest.fold(seen)(seen.updated(_, file)), files*)
+          def interpret(digest: Option[Digest[Crc32]]) =
+            Json.parse(file.read[Text]()).as[Imports].gen(digest.fold(seen)(seen.updated(_, file)), files*)
           
           if file.exists() then
-            val digest: Text = hashFile(file).encode[Base64]
+            val digest: Digest[Crc32] = hashFile(file)
             if !seen.contains(digest) then interpret(Some(digest)) else readImports(seen, tail*)
           else interpret(None)
 
@@ -303,7 +308,7 @@ object Irk extends Daemon():
       val sourceDir = (src / t"core").directory(Ensure)
       
       val module = Module(name, t"${pwd.path.name}/core", None, None,
-          Set(sourceDir.path.relativeTo(pwd.path).show), None, None, None, None, None, None, None)
+          Set(sourceDir.path.relativeTo(pwd.path).show), None, None, None, None, None, None, None, None)
 
       val config = BuildConfig(None, None, List(module), None, None)
       try
@@ -368,12 +373,12 @@ object Irk extends Daemon():
         case Token.Markup(_)         => ansi""
         case Token.Newline           => throw Mistake("Should not have a newline")
       .join.take(columns - 2 - margin)
-              
+
     def codeLine(margin: Int, codeText: Text, line: Int): AnsiText =
       val lineNo = ansi"${colors.Orange}(${line.show.pad(margin, Rtl)})"
       val bar = ansi"${colors.DarkSlateGray}(║)$bg "
       val code = format(codeText, line - 1, margin)
-      ansi"$lineNo$bar$code${t" "*(columns - 2 - margin - code.length)}"
+      ansi"${escapes.Reset}$lineNo$bar$code${t" "*(columns - 2 - margin - code.length)}${escapes.Reset}"
 
     sorted.foreach:
       case (file, issues) =>
@@ -406,31 +411,30 @@ object Irk extends Daemon():
                       if lineNo == pos.endLine then code.slice(pos.from, pos.to) else code.drop(pos.from)
                     else if lineNo == pos.endLine then code.take(pos.to) else code
 
-                  append(ansi"${colors.Orange}($Bold(${(lineNo + 1).show.pad(margin, Rtl)}))")
+                  append(ansi"${escapes.Reset}${colors.Orange}($Bold(${(lineNo + 1).show.pad(margin, Rtl)}))")
                   append(ansi"${colors.DarkSlateGray}(║)$bg ")
                   append(before)
                   append(ansi"${colors.OrangeRed}(${highlighted.plain})")
                   val width = highlighted.length + before.length + after.length
-                  appendln(ansi"$after${t" "*(codeWidth - width)}")
+                  appendln(ansi"$after${t" "*(codeWidth - width)}${escapes.Reset}")
                 else if lineNo == pos.startLine + 2 then
                   val code = format(codeText, pos.startLine + 1, margin)
                   val break = snip.take(codeWidth)
-                  append(ansi"${t"".pad(margin, Rtl)}${colors.DarkSlateGray}(╫)$bg ")
+                  append(ansi"${escapes.Reset}${t"".pad(margin, Rtl)}${colors.DarkSlateGray}(╫)$bg ")
                   appendln(ansi"${colors.RebeccaPurple}($break)")
 
               if pos.endLine + 1 < highlight(codeText).length
               then appendln(codeLine(margin, codeText, pos.endLine + 2))
-              
+
               if pos.startLine == pos.endLine then
                 append(ansi"${colors.DarkSlateGray}(${t" "*margin}╟${t"─"*pos.from}┴${t"─"*(pos.to - pos.from)}┘)")
                 appendln(ansi"${t"\e[K"}")
-              else appendln(ansi"${t" "*margin}${colors.DarkSlateGray}(║)")
+              else appendln(ansi"${escapes.Reset}${t" "*margin}${colors.DarkSlateGray}(║)")
               
               message.cut(t"\n").foreach: line =>
-                appendln(ansi"${t" "*margin}${colors.DarkSlateGray}(║) ${Bold}($line)")
+                appendln(ansi"${escapes.Reset}${t" "*margin}${colors.DarkSlateGray}(║) ${Bold}($line)")
               
-              appendln(ansi"${t" "*margin}${colors.DarkSlateGray}(╨)")
-              appendln(ansi"${escapes.Reset}")
+              appendln(ansi"${escapes.Reset}${t" "*margin}${colors.DarkSlateGray}(╨)")
               
               if !stack.isEmpty then
                 appendln(ansi"This includes inlined code from:")
@@ -442,11 +446,13 @@ object Irk extends Daemon():
                   val ref = pos.module.option.fold(t"[external]")(_.show).pad(refWidth, Rtl)
                   val path = pos.path.show.pad(pathWidth, Rtl)
                   val code = codeLine(margin + indent, pos.content.text, pos.startLine).drop(indent)
-                  appendln(ansi"${arrow(colors.DarkCyan -> ref, colors.LightSeaGreen -> path)} $code")
+                  appendln(ansi"${arrow(colors.DarkCyan -> ref, colors.LightSeaGreen -> path)} $code${escapes.Reset}")
                 
                 appendln(ansi"")
+              appendln(ansi"${escapes.Reset}")
 
     buf.text
+
 
   case class Change(changeType: ChangeType, path: DiskPath[Unix])
   enum ChangeType:
@@ -462,12 +468,11 @@ object Irk extends Daemon():
 
   def build(target: Option[Text], publishSonatype: Boolean, watch: Boolean = false, pwd: Directory[Unix],
                 env: Map[Text, Text], scriptFile: File[Unix], exec: Boolean)
-           (using Stdout, InputSource)
+           (using Stdout, InputSource, Monitor, Allocator)
            : ExitStatus throws AppError = unsafely:
     Tty.capture:
       val rootBuild = unsafely(pwd / t"build.irk")
       val tap: Tap = Tap(true)
-      val abortFunnel: Funnel[Event] = Funnel()
       
       //Tty.reportSize()
 
@@ -477,7 +482,7 @@ object Irk extends Daemon():
       .filter:
         case Event.Interrupt =>
           if !tap.state() then
-            abortFunnel.put(Event.Interrupt)
+            summon[Monitor].cancel()
             false
           else true
         
@@ -516,18 +521,10 @@ object Irk extends Daemon():
           case err: BuildfileError => throw AppError(err.message)
           case err: IoError => throw AppError(t"The build file could not be read")
 
-      var cancel: Promise[Unit] = Promise()
-      
-      def abort(): Unit = cancel.synchronized:
-        if !cancel.isCompleted then cancel.complete(util.Success(()))
-
-
-      Task(abortFunnel.stream.foreach(abort().waive))()
-
       @tailrec
       def loop(first: Boolean, stream: LazyList[Event], oldBuild: Build, lastSuccess: Boolean,
                         browser: List[WebDriver#Session], running: List[Subprocess] = Nil,
-                        count: Int = 1, columns: Int = 120)(using Internet)
+                        count: Int = 1, columns: Int = 120)(using Internet, Monitor)
                    : ExitStatus =
         import unsafeExceptions.canThrowAny
         tap.open()
@@ -570,13 +567,15 @@ object Irk extends Daemon():
             if changes.isEmpty && count > 1 then
               loop(false, stream.tail, oldBuild, lastSuccess, browser, running, count, columns)
             else
-              changes.foreach:
-                change => Out.println(ansi"Rebuild triggered by change to a ${change.changeType.category} file")
+              changes.foreach: change =>
+                Out.println(ansi"Rebuild triggered by change to a ${change.changeType.category} file")
   
               val build: Build =
                 if changes.exists(_.changeType.rebuild)
                 then safely(generateBuild()).otherwise(oldBuild)
                 else oldBuild
+
+              build.clearHashes()
   
               val oldHashes = build.cache
               Out.println(t"")
@@ -591,53 +590,72 @@ object Irk extends Daemon():
                 step.sources.map(_.path -> step)
               .to(Map)
               
-              val futures = build.graph.traversal[Future[Result]]: (set, step) =>
-                Future.sequence(set).flatMap: results =>
-                  Future.sequence:
-                    step.jars.map(Irk.fetchFile(_, Some(funnel)))
-                  .flatMap: downloads =>
-                    if cancel.isCompleted then Future(Result.Aborted) else Future:
+              val tasks = build.graph.traversal[Task[Result]]: (set, step) =>
+                set.sequence.flatMap: results =>
+                  step.jars.map(Irk.fetchFile(_, Some(funnel))).sequence.flatMap: downloads =>
+                    if cancel.ready then Task(step.id.show)(Result.Aborted) else Task(step.id.show):
                       val verb = Verb.Compile(ansi"${Green}(${step.name})")
+                      val result: Result = results.foldLeft(Result.Complete())(_ + _)
                       
-                      blocking:
-                        val result: Result = results.foldLeft(Result.Complete(Nil))(_ + _)
-                        
-                        if result.success then
-                          val hash = build.hashes(step)
-                          try
-                            if oldHashes.get(step) != build.hashes.get(step)
-                            then
-                              funnel.put(Progress.Update.Add(verb, hash))
-                              val newResult = step.compile(build.hashes, oldHashes, build, scriptFile, cancel, owners)
-                              val status = if cancel.isCompleted then Result.Aborted else newResult
-                              funnel.put(Progress.Update.Remove(verb, status))
-                              result + newResult
-                            else
-                              funnel.put(Progress.Update.SkipOne)
-                              result
-                          catch
-                            case err: ExcessDataError =>
-                              val result = Result.Terminal(ansi"Too much data was received during ${step.name}")
-                              funnel.put(Progress.Update.Remove(verb, result))
-                              result
-            
-                            case err: StreamCutError =>
-                              val result = Result.Terminal(ansi"An I/O stream failed during ${step.name}")
-                              funnel.put(Progress.Update.Remove(verb, result))
-                              result
-                        else
-                          result
+                      if result.success then
+                        val hash = build.hashes(step)
+                        try
+                          if oldHashes.get(step) != build.hashes.get(step)
+                          then
+                            funnel.put(Progress.Update.Add(verb, hash))
+                            val newResult = step.compile(build.hashes, oldHashes, build, scriptFile, cancel, owners)
+                            val status = if cancel.ready then Result.Aborted else newResult
+                            funnel.put(Progress.Update.Remove(verb, status))
+                            
+                            if newResult.success && build.plugins.contains(step.id) then
+                              val verb2 = Verb.Build(ansi"compiler plugin ${palette.File}(${step.id})")
+                              val path = Irk.libJar(build.hashes(step))
+                              if !path.exists() then
+                                funnel.put(Progress.Update.Add(verb2, build.hashes(step)))
+                                val artifact = Artifact(path, step.main, Format.CompilerPlugin)
+                                
+                                Artifact.build(artifact, irkJar(scriptFile), step.name, step.version, step.classpath(build).to(List),
+                                    step.allResources(build).to(List), step.main)
+                                
+                                funnel.put(Progress.Update.Remove(verb2, Result.Complete()))
+                            
+                            if newResult.success then step.artifact.foreach: artifact =>
+                              val verb = Verb.Build(ansi"artifact ${palette.File}(${artifact.path.relativeTo(pwd.path).show})")
+                              funnel.put(Progress.Update.Add(verb, build.hashes(step)))
+                              
+                              Artifact.build(artifact, irkJar(scriptFile), step.name, step.version,
+                                  step.classpath(build).to(List), step.allResources(build).to(List),
+                                  artifact.main.orElse(step.main))
+                              
+                              funnel.put(Progress.Update.Remove(verb, Result.Complete()))
+                            
+                            result + newResult
+                    
+                          else
+                            funnel.put(Progress.Update.SkipOne)
+                            result
+                        catch
+                          case err: ExcessDataError =>
+                            val result = Result.Terminal(ansi"Too much data was received during ${step.name}")
+                            funnel.put(Progress.Update.Remove(verb, result))
+                            result
+          
+                          case err: StreamCutError =>
+                            val result = Result.Terminal(ansi"An I/O stream failed during ${step.name}")
+                            funnel.put(Progress.Update.Remove(verb, result))
+                            result
+                      else
+                        result
   
               val pulsar = Pulsar(using timekeeping.long)(100)
               
-              val ui = Task:
+              val ui = Task(t"ui"):
                 funnel.stream.multiplexWith:
                   pulsar.stream.map(Progress.Update.Print.waive)
                 .foldLeft(Progress(TreeMap(), Nil, totalTasks = totalTasks))(_(_))
               
-              val uiReady = ui()
-              val resultSet = Future.sequence(futures.values).await().to(Set)
-              val result = resultSet.foldLeft(Result.Complete(Nil))(_ + _)
+              val resultSet = tasks.values.sequence.await().to(Set)
+              val result = resultSet.foldLeft(Result.Complete())(_ + _)
               
               val subprocesses: List[Subprocess] = if !result.success then running else
                 build.linearization.map: step =>
@@ -645,8 +663,8 @@ object Irk extends Daemon():
                     case Exec(browsers, url, start, stop) =>
                       val verb = Verb.Exec(ansi"main class ${palette.Class}($start)")
                       
-                      val mainTask = Task:
-                        val hash = t"${build.hashes.get(step)}$start".digest[Crc32].encode[Base256]
+                      val mainTask = Task(t"main"):
+                        val hash = t"${build.hashes.get(step)}$start".digest[Crc32]
                         funnel.put(Progress.Update.Add(verb, hash))
                         running.foreach(_.stop())
                         val resources = step.allResources(build).map(_.path)
@@ -668,7 +686,7 @@ object Irk extends Daemon():
                           System.setOut(oldOut)
                           subprocess
                       
-                      val subprocess = mainTask().future.await()
+                      val subprocess = mainTask.await()
                       
                       val newResult = subprocess.status match
                         case None | Some(ExitStatus.Ok) =>
@@ -681,17 +699,7 @@ object Irk extends Daemon():
                         if running.isEmpty then b.navigateTo(Url.parse(u)) else b.refresh()
                       
                       Some(subprocess)
-
-                  step.artifact.foreach: artifact =>
-                    val verb = Verb.Build(ansi"artifact ${palette.File}(${artifact.path.relativeTo(pwd.path).show})")
-                    val hash = t"${build.hashes.get(step)}".digest[Crc32].encode[Base256]
-                    funnel.put(Progress.Update.Add(verb, hash))
-                    
-                    Artifact.build(artifact, irkJar(scriptFile), step.name, step.version,
-                        step.classpath(build).to(List), step.allResources(build).to(List))
-                    
-                    funnel.put(Progress.Update.Remove(verb, Result.Complete(Nil)))
-                      
+                  
                   if publishSonatype then Sonatype.publish(build, env.get(t"SONATYPE_PASSWORD"))
                   
                   subprocess
@@ -699,7 +707,7 @@ object Irk extends Daemon():
               
               pulsar.stop()
               funnel.stop()
-              uiReady.future.await()
+              ui.await()
               Out.print(report(result, columns))
 
               val arrowColor = if result.success then colors.YellowGreen else colors.OrangeRed
@@ -715,7 +723,7 @@ object Irk extends Daemon():
               else
                 Out.print(ansi"Build ${colors.Green}(succeeded)")
                 
-                if result.issues.length > 0
+                if result.issues.size > 0
                 then Out.println(ansi" with ${colors.Gold}(${result.issues.size}) ${Numerous(t"warning")(result.issues)}")
                 else Out.println(ansi"")
 
@@ -741,18 +749,23 @@ object Irk extends Daemon():
           loop(true, Event.Changeset(Nil) #:: fileChanges, build, false, List(browser))
         else loop(true, Event.Changeset(Nil) #:: fileChanges, build, false, Nil)
 
-case class ExecError(err: Exception)(using Codepoint)
-extends Error(err"an exception was thrown while executing the task: ${err.getMessage.nn.show}")(pos)
+case class ExecError(err: Exception)
+extends Error(err"an exception was thrown while executing the task: ${err.getMessage.nn.show}")
 
-case class TrapExitError(status: ExitStatus)(using Codepoint)
-extends Error(err"a call to System.exit was trapped: $status")(pos)
+case class TrapExitError(status: ExitStatus) extends Error(err"a call to System.exit was trapped: $status")
 
 object Run:
   import java.net.*
 
   def main(classpath: List[DiskPath[Unix]])(start: Text, stop: Option[Text])(using Stdout): Subprocess =
     val urls = classpath.map { path => URL(t"file://${path.fullname}/".s) }
-    val loader = URLClassLoader(urls.to(Array)).nn
+    
+    def rootClassLoader(cl: ClassLoader): ClassLoader =
+      if cl.getParent == null then cl else rootClassLoader(cl.getParent.nn)
+    
+    val parent = rootClassLoader(Thread.currentThread.nn.getContextClassLoader.nn)
+
+    val loader = new URLClassLoader(urls.to(Array)).nn
 
     def invoke(className: Text): Any =
       Run.synchronized:

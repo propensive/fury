@@ -1,8 +1,10 @@
 package irk
 
 import rudiments.*
+import parasitism.*
 import gossamer.*
 import joviality.*
+import tetromino.*
 import escapade.*
 import serpentine.*
 
@@ -11,20 +13,18 @@ import rendering.ansi
 import dotty.tools.dotc.*, reporting.*, interfaces as dtdi, util as dtdu
 
 import scala.collection.mutable as scm
-import scala.concurrent.*
 
 object Compiler:
+  private var Scala3 = new dotty.tools.dotc.Compiler()
+  
   class CustomReporter() extends Reporter, UniqueMessagePositions, HideNonSensicalMessages:
     var errors: scm.ListBuffer[Diagnostic] = scm.ListBuffer()
-    def doReport(diagnostic: Diagnostic)(using core.Contexts.Context): Unit =
-      errors += diagnostic
+    def doReport(diagnostic: Diagnostic)(using core.Contexts.Context): Unit = errors += diagnostic
 
-  private var Scala3 = new dotty.tools.dotc.Compiler()
-
-  def compile(id: Ref, pwd: Directory[Unix], files: List[File[Unix]], inputs: Set[DiskPath[Unix]],
+  def compile(id: Ref, pwd: Directory[Unix], files: List[File[Unix]], inputs: List[DiskPath[Unix]],
                   out: Directory[Unix], script: File[Unix], plugins: List[PluginRef], cancel: Promise[Unit],
                   owners: Map[DiskPath[Unix], Step])
-             (using Stdout)
+             (using Stdout, Monitor, Allocator)
              : Result =
     import unsafeExceptions.canThrowAny
     import dotty.tools.*, io.{File as _, *}, repl.*, dotc.core.*
@@ -71,39 +71,52 @@ object Compiler:
             PlainFile(Path(file.fullname.s))
           
           val run: Run = Scala3.newRun(using ctx2)
-          
-          cancel.future.andThen: _ =>
+
+          cancel.trigger:
             run.isCancelled = true
           
           run.compile(sources)
           finish(Scala3, run)(using ctx2)
           reporter.errors.to(List)
 
-      def codeRange(pos: dtdi.SourcePosition): CodeRange =
-        val file = pos.source.nn.path.nn.show
-        val absPath = Unix.parse(file)
-        val (root: DiskPath[Unix], step: Step) = owners.filter(_(0).precedes(absPath)).maxBy(_(0).parts.length)
-        val path = safely(absPath.relativeTo(root)).otherwise(Relative.parse(file))
+      def codeRange(pos: dtdi.SourcePosition): Option[CodeRange] =
         val content = pos.source.nn.content.nn.immutable(using Unsafe)
-        CodeRange(step.id, path, pos.line, pos.startColumn, pos.endColumn, pos.endLine, content)
+        val file = pos.source.nn.path.nn.show
+        
+        safely(Unix.parse(file)).option match
+          case Some(p) =>
+            val (root: DiskPath[Unix], step: Step) = owners.filter(_(0).precedes(p)).maxBy(_(0).parts.size)
+            val path = p.relativeTo(root)
+            Some(CodeRange(step.id, path, pos.line, pos.startColumn, pos.endColumn, pos.endLine, content))
+          
+          case None =>
+            //val path = Relative.parse(file)
+            //CodeRange(id, path, pos.line, pos.startColumn, pos.endColumn, pos.endLine, content)
+            Out.println(t"Couldn't parse path $file in ${pos.toString}")
+            None
 
       def getRanges(pos: dtdu.SourcePosition | Null, acc: List[CodeRange] = Nil): List[CodeRange] =
-        if pos == dtdu.NoSourcePosition || pos == null then acc else getRanges(pos.outer, codeRange(pos) :: acc)
+        if pos == dtdu.NoSourcePosition || pos == null then acc else
+          val cr = codeRange(pos)
+          // FIXME
+          if cr.isEmpty then Out.println(t"Could not get code range for ${pos.toString}")
+          getRanges(pos.outer, cr.fold(acc)(_ :: acc))
 
-      driver.run(files, classpathText).foldLeft(Result.Complete(Nil)): (prev, diagnostic) =>
+      driver.run(files, classpathText).foldLeft(Result.Complete(Set())): (prev, diagnostic) =>
         if diagnostic.position.isPresent then
           val level = Level.fromOrdinal(diagnostic.level)
           
           val stack = diagnostic.position.get.nn match
             case pos: dtdu.SourcePosition => getRanges(pos)
-            case pos: dtdi.SourcePosition => List(codeRange(pos))
+            case pos: dtdi.SourcePosition => codeRange(pos).to(List)
           
-          prev + Result.Complete(List(Issue(level, pwd.path, stack.head, stack.tail, diagnostic.message.show)))
+          stack.headOption.fold(prev): head =>
+            prev + Result.Complete(Set(Issue(level, pwd.path, head, stack.tail, diagnostic.message.show)))
         
-        else prev + Result.Complete(Nil)
+        else prev + Result.Complete()
 
     catch case err: Throwable =>
-      if !cancel.isCompleted then
+      if !cancel.ready then
         Out.println(StackTrace(err).ansi)
         
         Compiler.synchronized:

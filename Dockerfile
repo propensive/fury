@@ -2,7 +2,9 @@ FROM openjdk:11
 RUN apt update
 RUN apt install -y make
 RUN mkdir /irk
-RUN git clone https://github.com/lampepfl/dotty /irk/scala
+RUN git clone https://github.com/lampepfl/dotty --branch=cc-experiment /irk/scala
+#RUN git clone https://github.com/lampepfl/dotty /irk/scala
+#RUN git clone --depth 1 --branch=3.1.3-RC5 https://github.com/lampepfl/dotty /irk/scala
 RUN mkdir -p /irk/bin
 RUN curl -Lo /irk/sbt.tgz https://github.com/sbt/sbt/releases/download/v1.6.1/sbt-1.6.1.tgz
 RUN tar xvf /irk/sbt.tgz -C /irk
@@ -49,6 +51,7 @@ RUN cp -r /one/mod/gesticulate/res/gesticulate /irk/bin/
 RUN cd /irk && scala/bin/scalac \
   -classpath bin \
   -Xmax-inlines 64 \
+  -J-Xss1536k \
   -deprecation \
   -feature \
   -Wunused:all \
@@ -60,11 +63,12 @@ RUN cd /irk && scala/bin/scalac \
   -language:experimental.fewerBraces \
   -language:experimental.saferExceptions \
   -language:experimental.erasedDefinitions \
+  -language:experimental.namedTypeArguments \
   -d bin \
   /one/mod/acyclicity/src/core/*.scala \
   /one/mod/adversaria/src/core/*.scala \
   /one/mod/caesura/src/core/*.scala \
-  /one/mod/cataclysm/src/core/*.scala \
+  /one/mod/cardinality/src/core/*.scala \
   /one/mod/anticipation/src/css/*.scala \
   /one/mod/anticipation/src/file/*.scala \
   /one/mod/anticipation/src/html/*.scala \
@@ -76,36 +80,57 @@ RUN cd /irk && scala/bin/scalac \
   /one/mod/escapade/src/core/*.scala \
   /one/mod/escritoire/src/core/*.scala \
   /one/mod/eucalyptus/src/core/*.scala \
-  /one/mod/euphemism/src/core/*.scala \
-  /one/mod/exoskeleton/src/core/*.scala \
   /one/mod/gastronomy/src/core/*.scala \
   /one/mod/gesticulate/src/core/*.scala \
   /one/mod/gossamer/src/core/*.scala \
-  /one/mod/guillotine/src/core/*.scala \
-  /one/mod/harlequin/src/core/*.scala \
   /one/mod/imperial/src/core/*.scala \
   /one/mod/iridescence/src/core/*.scala \
-  /one/mod/joviality/src/core/*.scala \
   /one/mod/kaleidoscope/src/core/*.scala \
   /one/mod/probably/src/cli/*.scala \
   /one/mod/probably/src/core/*.scala \
   /one/mod/probably/src/tolerance/*.scala \
   /one/mod/profanity/src/core/*.scala \
   /one/mod/profanity/src/java/**/*.java \
-  /one/mod/rudiments/src/core/*.scala \
   /one/mod/serpentine/src/core/*.scala \
-  /one/mod/surveillance/src/core/*.scala \
-  /one/mod/telekinesis/src/client/*.scala \
-  /one/mod/telekinesis/src/uri/*.scala \
+  /one/mod/parasitism/src/core/*.scala \
+  /one/mod/tetromino/src/core/*.scala \
   /one/mod/turbulence/src/core/*.scala \
   /one/mod/wisteria/src/core/*.scala \
+  /one/mod/rudiments/src/core/*.scala
+
+RUN cd /irk && scala/bin/scalac \
+  -classpath bin \
+  -Xmax-inlines 64 \
+  -J-Xss1536k \
+  -deprecation \
+  -feature \
+  -Wunused:all \
+  -new-syntax \
+  -Yrequire-targetName \
+  -Ysafe-init \
+  -Yexplicit-nulls \
+  -Ycheck-all-patmat \
+  -language:experimental.fewerBraces \
+  -language:experimental.saferExceptions \
+  -language:experimental.erasedDefinitions \
+  -language:experimental.namedTypeArguments \
+  -d bin \
+  /one/mod/euphemism/src/core/*.scala \
+  /one/mod/exoskeleton/src/core/*.scala \
   /one/mod/xylophone/src/core/*.scala \
-  /one/mod/honeycomb/src/core/*.scala \
+  /one/mod/harlequin/src/core/*.scala \
   /one/mod/punctuation/src/ansi/*.scala \
+  /one/mod/joviality/src/core/*.scala \
+  /one/mod/cataclysm/src/core/*.scala \
   /one/mod/punctuation/src/core/*.scala \
+  /one/mod/telekinesis/src/client/*.scala \
+  /one/mod/telekinesis/src/uri/*.scala \
   /one/mod/punctuation/src/html/*.scala \
+  /one/mod/honeycomb/src/core/*.scala \
   /one/mod/scintillate/src/server/*.scala \
   /one/mod/scintillate/src/servlet/*.scala \
+  /one/mod/guillotine/src/core/*.scala \
+  /one/mod/surveillance/src/core/*.scala \
   /one/mod/tarantula/src/core/*.scala
 
 RUN cd /irk && scala/bin/scalac \
@@ -122,6 +147,7 @@ RUN cd /irk && scala/bin/scalac \
   -language:experimental.fewerBraces \
   -language:experimental.saferExceptions \
   -language:experimental.erasedDefinitions \
+  -language:experimental.namedTypeArguments \
   -d bin \
   src/core/*.scala
 
@@ -144,7 +170,7 @@ RUN echo -n 'Implementation-Version: ' >> /irk/manifest
 RUN cat /irk/.version >> /irk/manifest
 RUN echo 'Main-Class: irk.Irk' >> /irk/manifest
 
-RUN jar cmf /irk/manifest /irk/irk.jar \
+RUN jar cmf /irk/manifest /irk/irk.jar  \
   -C /irk/bin NOTICE \
   -C /irk/bin compiler.properties \
   -C /irk/bin incrementalcompiler.version.properties \
@@ -157,6 +183,7 @@ RUN jar cmf /irk/manifest /irk/irk.jar \
   -C /irk/bin adversaria \
   -C /irk/bin anticipation \
   -C /irk/bin caesura \
+  -C /irk/bin cardinality \
   -C /irk/bin cataclysm \
   -C /irk/bin com \
   -C /irk/bin contextual \
@@ -179,6 +206,7 @@ RUN jar cmf /irk/manifest /irk/irk.jar \
   -C /irk/bin joviality \
   -C /irk/bin kaleidoscope \
   -C /irk/bin org \
+  -C /irk/bin parasitism \
   -C /irk/bin probably \
   -C /irk/bin profanity \
   -C /irk/bin punctuation \
@@ -188,6 +216,7 @@ RUN jar cmf /irk/manifest /irk/irk.jar \
   -C /irk/bin surveillance \
   -C /irk/bin tarantula \
   -C /irk/bin telekinesis \
+  -C /irk/bin tetromino \
   -C /irk/bin turbulence \
   -C /irk/bin wisteria \
   -C /irk/bin xylophone
@@ -198,6 +227,7 @@ RUN rm /irk/irk.jar
 ADD build.irk /irk/build.irk
 RUN cd /irk && ./bootstrap
 RUN mv /irk/irk /irk/irk-bootstrap
+RUN rm -rf /root/.cache/irk
 RUN md5sum /irk/irk-bootstrap | cut -d' ' -f1 > bootstrap.md5
 RUN cd /irk && ./irk-bootstrap
 RUN md5sum /irk/irk | cut -d' ' -f1 > irk.md5

@@ -11,6 +11,7 @@ import eucalyptus.*
 import gesticulate.*
 import xylophone.*
 import guillotine.*
+import tetromino.*
 
 import scala.concurrent.*
 
@@ -25,7 +26,7 @@ case class ProfileId(id: Text, repoTargetId: Text)
 case class RepoId(id: Text)
 
 object Sonatype:
-  def publish(build: Build, passwordOpt: Option[Text])(using Stdout, Internet): Unit =
+  def publish(build: Build, passwordOpt: Option[Text])(using Stdout, Internet, Allocator): Unit =
     val password = passwordOpt.getOrElse:
       throw AppError(t"The environment variable SONATYPE_PASSWORD is not set")
     
@@ -109,11 +110,11 @@ case class Sonatype(username: Text, password: Text, profileName: Text,
     Log.info(t"Got repository ID $output")
     RepoId(output)
   
-  def deploy(repoId: RepoId, dir: Text, files: List[File[Unix]])(using Log, Internet): Unit =
+  def deploy(repoId: RepoId, dir: Text, files: List[File[Unix]])(using Log, Internet, Allocator): Unit =
     val futures = for file <- files yield Future:
       val uri = uri"https://$domain/$servicePath/deployByRepositoryId/${repoId.id}/${profileName.sub(t".", t"/").nn}/$dir/${file.name}"
       Log.info(t"Uploading file $file to $uri")
-      uri.put(auth)(file.read[DataStream](5.mb))
+      uri.put(auth)(file.read[DataStream]())
       Log.info(t"Finished uploading $file")
 
     Await.result(Future.sequence(futures), duration.Duration.Inf)

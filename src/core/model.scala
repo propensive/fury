@@ -7,6 +7,7 @@ import joviality.*
 import serpentine.*
 import xylophone.*
 import euphemism.*
+import gastronomy.*
 import escapade.*
 import surveillance.*
 
@@ -26,7 +27,8 @@ case class Repo(base: Text, url: Text):
 case class Module(name: Text, id: Text, links: Option[Set[Text]], resources: Option[Set[Text]],
                       sources: Set[Text], jars: Option[Set[Text]], docs: Option[List[Text]],
                       dependencies: Option[Set[Dependency]], version: Option[Text],
-                      artifact: Option[ArtifactSpec], exec: Option[Exec], plugins: Option[List[PluginSpec]])
+                      artifact: Option[ArtifactSpec], exec: Option[Exec], plugins: Option[List[PluginSpec]],
+                      main: Option[Text])
 
 case class ArtifactSpec(path: Text, main: Option[Text], format: Option[Text])
 
@@ -58,14 +60,11 @@ object AppError:
   def apply(msg: Text, originalCause: Maybe[Error[?]] = Unset): AppError =
     AppError(msg.ansi, originalCause)
 
-case class AppError(appMsg: AnsiText, originalCause: Maybe[Error[?]])(using codepoint: Codepoint)
-extends Error(err"an application error occurred: $appMsg", originalCause)(codepoint)
+case class AppError(appMsg: AnsiText, originalCause: Maybe[Error[?]])
+extends Error(err"an application error occurred: $appMsg", originalCause)
 
-case class BuildfileError(bfMsg: Text)(using Codepoint)
-extends Error(err"the build file contained an error: $bfMsg")(pos)
-
-case class BrokenLinkError(link: Ref)(using Codepoint)
-extends Error(err"the reference to $link cannot be resolved")(pos)
+case class BuildfileError(bfMsg: Text) extends Error(err"the build file contained an error: $bfMsg")
+case class BrokenLinkError(link: Ref) extends Error(err"the reference to $link cannot be resolved")
 
 @xmlLabel("organization")
 case class Organization(name: Text, url: Text)
@@ -120,7 +119,7 @@ enum Event:
 enum Result:
   case Aborted
   case Incomplete
-  case Complete(issueList: List[Issue])
+  case Complete(issueSet: Set[Issue] = Set())
   case Terminal(message: AnsiText)
 
   @targetName("plus")
@@ -138,16 +137,19 @@ enum Result:
     case Complete(_) | Incomplete => issues.count(_.level == Level.Error) == 0
     case _                        => false
   
-  def issues: List[Issue] = this match
+  def issues: Set[Issue] = this match
     case Complete(issues) => issues
-    case _                => Nil
+    case _                => Set()
   
-  def errors: List[Issue] = issues.filter(_.level == Level.Error)
+  def errors: Set[Issue] = issues.filter(_.level == Level.Error)
 
-case class Hash(id: Ref, digest: Text, bin: Text)
+given Json.Writer[Digest[Crc32]] = summon[Json.Writer[Text]].contramap[Digest[Crc32]](_.encode[Base64])
+given Json.Reader[Digest[Crc32]] = summon[Json.Reader[Text]].map(_.decode[Base64]).map(Digest[Crc32](_))
+
+case class Hash(id: Ref, digest: Digest[Crc32], bin: Text)
 case class Versioning(versions: List[Version])
 
 case class Version(digest: Text, major: Int, minor: Int):
   def version: Text = t"$major.$minor"
 
-case class PluginRef(jarFile: File[Unix], params: List[Text])
+case class PluginRef(jarFile: DiskPath[Unix], params: List[Text])
