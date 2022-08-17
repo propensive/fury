@@ -83,17 +83,10 @@ object Compiler:
         val content = pos.source.nn.content.nn.immutable(using Unsafe)
         val file = pos.source.nn.path.nn.show
         
-        safely(Unix.parse(file)).option match
-          case Some(p) =>
-            val (root: DiskPath[Unix], step: Step) = owners.filter(_(0).precedes(p)).maxBy(_(0).parts.size)
-            val path = p.relativeTo(root)
-            Some(CodeRange(step.id, path, pos.line, pos.startColumn, pos.endColumn, pos.endLine, content))
-          
-          case None =>
-            //val path = Relative.parse(file)
-            //CodeRange(id, path, pos.line, pos.startColumn, pos.endColumn, pos.endLine, content)
-            Out.println(t"Couldn't parse path $file in ${pos.toString}")
-            None
+        safely(Unix.parse(file)).option.map: p =>
+          val (root: DiskPath[Unix], step: Step) = owners.filter(_(0).precedes(p)).maxBy(_(0).parts.size)
+          val path = p.relativeTo(root)
+          CodeRange(step.id, path, pos.line, pos.startColumn, pos.endColumn, pos.endLine, content)
 
       def getRanges(pos: dtdu.SourcePosition | Null, acc: List[CodeRange] = Nil): List[CodeRange] =
         if pos == dtdu.NoSourcePosition || pos == null then acc else
