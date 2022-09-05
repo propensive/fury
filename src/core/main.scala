@@ -48,10 +48,10 @@ object Irk extends Daemon():
     props.load(getClass.nn.getClassLoader.nn.getResourceAsStream("compiler.properties").nn)
     props.get("version.number").toString.show
  
-  def homeDir: Directory[Unix] = unsafely(Home().directory(Expect))
+  def homeDir: Directory[Unix] = unsafely(Home[DiskPath[Unix]]().directory(Expect))
       
   def cacheDir: Directory[Unix] =
-    try (Home.Cache() / p"irk").directory(Ensure)
+    try (Home.Cache[DiskPath[Unix]]() / p"irk").directory(Ensure)
     catch case err: IoError => throw AppError(t"The user's cache directory could not be created", err)
 
   def libDir: Directory[Unix] =
@@ -545,7 +545,7 @@ object Irk extends Daemon():
               case _                                                        => false
             
             val changes: List[Change] =
-              fileChanges.groupBy(_.path).collect:
+              fileChanges.groupBy(_.path[DiskPath[Unix]]).collect:
                 case (path, es) if !ephemeral(es) => es.last
               .foldLeft[List[Change]](Nil): (changes, event) =>
                 Option(event).collect:
@@ -553,12 +553,12 @@ object Irk extends Daemon():
                   case WatchEvent.Modify(_, _)  => t"modified"
                   case WatchEvent.NewFile(_, _) => t"created"
                 .foreach: change =>
-                  val file = ansi"${palette.File}(${event.path.relativeTo(pwd.path)})"
+                  val file = ansi"${palette.File}(${event.path[DiskPath[Unix]].relativeTo(pwd.path)})"
                   Out.println(ansi"The file $file was $change")
                 
-                if event.path.name.endsWith(t".irk")
+                if event.path[DiskPath[Unix]].name.endsWith(t".irk")
                 then Change(ChangeType.Build, event.path) :: changes
-                else if event.path.name.endsWith(t".scala")
+                else if event.path[DiskPath[Unix]].name.endsWith(t".scala")
                 then Change(ChangeType.Source, event.path) :: changes
                 else if oldBuild.resourceDirs.exists(_.path.precedes(event.path))
                 then Change(ChangeType.Resource, event.path) :: changes
