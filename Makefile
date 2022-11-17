@@ -2,12 +2,12 @@ VERSION = $(shell cat doc/.version)
 
 distribution: dist/irk-$(VERSION) dist/launcher-$(VERSION)
 
-one.jar:
+one.zip:
 	rsync -a --delete --delete-excluded --exclude 'mod/*/out' --exclude '.*' --exclude scala ../one ./
-	zip -q -r one.jar one && rm -r one
+	zip -q -r one.zip one && rm -r one
 
 
-.image: one.jar src/*/*.scala Dockerfile
+.image: one.zip src/*/*.scala Dockerfile
 	docker build --tag=irk .
 	#docker build --tag=irk . --no-cache
 	touch .image

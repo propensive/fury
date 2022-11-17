@@ -24,7 +24,7 @@ object Compiler:
   def compile(id: Ref, pwd: Directory[Unix], files: List[File[Unix]], inputs: List[DiskPath[Unix]],
                   out: Directory[Unix], script: File[Unix], plugins: List[PluginRef], cancel: Promise[Unit],
                   owners: Map[DiskPath[Unix], Step])
-             (using Stdout, Monitor, Allocator)
+             (using Stdout, Monitor, Allocator, Environment)
              : Result =
     import unsafeExceptions.canThrowAny
     import dotty.tools.*, io.{File as _, *}, repl.*, dotc.core.*
@@ -41,16 +41,15 @@ object Compiler:
       val classpathText = classpath.reverse.join(separator)
       
       val callbackApi = new interfaces.CompilerCallback:
-        override def onClassGenerated(source: interfaces.SourceFile,
-                                          generatedClass: interfaces.AbstractFile,
-                                          className: String): Unit = ()
+        override def onClassGenerated(source: interfaces.SourceFile, generatedClass: interfaces.AbstractFile,
+            className: String): Unit = ()
   
         override def onSourceCompiled(source: interfaces.SourceFile): Unit = ()
 
       object driver extends dotc.Driver:
         val currentCtx =
           val ctx = initCtx.fresh
-          val pluginParams = plugins.map(_.jarFile.show).map(t"-Xplugin:"+_).ss.to(Array)
+          val pluginParams = plugins.map(_.jarFile.fullname).map(t"-Xplugin:"+_).ss.to(Array)
 
           setup(pluginParams ++ Array[String]("-d", out.fullname.s, "-deprecation", "-feature", "-Wunused:all",
               "-new-syntax", "-Yrequire-targetName", "-Ysafe-init", "-Yexplicit-nulls", "-Xmax-inlines", "64",

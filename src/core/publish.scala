@@ -6,6 +6,8 @@ import gastronomy.*
 import telekinesis.*
 import euphemism.*
 import joviality.*
+import filesystems.unix
+import anticipation.integration.jovialityPath
 import gossamer.*
 import eucalyptus.*
 import gesticulate.*
@@ -26,7 +28,7 @@ case class ProfileId(id: Text, repoTargetId: Text)
 case class RepoId(id: Text)
 
 object Sonatype:
-  def publish(build: Build, passwordOpt: Option[Text])(using Stdout, Internet, Allocator): Unit =
+  def publish(build: Build, passwordOpt: Option[Text])(using Stdout, Internet, Allocator, Environment): Unit =
     val password = passwordOpt.getOrElse:
       throw AppError(t"The environment variable SONATYPE_PASSWORD is not set")
     
@@ -37,47 +39,46 @@ object Sonatype:
         val profileId = sonatype.profile()
         val repoId = sonatype.start(profileId)
             
-        steps.foreach:
-          step =>
-            Out.println(t"Generating POM file for ${step.id}")
-            
-            val pomXml = Pom(build, step, 2022,
-                t"https://propensive.com/opensource/${step.id.project}",
-                t"github.com/${step.id.project}", pub).xml
-            
-            pomXml.show.bytes.writeTo(step.pomFile.file(Create))
-            
-            val srcFiles: List[Text] = step.sources.to(List).flatMap: dir =>
-              Out.println(t"Adding source dir $dir")
-              dir.path.descendantFiles(!_.name.startsWith(t".")).filter: file =>
-                file.name.endsWith(t".scala") || file.name.endsWith(t".java")
-              .flatMap: file =>
-                List(t"-C", dir.show, file.path.relativeTo(dir.path).show)
-            
-            sh"jar cf ${step.srcsPkg} $srcFiles".exec[ExitStatus]()
-            
-            val docFiles: List[Text] = step.docs.to(List).flatMap: dir =>
-              Out.println(t"Adding doc dir $dir")
-              dir.descendantFiles(!_.name.startsWith(t".")).flatMap: file =>
-                List(t"-C", dir.show, file.path.relativeTo(dir).show)
-            
-            sh"jar cf ${step.docFile} $docFiles".exec[ExitStatus]()
+        steps.foreach: step =>
+          Out.println(t"Generating POM file for ${step.id}")
+          
+          val pomXml = Pom(build, step, 2022,
+              t"https://propensive.com/opensource/${step.id.project}",
+              t"github.com/${step.id.project}", pub).xml
+          
+          pomXml.show.bytes.writeTo(step.pomFile.file(Create))
+          
+          val srcFiles: List[Text] = step.sources.to(List).flatMap: dir =>
+            Out.println(t"Adding source dir $dir")
+            dir.path.descendantFiles(!_.name.startsWith(t".")).filter: file =>
+              file.name.endsWith(t".scala") || file.name.endsWith(t".java")
+            .flatMap: file =>
+              List(t"-C", dir.fullname, file.path.relativeTo(dir.path).show)
+          
+          sh"jar cf ${step.srcsPkg} $srcFiles".exec[ExitStatus]()
+          
+          val docFiles: List[Text] = step.docs.to(List).flatMap: dir =>
+            Out.println(t"Adding doc dir $dir")
+            dir.descendantFiles(!_.name.startsWith(t".")).flatMap: file =>
+              List(t"-C", dir.fullname, file.path.relativeTo(dir).show)
+          
+          sh"jar cf ${step.docFile} $docFiles".exec[ExitStatus]()
 
-            List(step.docFile, step.pomFile, /*step.pkg,*/ step.srcsPkg).foreach: file =>
-              sh"gpg -ab $file".exec[ExitStatus]()
+          List(step.docFile, step.pomFile, /*step.pkg,*/ step.srcsPkg).foreach: file =>
+            sh"gpg -ab $file".exec[ExitStatus]()
 
-            Out.println(t"Publishing ${step.id}")
-            val dir = t"${step.id.dashed}/${step.version}"
+          Out.println(t"Publishing ${step.id}")
+          val dir = t"${step.id.dashed}/${step.version}"
 
-            val uploads = List(/*step.pkg, */step.pomFile, step.docFile, step.srcsPkg).map(_.file(Expect))
-            val signedUploads = uploads ++ uploads.map(_.path.rename(_+t".asc").file(Expect))
+          val uploads = List(/*step.pkg, */step.pomFile, step.docFile, step.srcsPkg).map(_.file(Expect))
+          val signedUploads = uploads ++ uploads.map(_.path.rename(_+t".asc").file(Expect))
 
-            val checksums = signedUploads.map: file =>
-              val checksum = file.path.rename(_+t".sha1")
-              sh"sha1sum $file".exec[Text]().take(40).bytes.writeTo(checksum.file(Create))
-              checksum.file(Expect)
+          val checksums = signedUploads.map: file =>
+            val checksum = file.path.rename(_+t".sha1")
+            sh"sha1sum $file".exec[Text]().take(40).bytes.writeTo(checksum.file(Create))
+            checksum.file(Expect)
 
-            sonatype.deploy(repoId, dir, signedUploads ++ checksums)
+          sonatype.deploy(repoId, dir, signedUploads ++ checksums)
         
         sonatype.finish(profileId, repoId)
         sonatype.activity(repoId)

@@ -1,17 +1,17 @@
 FROM openjdk:11
-RUN apt update
-RUN apt install -y make
 RUN mkdir /irk
-RUN git clone https://github.com/lampepfl/dotty --branch=cc-experiment /irk/scala
-#RUN git clone https://github.com/lampepfl/dotty /irk/scala
-#RUN git clone --depth 1 --branch=3.1.3-RC5 https://github.com/lampepfl/dotty /irk/scala
+RUN git clone https://github.com/lampepfl/dotty /irk/scala
 RUN mkdir -p /irk/bin
-RUN curl -Lo /irk/sbt.tgz https://github.com/sbt/sbt/releases/download/v1.6.1/sbt-1.6.1.tgz
+RUN curl -Lo /irk/sbt.tgz https://github.com/sbt/sbt/releases/download/v1.7.1/sbt-1.7.1.tgz
 RUN tar xvf /irk/sbt.tgz -C /irk
 ENV PATH="/irk/sbt/bin:${PATH}"
 ENV GITHUB_ACTIONS="true"
 RUN /irk/scala/bin/scalac -version
 RUN mkdir /irk/lib
+
+RUN curl -Lo "/irk/jdk20.tar.gz" "https://api.adoptium.net/v3/binary/latest/20/ea/linux/x64/jre/hotspot/normal/eclipse"
+RUN sh -c "tar xvf /irk/jdk20.tar.gz && mv /jdk-20* /irk/jdk"
+ENV PATH="/irk/jdk/bin:$PATH"
 
 RUN curl -Lo /irk/lib/jawn-parser.jar \
   https://repo1.maven.org/maven2/org/typelevel/jawn-parser_3/1.2.0/jawn-parser_3-1.2.0.jar
@@ -39,19 +39,24 @@ RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/flexmark-formatter-0
 RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/flexmark-ext-tables-0.42.12.jar
 RUN rm -r /irk/bin/META-INF
 ADD src /irk/src
-ADD one.jar /irk/one.jar
-RUN unzip -q /irk/one.jar -d /
+ADD one.zip /irk/one.zip
+RUN unzip -q /irk/one.zip -d /
 
 RUN javac -classpath /irk/lib/jna.jar \
   -d /irk/bin \
   /one/mod/profanity/src/java/profanity/Termios.java
 
 RUN cp -r /one/mod/gesticulate/res/gesticulate /irk/bin/
+RUN cp -r /one/mod/oubliette/res/oubliette /irk/bin/
+
+RUN java -version
+ENV JAVA_HOME=/irk/jdk
 
 RUN cd /irk && scala/bin/scalac \
   -classpath bin \
   -Xmax-inlines 64 \
   -J-Xss1536k \
+  -J--enable-preview \
   -deprecation \
   -feature \
   -Wunused:all \
@@ -102,6 +107,7 @@ RUN cd /irk && scala/bin/scalac \
   -classpath bin \
   -Xmax-inlines 64 \
   -J-Xss1536k \
+  -J--enable-preview \
   -deprecation \
   -feature \
   -Wunused:all \
@@ -121,7 +127,9 @@ RUN cd /irk && scala/bin/scalac \
   /one/mod/harlequin/src/core/*.scala \
   /one/mod/punctuation/src/ansi/*.scala \
   /one/mod/joviality/src/core/*.scala \
+  /one/mod/joviality/src/integration/*.scala \
   /one/mod/cataclysm/src/core/*.scala \
+  /one/mod/oubliette/src/core/*.scala \
   /one/mod/punctuation/src/core/*.scala \
   /one/mod/telekinesis/src/client/*.scala \
   /one/mod/telekinesis/src/uri/*.scala \
@@ -135,6 +143,7 @@ RUN cd /irk && scala/bin/scalac \
 
 RUN cd /irk && scala/bin/scalac \
   -classpath bin \
+  -J--enable-preview \
   -Xmax-inlines 64 \
   -deprecation \
   -feature \
@@ -205,6 +214,7 @@ RUN jar cmf /irk/manifest /irk/irk.jar  \
   -C /irk/bin javax \
   -C /irk/bin joviality \
   -C /irk/bin kaleidoscope \
+  -C /irk/bin oubliette \
   -C /irk/bin org \
   -C /irk/bin parasitism \
   -C /irk/bin probably \

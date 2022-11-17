@@ -5,12 +5,14 @@ import rudiments.*
 import turbulence.*
 import acyclicity.*
 import euphemism.*
-import joviality.*, DiskPath.provider, Directory.provider, File.provider, filesystems.unix
+import joviality.*, filesystems.unix
+import anticipation.*, integration.jovialityPath
 import guillotine.*
-import parasitism.*
+import parasitism.*, threading.platform, monitors.global
 import kaleidoscope.*
 import escapade.*
 import gastronomy.*
+import oubliette.*
 import harlequin.*
 import iridescence.*, solarized.*
 import serpentine.*
@@ -20,9 +22,8 @@ import tarantula.*
 import profanity.*
 import xylophone.*
 import telekinesis.*
-import anticipation.*
 import escritoire.*
-import tetromino.*
+import tetromino.*, allocators.default
 import surveillance.*
 
 import timekeeping.long
@@ -34,37 +35,77 @@ import scala.util.chaining.scalaUtilChainingOps
 
 import java.nio.BufferOverflowException
 
-given Environment = environments.system
-
 object Irk extends Daemon():
-  def version: Text =
-    Option(getClass.nn.getPackage.nn.getImplementationVersion).fold(t"0")(_.nn.show)
   
+  def main(using CommandLine, Environment): ExitStatus =
+    Sys.scala.concurrent.context.maxExtraThreads() = t"800"
+    Sys.scala.concurrent.context.maxThreads() = t"1000"
+    Sys.scala.concurrent.context.minThreads() = t"100"
+
+
+    try supervise(t"session-${sessionCount()}"):
+      given Allocator = allocators.default
+      cli.args match
+        case t"about" :: _        => Irk.about()
+        case t"help" :: _         => Irk.help()
+        case t"init" :: name :: _ => Irk.init(unsafely(env.pwd.directory(Expect)), name)
+        case t"version" :: _      => Irk.showVersion()
+        case t"build" :: params   =>
+          val target = params.headOption.filter(!_.startsWith(t"-"))
+          val watch = params.contains(t"-w") || params.contains(t"--watch")
+          val exec = params.contains(t"-b") || params.contains(t"--browser")
+          Irk.build(target, false, watch, cli.script, exec)
+        case t"stop" :: params    => Irk.stop(cli)
+        case params               =>
+          val target = params.headOption.filter(!_.startsWith(t"-"))
+          val watch = params.contains(t"-w") || params.contains(t"--watch")
+          val exec = params.contains(t"-b") || params.contains(t"--browser")
+          Irk.build(target, false, watch, cli.script, exec)
+  
+    catch
+      case error: AppError => error match
+        case AppError(message, _) =>
+          Out.println(message)
+          ExitStatus.Fail(1)
+      case err: Throwable =>
+        try
+          Out.println(StackTrace(err).ansi)
+          ExitStatus.Fail(1)
+        catch case err2: Throwable =>
+          System.out.nn.println(err2.toString)
+          err2.printStackTrace()
+          System.out.nn.println("Caused by:")
+          System.out.nn.println(err.toString)
+          err.printStackTrace()
+          ExitStatus.Fail(2)
+  
+  def version: Text = Option(getClass.nn.getPackage.nn.getImplementationVersion).fold(t"0")(_.nn.show)
   def javaVersion: Text = safely(Sys.java.version()).otherwise(t"unknown")
-  def githubActions: Boolean = Option(System.getenv("GITHUB_ACTIONS")).isDefined
+  def githubActions(using Environment): Boolean = env(t"GITHUB_ACTIONS") != Unset
 
   def scalaVersion: Text =
     val props = java.util.Properties()
     props.load(getClass.nn.getClassLoader.nn.getResourceAsStream("compiler.properties").nn)
     props.get("version.number").toString.show
  
-  def homeDir: Directory[Unix] = unsafely(Home[DiskPath[Unix]]().directory(Expect))
+  def homeDir(using Environment): Directory[Unix] = unsafely(Home[DiskPath[Unix]]().directory(Expect))
       
-  def cacheDir: Directory[Unix] =
+  def cacheDir(using Environment): Directory[Unix] =
     try (Home.Cache[DiskPath[Unix]]() / p"irk").directory(Ensure)
     catch case err: IoError => throw AppError(t"The user's cache directory could not be created", err)
 
-  def libDir: Directory[Unix] =
+  def libDir(using Environment): Directory[Unix] =
     try (cacheDir / p"lib").directory(Ensure)
     catch case err: IoError => throw AppError(t"The user's lib directory could not be created", err)
   
-  def libJar(hash: Digest[Crc32]): DiskPath[Unix] = unsafely(libDir / t"${hash.encode[Hex].lower}.jar")
+  def libJar(hash: Digest[Crc32])(using Environment): DiskPath[Unix] =
+    unsafely(libDir / t"${hash.encode[Hex].lower}.jar")
   
-  def tmpDir: Directory[Unix] =
+  def tmpDir(using Environment): Directory[Unix] =
     try (cacheDir / p"tmp").directory(Ensure)
     catch case err: IoError => throw AppError(t"The user's tmp directory could not be created", err)
   
-  def hashDir: Directory[Unix] =
+  def hashDir(using Environment): Directory[Unix] =
     try (cacheDir / p"hash").directory(Ensure)
     catch case err: IoError => throw AppError(t"The user's hash directory could not be created", err)
 
@@ -74,7 +115,7 @@ object Irk extends Daemon():
   private def scriptSize(using Allocator): Int throws StreamCutError | ClasspathRefError =
     unsafely(Classpath() / p"exoskeleton" / p"invoke").resource.read[Bytes]().size
 
-  def irkJar(scriptFile: File[Unix])(using Stdout, Allocator): File[Unix] throws StreamCutError = synchronized:
+  def irkJar(scriptFile: File[Unix])(using Stdout, Allocator, Environment): File[Unix] throws StreamCutError = synchronized:
     import java.nio.file.*
     val jarPath = unsafely(libDir.path / t"base-$version.jar")
 
@@ -87,7 +128,7 @@ object Irk extends Daemon():
         throw AppError(t"Could not determine the size of the bootloader script")
       
       output.close()
-      val fs = FileSystems.newFileSystem(java.net.URI(t"jar:file:${jarPath.show}".s), Map("zipinfo-time" -> "false").asJava).nn
+      val fs = FileSystems.newFileSystem(java.net.URI(t"jar:file:${jarPath.fullname}".s), Map("zipinfo-time" -> "false").asJava).nn
       
       Files.walk(fs.getPath("/")).nn.iterator.nn.asScala.to(List).sortBy(-_.toString.length).foreach:
         file =>
@@ -105,9 +146,9 @@ object Irk extends Daemon():
     catch case err: IoError =>
       throw AppError(t"The Irk binary could not be copied to the user's cache directory")
 
-  def getFile(ref: Text): File[Unix] = unsafely(libJar(ref.digest[Crc32]).file(Expect))
+  def getFile(ref: Text)(using Environment): File[Unix] = unsafely(libJar(ref.digest[Crc32]).file(Expect))
 
-  def fetchFile(ref: Text, funnel: Option[Funnel[Progress.Update]])(using Stdout, Internet, Monitor)
+  def fetchFile(ref: Text, funnel: Option[Funnel[Progress.Update]])(using Stdout, Internet, Monitor, Environment)
                : Task[File[Unix]] =
     if ref.startsWith(t"https:") then
       val hash = ref.digest[Crc32]
@@ -138,68 +179,29 @@ object Irk extends Daemon():
 
   val sessionCount: Counter = Counter(0)
 
-  def main(using CommandLine): ExitStatus =
-    Sys.scala.concurrent.context.maxExtraThreads() = t"800"
-    Sys.scala.concurrent.context.maxThreads() = t"1000"
-    Sys.scala.concurrent.context.minThreads() = t"100"
-
-
-    try supervise(t"session-${sessionCount()}"):
-      given Allocator = allocators.default
-      cli.args match
-        case t"about" :: _        => Irk.about()
-        case t"help" :: _         => Irk.help()
-        case t"init" :: name :: _ => Irk.init(cli.pwd, name)
-        case t"version" :: _      => Irk.showVersion()
-        case t"build" :: params   =>
-          val target = params.headOption.filter(!_.startsWith(t"-"))
-          val watch = params.contains(t"-w") || params.contains(t"--watch")
-          val exec = params.contains(t"-b") || params.contains(t"--browser")
-          Irk.build(target, false, watch, cli.pwd, cli.env, cli.script, exec)
-        case t"stop" :: params    => Irk.stop(cli)
-        case params               =>
-          val target = params.headOption.filter(!_.startsWith(t"-"))
-          val watch = params.contains(t"-w") || params.contains(t"--watch")
-          val exec = params.contains(t"-b") || params.contains(t"--browser")
-          Irk.build(target, false, watch, cli.pwd, cli.env, cli.script, exec)
-  
-    catch
-      case error: AppError => error match
-        case AppError(message, _) =>
-          Out.println(message)
-          ExitStatus.Fail(1)
-      case err: Throwable =>
-        try
-          Out.println(StackTrace(err).ansi)
-          ExitStatus.Fail(1)
-        catch case err2: Throwable =>
-          System.out.nn.println(err2.toString)
-          err2.printStackTrace()
-          System.out.nn.println("Caused by:")
-          System.out.nn.println(err.toString)
-          err.printStackTrace()
-          ExitStatus.Fail(2)
-  
   private lazy val fileHashes: FileCache[Digest[Crc32]] = new FileCache()
 
-  private def initBuild(pwd: Directory[Unix])(using Stdout, Monitor, Allocator)
+  private def initBuild(pwd: Directory[Unix])(using Stdout, Monitor, Allocator, Environment)
                        : Build throws IoError | BuildfileError =
     val path = unsafely(pwd / t"build.irk")
     readBuilds(Build(pwd, Map(), None, Map(), Map()), Set(), path)
   
   def hashFile(file: File[Unix])(using Allocator): Digest[Crc32] throws IoError | AppError =
-    try fileHashes(file.path.show, file.modified):
+    try fileHashes(file.path.fullname, file.modified):
       file.read[Bytes]().digest[Crc32]
     catch
       case err: StreamCutError  => throw AppError(t"The stream was cut while hashing a file", err)
       case err: ExcessDataError => throw AppError(t"The file was too big to hash", err)
       case err: Error[?]        => throw AppError(t"An unexpected error occurred", err)
   
-  def cloneRepo(path: DiskPath[Unix], url: Text): Unit =
+  def cloneRepo(path: DiskPath[Unix], url: Text)(using Environment): Unit =
     try sh"git clone -q $url ${path.fullname}".exec[Unit]()
-    catch case err: ExecError => throw AppError(t"Could not run `git clone` for repository $url")
+    catch
+      case err: ExecError => throw AppError(t"Could not run `git clone` for repository $url")
+      case err: EnvError  => throw AppError(t"Could not run `git clone` for repository $url")
 
-  def readBuilds(build: Build, seen: Set[Digest[Crc32]], files: DiskPath[Unix]*)(using Stdout, Allocator)
+  def readBuilds(build: Build, seen: Set[Digest[Crc32]], files: DiskPath[Unix]*)
+                (using Stdout, Allocator, Environment)
                 : Build throws BuildfileError | IoError =
     try
       files.to(List) match
@@ -221,7 +223,8 @@ object Irk extends Daemon():
       case err: JsonParseError  => throw BuildfileError(err.message)
       case err: JsonAccessError => throw BuildfileError(err.message)
 
-  def readImports(seen: Map[Digest[Crc32], File[Unix]], files: File[Unix]*)(using Stdout, Allocator)
+  def readImports(seen: Map[Digest[Crc32], File[Unix]], files: File[Unix]*)
+                 (using Stdout, Allocator, Environment)
                  : Set[File[Unix]] =
     case class Imports(repos: Option[List[Repo]], imports: Option[List[Text]]):
       def repoList: List[Repo] = repos.presume
@@ -269,7 +272,6 @@ object Irk extends Daemon():
         catch case err: Exception => readImports(seen, tail*)
 
   def stop(cli: CommandLine)(using Stdout): ExitStatus =
-    Out.println(t"Shutting down Irk")
     cli.shutdown()
     ExitStatus.Ok
 
@@ -466,12 +468,12 @@ object Irk extends Daemon():
       case Source    => t"source"
       case Resource  => t"resource"
 
-  def build(target: Option[Text], publishSonatype: Boolean, watch: Boolean = false, pwd: Directory[Unix],
-                env: Map[Text, Text], scriptFile: File[Unix], exec: Boolean)
-           (using Stdout, InputSource, Monitor, Allocator)
+  def build(target: Option[Text], publishSonatype: Boolean, watch: Boolean = false, scriptFile: File[Unix],
+                exec: Boolean)
+           (using Stdout, InputSource, Monitor, Allocator, Environment)
            : ExitStatus throws AppError = unsafely:
     Tty.capture:
-      val rootBuild = unsafely(pwd / t"build.irk")
+      val rootBuild = unsafely(env.pwd / t"build.irk")
       val tap: Tap = Tap(true)
       
       //Tty.reportSize()
@@ -516,14 +518,16 @@ object Irk extends Daemon():
         case err: IoError      => throw AppError(t"Could not update watch directories", err)
 
       def generateBuild(): Build =
-        try if watch then updateWatches(watcher, initBuild(pwd)) else initBuild(pwd)
+        try
+          if watch then updateWatches(watcher, initBuild(env.pwd.directory(Expect)))
+          else initBuild(env.pwd.directory(Expect))
         catch
           case err: BuildfileError => throw AppError(err.message)
           case err: IoError => throw AppError(t"The build file could not be read")
 
       @tailrec
       def loop(first: Boolean, stream: LazyList[Event], oldBuild: Build, lastSuccess: Boolean,
-                        browser: List[WebDriver#Session], running: List[Subprocess] = Nil,
+                        browser: List[WebDriver#Session], running: List[Jvm] = Nil,
                         count: Int = 1, columns: Int = 120)(using Internet, Monitor)
                    : ExitStatus =
         import unsafeExceptions.canThrowAny
@@ -533,7 +537,7 @@ object Irk extends Daemon():
         if stream.isEmpty then if lastSuccess then ExitStatus.Ok else ExitStatus.Fail(1)
         else stream.head match
           case Event.Interrupt =>
-            running.foreach(_.stop())
+            running.foreach(_.abort())
             if lastSuccess then ExitStatus.Ok else ExitStatus.Fail(1)
           case Event.Resize(width) =>
             loop(first, stream.tail, oldBuild, lastSuccess, browser, running, count, columns)
@@ -553,7 +557,7 @@ object Irk extends Daemon():
                   case WatchEvent.Modify(_, _)  => t"modified"
                   case WatchEvent.NewFile(_, _) => t"created"
                 .foreach: change =>
-                  val file = ansi"${palette.File}(${event.path[DiskPath[Unix]].relativeTo(pwd.path)})"
+                  val file = ansi"${palette.File}(${event.path[DiskPath[Unix]].relativeTo(env.pwd)})"
                   Out.println(ansi"The file $file was $change")
                 
                 if event.path[DiskPath[Unix]].name.endsWith(t".irk")
@@ -580,7 +584,7 @@ object Irk extends Daemon():
               val oldHashes = build.cache
               Out.println(t"")
               Out.print(ansi"${colors.Black}(${Bg(colors.DarkTurquoise)}( Build #$count ))")
-              Out.print(ansi"${colors.DarkTurquoise}(${Bg(colors.DodgerBlue)}( ${colors.Black}(${build.pwd.path}) ))")
+              Out.print(ansi"${colors.DarkTurquoise}(${Bg(colors.DodgerBlue)}( ${colors.Black}(${build.pwd.path.fullname}) ))")
               Out.println(ansi"${colors.DodgerBlue}()")
               
               val funnel: Funnel[Progress.Update] = Funnel()
@@ -620,7 +624,7 @@ object Irk extends Daemon():
                                 funnel.put(Progress.Update.Remove(verb2, Result.Complete()))
                             
                             if newResult.success then step.artifact.foreach: artifact =>
-                              val verb = Verb.Build(ansi"artifact ${palette.File}(${artifact.path.relativeTo(pwd.path).show})")
+                              val verb = Verb.Build(ansi"artifact ${palette.File}(${artifact.path.relativeTo(env.pwd).show})")
                               funnel.put(Progress.Update.Add(verb, build.hashes(step)))
                               
                               Artifact.build(artifact, irkJar(scriptFile), step.name, step.version,
@@ -657,41 +661,35 @@ object Irk extends Daemon():
               val resultSet = tasks.values.sequence.await().to(Set)
               val result = resultSet.foldLeft(Result.Complete())(_ + _)
               
-              val subprocesses: List[Subprocess] = if !result.success then running else
+              val subprocesses: List[Jvm] = if !result.success then running else
                 build.linearization.map: step =>
-                  val subprocess: Option[Subprocess] = step.exec.fold[Option[Subprocess]](None):
+                  val subprocess: Option[Jvm] = step.exec.fold[Option[Jvm]](None):
                     case Exec(browsers, url, start, stop) =>
                       val verb = Verb.Exec(ansi"main class ${palette.Class}($start)")
                       
+                      funnel.put(Progress.Update.Stdout(verb, t"Before main task\n".bytes))
                       val mainTask = Task(t"main"):
+                        funnel.put(Progress.Update.Stdout(verb, t"Starting main task\n".bytes))
                         val hash = t"${build.hashes.get(step)}$start".digest[Crc32]
                         funnel.put(Progress.Update.Add(verb, hash))
-                        running.foreach(_.stop())
+                        running.foreach(_.abort())
                         val resources = step.allResources(build).map(_.path)
-                        
-                        Irk.synchronized:
-                          val oldOut = System.out.nn
-                          
-                          val out = java.io.PrintStream(new java.io.OutputStream:
-                            override def write(byte: Int): Unit = write(Array[Byte](byte.toByte))
-                            
-                            override def write(bytes: Array[Byte], off: Int, len: Int): Unit =
-                              val content = bytes.immutable(using Unsafe).slice(off, off + len).immutable(using Unsafe)
-                              funnel.put(Progress.Update.Stdout(verb, content))
-                          )
+                        val classpath = (step.classpath(build) ++ resources).to(List)
+                        funnel.put(Progress.Update.Stdout(verb, t"Launching JVM\n".bytes))
+                        val jvm = Run.main(classpath)(start, stop)
+                        val output = Task(t"stdout"):
+                          jvm.stdout().foreach: data =>
+                            funnel.put(Progress.Update.Stdout(verb, data))
+                        funnel.put(Progress.Update.Stdout(verb, t"Running JVM with PID ${jvm.pid}\n".bytes)) 
+                        jvm
 
-                          System.setOut(out)
-                          val classpath = (step.classpath(build) ++ resources).to(List)
-                          val subprocess = Run.main(classpath)(start, stop)
-                          System.setOut(oldOut)
-                          subprocess
+
+                      val subprocess: Jvm = mainTask.await()
                       
-                      val subprocess = mainTask.await()
-                      
-                      val newResult = subprocess.status match
-                        case None | Some(ExitStatus.Ok) =>
+                      val newResult: Result = subprocess.await() match
+                        case ExitStatus.Ok =>
                           result
-                        case Some(ExitStatus.Fail(n)) =>
+                        case ExitStatus.Fail(n) =>
                           Result.Terminal(ansi"Process returned exit status $n")
                       
                       funnel.put(Progress.Update.Remove(verb, newResult))
@@ -700,7 +698,7 @@ object Irk extends Daemon():
                       
                       Some(subprocess)
                   
-                  if publishSonatype then Sonatype.publish(build, env.get(t"SONATYPE_PASSWORD"))
+                  if publishSonatype then Sonatype.publish(build, env(t"SONATYPE_PASSWORD").option)
                   
                   subprocess
                 .flatten
@@ -757,7 +755,21 @@ case class TrapExitError(status: ExitStatus) extends Error(err"a call to System.
 object Run:
   import java.net.*
 
-  def main(classpath: List[DiskPath[Unix]])(start: Text, stop: Option[Text])(using Stdout): Subprocess =
+  given Classpath()
+  
+  lazy val adoptium: Adoptium throws ClasspathRefError | StreamCutError | IoError | NoValidJdkError =
+    given Environment = environments.system
+    Adoptium.install()
+  
+  lazy val jdk: Jdk throws ClasspathRefError | StreamCutError | IoError | EnvError | NoValidJdkError =
+    given Environment = environments.system
+    adoptium.get(18, jre = true, early = true, force = false)
+
+  def main(classpath: List[DiskPath[Unix]])(start: Text, stop: Option[Text])(using Stdout, Environment)
+          : Jvm throws ClasspathRefError | IoError | StreamCutError | EnvError | NoValidJdkError =
+    jdk.launch(classpath, start, Nil)
+
+  def main2(classpath: List[DiskPath[Unix]])(start: Text, stop: Option[Text])(using Stdout): Subprocess =
     val urls = classpath.map { path => URL(t"file://${path.fullname}/".s) }
     
     def rootClassLoader(cl: ClassLoader): ClassLoader =

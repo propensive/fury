@@ -2,7 +2,7 @@ package irk
 
 import gossamer.*
 import rudiments.*
-import parasitism.*
+import parasitism.*, threading.platform
 import turbulence.*
 import acyclicity.*
 import euphemism.*
@@ -32,8 +32,11 @@ import encodings.Utf8
 import rendering.ansi
 
 erased given CanThrow[AppError] = compiletime.erasedValue
-given LogFormat[SystemOut.type] = LogFormat.standardAnsi
-given Log = logging.silent
+given LogFormat[File[Unix]] = LogFormat.standardAnsi
+//given Log = logging.stdout(using monitors.global)
+given log: Log = Log(
+  { case _ => unsafely(Unix.parse(t"/var/log/irk.log").file(Ensure).sink) }
+)(using monitors.global)
 
 object palette:
   val File = colors.Coral
@@ -69,7 +72,7 @@ case class Build(pwd: Directory[Unix], repos: Map[DiskPath[Unix], Text], publish
       if todo.isEmpty then hashes
       else try
         val step = todo.head
-        val inputsHash: List[Digest[Crc32]] = step.srcFiles.to(List).sortBy(_.path.show).map(Irk.hashFile)
+        val inputsHash: List[Digest[Crc32]] = step.srcFiles.to(List).sortBy(_.path.fullname).map(Irk.hashFile)
         val jarsHash: List[Digest[Crc32]] = step.jars.to(List).map(_.digest[Crc32])
         val linksHash: List[Digest[Crc32]] = step.allLinks.to(List).map(index(_)).map(hashes(_))
         val newHash = (inputsHash ++ linksHash).digest[Crc32]
@@ -89,9 +92,9 @@ case class Build(pwd: Directory[Unix], repos: Map[DiskPath[Unix], Text], publish
   def resolve(id: Ref): Step throws BrokenLinkError = index.get(id).getOrElse(throw BrokenLinkError(id))
   def bases: Set[Directory[Unix]] = steps.map(_.pwd).to(Set)
 
-  def cache(using Allocator): Map[Step, Digest[Crc32]] =
+  def cache(using Allocator, Environment): Map[Step, Digest[Crc32]] =
     try
-      val caches = bases.map(Irk.hashDir / _.path.show.digest[Crc32].encode[Hex]).filter(_.exists()).map: cacheFile =>
+      val caches = bases.map(Irk.hashDir / _.path.fullname.digest[Crc32].encode[Hex]).filter(_.exists()).map: cacheFile =>
         Json.parse(cacheFile.file().read[Text]()).as[Cache].hashes
       
       caches.flatten.flatMap:
@@ -104,9 +107,9 @@ case class Build(pwd: Directory[Unix], repos: Map[DiskPath[Unix], Text], publish
       case err: JsonAccessError => throw AppError(t"The cache file was not in the correct JSON format", err)
       case err: Exception       => throw AppError(StackTrace(err).ansi.plain)
   
-  def updateCache(step: Step, binDigest: Text)(using Allocator): Unit = synchronized:
+  def updateCache(step: Step, binDigest: Text)(using Allocator, Environment): Unit = synchronized:
     try
-      val cacheFile = Irk.hashDir / step.pwd.path.show.digest[Crc32].encode[Hex]
+      val cacheFile = Irk.hashDir / step.pwd.path.fullname.digest[Crc32].encode[Hex]
       val cache = Cache:
         if cacheFile.exists()
         then Json.parse(cacheFile.file().read[Text]()).as[Cache].hashes.filter: hash =>
@@ -136,17 +139,17 @@ case class Artifact(path: DiskPath[Unix], main: Option[Text], format: Format)
 
 object Artifact:
   def build(artifact: Artifact, base: File[Unix], name: Text, version: Text, classpath: List[DiskPath[Unix]],
-                resources: List[Directory[Unix]], mainClass: Option[Text])(using Allocator)
+                resources: List[Directory[Unix]], mainClass: Option[Text])(using Allocator, Environment)
            : Unit throws IoError =
     import stdouts.drain
     
-    val zipStreams = (base.path :: classpath.sortBy(_.show)).to(LazyList).flatMap: path =>
+    val zipStreams = (base.path :: classpath.sortBy(_.fullname)).to(LazyList).flatMap: path =>
       if path.isFile then Zip.read(path.file(Expect)).filter(_.path.parts.last != t"MANIFEST.MF")
       else if path.isDirectory then path.descendantFiles().map: file =>
         Zip.Entry(file.path.relativeTo(path), ji.BufferedInputStream(ji.FileInputStream(file.javaFile)))
       else LazyList()
     
-    val resourceStreams = resources.sortBy(_.path.show).flatMap: dir =>
+    val resourceStreams = resources.sortBy(_.path.fullname).flatMap: dir =>
       dir.path.descendantFiles().map: file =>
         Zip.Entry(file.path.relativeTo(dir.path), ji.BufferedInputStream(ji.FileInputStream(file.javaFile)))
     .to(LazyList)
@@ -205,17 +208,17 @@ case class Step(path: File[Unix], publishing: Option[Publishing], name: Text,
   def srcFiles: Set[File[Unix]] throws IoError =
     sources.flatMap(_.path.descendantFiles(!_.name.startsWith(t"."))).filter(compilable)
 
-  def classpath(build: Build)(using Stdout): Set[DiskPath[Unix]] throws IoError | BrokenLinkError =
+  def classpath(build: Build)(using Stdout, Environment): Set[DiskPath[Unix]] throws IoError | BrokenLinkError =
     build.graph.reachable(this).flatMap: step =>
       step.jars.map(Irk.getFile(_)).map(_.path) + step.classesDir.path
   
   def allResources(build: Build)(using Stdout): Set[Directory[Unix]] throws IoError | BrokenLinkError =
     build.graph.reachable(this).flatMap(_.resources)
 
-  def compileClasspath(build: Build)(using Stdout): Set[DiskPath[Unix]] throws IoError | BrokenLinkError =
+  def compileClasspath(build: Build)(using Stdout, Environment): Set[DiskPath[Unix]] throws IoError | BrokenLinkError =
     classpath(build) - classesDir.path
 
-  def classesDir: Directory[Unix] = synchronized:
+  def classesDir(using Environment): Directory[Unix] = synchronized:
     try unsafely(Irk.cacheDir / t"cls" / id.project / id.module).directory(Ensure)
     catch case err: IoError => throw AppError(t"Could not write to the user's home directory", err)
 
@@ -227,7 +230,7 @@ case class Step(path: File[Unix], publishing: Option[Publishing], name: Text,
 
   def compile(hashes: Map[Step, Digest[Crc32]], oldHashes: Map[Step, Digest[Crc32]], build: Build,
                   scriptFile: File[Unix], cancel: Promise[Unit], owners: Map[DiskPath[Unix], Step])
-             (using Stdout, Internet, Monitor, Allocator)
+             (using Stdout, Internet, Monitor, Allocator, Environment)
              : Result =
     val t0 = now()
     
@@ -238,7 +241,7 @@ case class Step(path: File[Unix], publishing: Option[Publishing], name: Text,
       val pluginRefs = plugins.map: plugin =>
         PluginRef(Irk.libJar(build.hashes(build(plugin.id))), plugin.params)
       
-      val result = Compiler.compile(id, pwd, srcFiles.to(List).sortBy(_.show), cp.to(List).sortBy(_.show),
+      val result = Compiler.compile(id, pwd, srcFiles.to(List).sortBy(_.fullname), cp.to(List).sortBy(_.fullname),
           classesDir, scriptFile, pluginRefs, cancel, owners)
       
       val time = now() - t0
@@ -260,7 +263,7 @@ case class Step(path: File[Unix], publishing: Option[Publishing], name: Text,
 case class BuildConfig(imports: Option[List[Text]], publishing: Option[Publishing], modules: List[Module],
                            repos: Option[List[Repo]], targets: Option[List[Target]]):
   
-  def gen(current: DiskPath[Unix], build: Build, seen: Set[Digest[Crc32]], files: DiskPath[Unix]*)(using Stdout, Allocator)
+  def gen(current: DiskPath[Unix], build: Build, seen: Set[Digest[Crc32]], files: DiskPath[Unix]*)(using Stdout, Allocator, Environment)
          : Build throws IoError | AppError | BuildfileError =
     
     repos.presume.foreach:
@@ -332,7 +335,7 @@ object Cache:
         block(dir)
         dir
 
-  def apply[T: Hashable](key: Text, input: T)(make: (T, Directory[Unix]) => Unit)
+  def apply[T: Hashable](key: Text, input: T)(make: (T, Directory[Unix]) => Unit)(using Environment)
            : Directory[Unix] throws IoError =
     val hash = input.digest[Crc32].encode[Hex].lower
     
@@ -370,7 +373,7 @@ case class Progress(active: TreeMap[Verb, (Digest[Crc32], Long)],
     completed = (verb, active(verb)(0), active(verb)(1), result) :: completed
   )
 
-  def apply(update: Progress.Update)(using Stdout): Progress = update match
+  def apply(update: Progress.Update)(using Stdout, Environment): Progress = update match
     case Progress.Update.Sigwinch =>
       this
 

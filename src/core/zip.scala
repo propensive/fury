@@ -28,11 +28,11 @@ object Zip:
   val epoch = jnf.attribute.FileTime.fromMillis(946684800000L)
 
   def write(base: joviality.File[Unix], path: joviality.DiskPath[Unix], inputs: LazyList[ZipEntry], prefix: Maybe[Bytes] = Unset)
-           (using Stdout)
+           (using Stdout, Environment)
            : Unit throws StreamCutError | IoError =
     val tmpPath = Irk.tmpDir.tmpPath()
     base.copyTo(tmpPath)
-    val uri: java.net.URI = java.net.URI.create(t"jar:file:${tmpPath.show}".s).nn
+    val uri: java.net.URI = java.net.URI.create(t"jar:file:${tmpPath.fullname}".s).nn
     
     val fs =
       try jnf.FileSystems.newFileSystem(uri, Map("zipinfo-time" -> "false").asJava).nn
