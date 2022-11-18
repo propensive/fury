@@ -6,6 +6,7 @@ import gossamer.*
 import joviality.*
 import tetromino.*
 import escapade.*
+import eucalyptus.*
 import serpentine.*
 
 import rendering.ansi
@@ -24,7 +25,7 @@ object Compiler:
   def compile(id: Ref, pwd: Directory[Unix], files: List[File[Unix]], inputs: List[DiskPath[Unix]],
                   out: Directory[Unix], script: File[Unix], plugins: List[PluginRef], cancel: Promise[Unit],
                   owners: Map[DiskPath[Unix], Step])
-             (using Stdout, Monitor, Allocator, Environment)
+             (using Stdout, Monitor, Allocator, Environment, Log)
              : Result =
     import unsafeExceptions.canThrowAny
     import dotty.tools.*, io.{File as _, *}, repl.*, dotc.core.*
@@ -84,7 +85,7 @@ object Compiler:
         
         safely(Unix.parse(file)).option.map: p =>
           val (root: DiskPath[Unix], step: Step) = owners.filter(_(0).precedes(p)).maxBy(_(0).parts.size)
-          val path = p.relativeTo(root)
+          val path = p.relativeTo(step.pwd.path)
           CodeRange(step.id, path, pos.line, pos.startColumn, pos.endColumn, pos.endLine, content)
 
       def getRanges(pos: dtdu.SourcePosition | Null, acc: List[CodeRange] = Nil): List[CodeRange] =

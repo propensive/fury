@@ -34,8 +34,10 @@ import rendering.ansi
 erased given CanThrow[AppError] = compiletime.erasedValue
 given LogFormat[File[Unix]] = LogFormat.standardAnsi
 //given Log = logging.stdout(using monitors.global)
+
+val LogFile = unsafely(Unix.parse(t"/var/log/irk.log").file(Ensure).sink)
 given log: Log = Log(
-  { case _ => unsafely(Unix.parse(t"/var/log/irk.log").file(Ensure).sink) }
+  { case _ => LogFile }
 )(using monitors.global)
 
 object palette:
@@ -353,10 +355,10 @@ object Progress:
   enum Update:
     case Add(verb: Verb, hash: Digest[Crc32])
     case Remove(verb: Verb, result: Result)
+    case Resize(cols: Int)
     case Put(text: Text)
     case Print
     case SkipOne
-    case Sigwinch
     case Stdout(verb: Verb, data: Bytes)
 
   def titleText(title: Text): Text = t"\e]0;$title\u0007\b \b"
@@ -374,8 +376,8 @@ case class Progress(active: TreeMap[Verb, (Digest[Crc32], Long)],
   )
 
   def apply(update: Progress.Update)(using Stdout, Environment): Progress = update match
-    case Progress.Update.Sigwinch =>
-      this
+    case Progress.Update.Resize(cols) =>
+      copy(columns = cols)
 
     case Progress.Update.Add(verb, hash) =>
       add(verb, hash)

@@ -5,6 +5,7 @@ import rudiments.*
 import turbulence.*
 import acyclicity.*
 import euphemism.*
+import eucalyptus.Log
 import joviality.*, filesystems.unix
 import anticipation.*, integration.jovialityPath
 import guillotine.*
@@ -50,6 +51,12 @@ object Irk extends Daemon():
         case t"help" :: _         => Irk.help()
         case t"init" :: name :: _ => Irk.init(unsafely(env.pwd.directory(Expect)), name)
         case t"version" :: _      => Irk.showVersion()
+        case t"go" :: _           =>
+          unsafely:
+            Tty.capture:
+              Tty.stream[Keypress].take(10).foreach: event =>
+                eucalyptus.Log.info(t"Received keypress: ${event}")
+          ExitStatus.Ok
         case t"build" :: params   =>
           val target = params.headOption.filter(!_.startsWith(t"-"))
           val watch = params.contains(t"-w") || params.contains(t"--watch")
@@ -338,11 +345,15 @@ object Irk extends Daemon():
       try
         result.issues.groupBy(_.baseDir).to(List).map: (baseDir, issues) =>
           issues.groupBy(_.code.path).to(List).map: (path, issues) =>
+            val file = unsafely(baseDir + path)
+            if !file.exists() then
+              Log.warn(t"Missing source file: ${file}")
             unsafely(baseDir + path).file(Ensure) -> issues
           .sortBy(_(0).modified)
         .sortBy(_.last(0).modified).flatten
         
-      catch case err: IoError => throw AppError(ansi"a file containing an error was deleted: ${err.toString.show}", err)//: ${err.ansi}", err)
+      catch case err: IoError =>
+        throw AppError(ansi"a file containing an error was deleted: ${err.toString.show}", err)//: ${err.ansi}", err)
     
     def arrow(k1: (Srgb, Text), k2: (Srgb, Text)): AnsiText =
       def hc(c: Srgb): Srgb = if c.hsl.lightness > 0.5 then colors.Black else colors.White
@@ -475,18 +486,27 @@ object Irk extends Daemon():
     Tty.capture:
       val rootBuild = unsafely(env.pwd / t"build.irk")
       val tap: Tap = Tap(true)
-      
-      //Tty.reportSize()
 
-      def interrupts = Tty.stream[Keypress].collect:
-        case Keypress.Ctrl('C')        => Event.Interrupt
-        case Keypress.Resize(width, _) => Event.Resize(width)
+      def interrupts = Tty.stream[Keypress].map:
+        case key =>
+          Log.fine(t"Got input: $key")
+          key
+      .collect:
+        case Keypress.Ctrl('C')        =>
+          Log.fine(t"Received interrupt")
+          Event.Interrupt
+        case Keypress.Resize(width, _) =>
+          Log.fine(t"Received resize message")
+          Event.Resize(width)
       .filter:
         case Event.Interrupt =>
           if !tap.state() then
             summon[Monitor].cancel()
+            Log.fine(t"Ignored interrupt")
             false
-          else true
+          else
+            Log.fine(t"Propagated interrupt")
+            true
         
         case _ =>
           true
@@ -540,7 +560,7 @@ object Irk extends Daemon():
             running.foreach(_.abort())
             if lastSuccess then ExitStatus.Ok else ExitStatus.Fail(1)
           case Event.Resize(width) =>
-            loop(first, stream.tail, oldBuild, lastSuccess, browser, running, count, columns)
+            loop(first, stream.tail, oldBuild, lastSuccess, browser, running, count, width)
           case Event.Changeset(fileChanges) =>
             tap.pause()
             
@@ -588,6 +608,7 @@ object Irk extends Daemon():
               Out.println(ansi"${colors.DodgerBlue}()")
               
               val funnel: Funnel[Progress.Update] = Funnel()
+              funnel.put(Progress.Update.Resize(columns))
               val totalTasks: Int = build.steps.size
 
               val owners: Map[DiskPath[Unix], Step] = build.steps.flatMap: step =>
@@ -667,29 +688,25 @@ object Irk extends Daemon():
                     case Exec(browsers, url, start, stop) =>
                       val verb = Verb.Exec(ansi"main class ${palette.Class}($start)")
                       
-                      funnel.put(Progress.Update.Stdout(verb, t"Before main task\n".bytes))
                       val mainTask = Task(t"main"):
-                        funnel.put(Progress.Update.Stdout(verb, t"Starting main task\n".bytes))
                         val hash = t"${build.hashes.get(step)}$start".digest[Crc32]
                         funnel.put(Progress.Update.Add(verb, hash))
                         running.foreach(_.abort())
                         val resources = step.allResources(build).map(_.path)
                         val classpath = (step.classpath(build) ++ resources).to(List)
-                        funnel.put(Progress.Update.Stdout(verb, t"Launching JVM\n".bytes))
-                        val jvm = Run.main(classpath)(start, stop)
-                        val output = Task(t"stdout"):
-                          jvm.stdout().foreach: data =>
-                            funnel.put(Progress.Update.Stdout(verb, data))
-                        funnel.put(Progress.Update.Stdout(verb, t"Running JVM with PID ${jvm.pid}\n".bytes)) 
+                        val jvm = Run.main(irkJar(scriptFile).path :: classpath)(start, stop)
                         jvm
-
 
                       val subprocess: Jvm = mainTask.await()
                       
                       val newResult: Result = subprocess.await() match
                         case ExitStatus.Ok =>
+                          subprocess.stdout().foreach: data =>
+                            funnel.put(Progress.Update.Stdout(verb, data)) 
                           result
                         case ExitStatus.Fail(n) =>
+                          subprocess.stdout().foreach: data =>
+                            funnel.put(Progress.Update.Stdout(verb, data)) 
                           Result.Terminal(ansi"Process returned exit status $n")
                       
                       funnel.put(Progress.Update.Remove(verb, newResult))
@@ -750,8 +767,6 @@ object Irk extends Daemon():
 case class ExecError(err: Exception)
 extends Error(err"an exception was thrown while executing the task: ${err.getMessage.nn.show}")
 
-case class TrapExitError(status: ExitStatus) extends Error(err"a call to System.exit was trapped: $status")
-
 object Run:
   import java.net.*
 
@@ -768,62 +783,6 @@ object Run:
   def main(classpath: List[DiskPath[Unix]])(start: Text, stop: Option[Text])(using Stdout, Environment)
           : Jvm throws ClasspathRefError | IoError | StreamCutError | EnvError | NoValidJdkError =
     jdk.launch(classpath, start, Nil)
-
-  def main2(classpath: List[DiskPath[Unix]])(start: Text, stop: Option[Text])(using Stdout): Subprocess =
-    val urls = classpath.map { path => URL(t"file://${path.fullname}/".s) }
-    
-    def rootClassLoader(cl: ClassLoader): ClassLoader =
-      if cl.getParent == null then cl else rootClassLoader(cl.getParent.nn)
-    
-    val parent = rootClassLoader(Thread.currentThread.nn.getContextClassLoader.nn)
-
-    val loader = new URLClassLoader(urls.to(Array)).nn
-
-    def invoke(className: Text): Any =
-      Run.synchronized:
-        if System.getSecurityManager != TrapExit then System.setSecurityManager(TrapExit)
-
-      val cls: Class[?] = loader.loadClass(className.s).nn
-      val method = cls.getMethods.nn.find(_.nn.getName == "main").get.nn
-      method.invoke(null, Array[String]())
-    
-    val subprocess =
-      try
-        invoke(start)
-        Subprocess(None)
-      catch
-        case err: TrapExitError => Subprocess(Some(err.status))
-        case err: java.lang.reflect.InvocationTargetException => err.getCause match
-          case null               => Subprocess(Some(ExitStatus(2)))
-          case err: TrapExitError => Subprocess(Some(err.status))
-          case err: Exception     => Subprocess(Some(ExitStatus(1)))
-          case err: Throwable     => Subprocess(Some(ExitStatus(2)))
-        case err: Exception     => Subprocess(Some(ExitStatus(1)))
-        case err: Throwable     => Subprocess(Some(ExitStatus(2)))
-    
-    stop.map: stop =>
-      def term = try invoke(stop).unit catch case err: Exception => ()
-      val shutdownThread = Thread((() => term): Runnable)
-      Runtime.getRuntime.nn.addShutdownHook(shutdownThread)
-      
-      subprocess.copy(terminate = Some({ () =>
-        Runtime.getRuntime.nn.removeShutdownHook(shutdownThread)
-        term
-      }))
-    .getOrElse(subprocess)
-
-object TrapExit extends SecurityManager:
-  private var disabled: Boolean = false
-  override def checkPermission(perm: java.security.Permission): Unit = ()
-  
-  override def checkExit(status: Int): Unit =
-    erased given CanThrow[TrapExitError] = compiletime.erasedValue
-    super.checkExit(status)
-    if !disabled then throw TrapExitError(ExitStatus(status))
-  
-  def terminate(status: ExitStatus): Unit =
-    disabled = true
-    System.exit(status())
 
 case class Subprocess(status: Option[ExitStatus], terminate: Option[() => Unit] = None):
   def stop(): Unit = terminate.foreach(_())
