@@ -1,4 +1,6 @@
 FROM openjdk:11
+RUN apt update
+RUN apt install -y jq
 RUN mkdir /irk
 RUN git clone https://github.com/lampepfl/dotty /irk/scala
 RUN mkdir -p /irk/bin
@@ -170,13 +172,13 @@ RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala3-interfaces*.j
 RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala3-tasty-inspector*.jar
 RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala-asm*.jar
 RUN cp /one/mod/exoskeleton/res/exoskeleton/invoke /irk/bin/exoskeleton/invoke
-ADD doc/.version /irk/.version
+ADD build.irk /irk/build.irk
 RUN echo 'Manifest-Version: 1.0' > /irk/manifest
 RUN echo -n 'Created-By: Irk ' >> /irk/manifest
-RUN cat /irk/.version >> /irk/manifest
+RUN jq -r '.modules[0].version' /irk/build.irk >> /irk/manifest
 RUN echo 'Implementation-Title: Irk' >> /irk/manifest
 RUN echo -n 'Implementation-Version: ' >> /irk/manifest
-RUN cat /irk/.version >> /irk/manifest
+RUN jq -r '.modules[0].version' /irk/build.irk >> /irk/manifest
 RUN echo 'Main-Class: irk.Irk' >> /irk/manifest
 
 RUN jar cmf /irk/manifest /irk/irk.jar  \
@@ -234,7 +236,6 @@ RUN jar cmf /irk/manifest /irk/irk.jar  \
 RUN cat /one/mod/exoskeleton/res/exoskeleton/invoke /irk/irk.jar > /irk/bootstrap
 RUN chmod +x /irk/bootstrap
 RUN rm /irk/irk.jar
-ADD build.irk /irk/build.irk
 RUN cd /irk && ./bootstrap
 RUN mv /irk/irk /irk/irk-bootstrap
 RUN rm -rf /root/.cache/irk

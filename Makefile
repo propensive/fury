@@ -1,4 +1,4 @@
-VERSION = $(shell cat doc/.version)
+VERSION = $(shell jq -r '.modules[0].version' build.irk)
 
 distribution: dist/irk-$(VERSION) dist/launcher-$(VERSION)
 
