@@ -416,7 +416,7 @@ object Irk extends Daemon():
                 case Level.Warn  => colors.Orange
                 case Level.Info  => colors.SteelBlue
               
-              appendln(arrow(colors.Purple -> pos.module.option.fold(t"[external]")(_.show), shade -> posText))
+              appendln(arrow(colors.Purple -> pos.module.mfold(t"[external]")(_.show), shade -> posText))
               
               if pos.startLine > 1 then appendln(codeLine(margin, codeText, pos.startLine))
 
@@ -459,11 +459,11 @@ object Irk extends Daemon():
               if !stack.isEmpty then
                 appendln(ansi"This includes inlined code from:")
                 val pathWidth = stack.map(_.path.mfold(9)(_.show.length)).max
-                val refWidth = stack.map(_.module.option.fold(10)(_.show.length)).max
+                val refWidth = stack.map(_.module.mfold(10)(_.show.length)).max
                 val indent = pathWidth + refWidth + 7
                 
                 stack.foreach: pos =>
-                  val ref = pos.module.option.fold(t"[external]")(_.show).pad(refWidth, Rtl)
+                  val ref = pos.module.mfold(t"[external]")(_.show).pad(refWidth, Rtl)
                   val path = pos.path.mmap(_.show.pad(pathWidth, Rtl))
                   val code = codeLine(margin + indent, pos.content.text, pos.startLine).drop(indent)
                   appendln(ansi"${arrow(colors.DarkCyan -> ref, colors.LightSeaGreen -> path.otherwise(t"«unknown»"))} $code${escapes.Reset}")

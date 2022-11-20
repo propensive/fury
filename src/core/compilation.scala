@@ -79,11 +79,11 @@ object Compiler:
           finish(Scala3, run)(using ctx2)
           reporter.errors.to(List)
 
-      def codeRange(pos: dtdi.SourcePosition): Option[CodeRange] =
+      def codeRange(pos: dtdi.SourcePosition): Maybe[CodeRange] =
         val content = pos.source.nn.content.nn.immutable(using Unsafe)
         val file = pos.source.nn.path.nn.show
         
-        safely(Unix.parse(file)).option.map: p =>
+        safely(Unix.parse(file)).mmap: p =>
           val roots = owners.filter(_(0).precedes(p))
           val (step: Maybe[Step], path: Maybe[Relative]) =
             if roots.isEmpty then Unset -> Unset else
@@ -96,8 +96,8 @@ object Compiler:
         if pos == dtdu.NoSourcePosition || pos == null then acc else
           val cr = codeRange(pos)
           // FIXME
-          if cr.isEmpty then Out.println(t"Could not get code range for ${pos.toString}")
-          getRanges(pos.outer, cr.fold(acc)(_ :: acc))
+          if cr.unset then Out.println(t"Could not get code range for ${pos.toString}")
+          getRanges(pos.outer, cr.mfold(acc)(_ :: acc))
 
       driver.run(files, classpathText).foldLeft(Result.Complete(Set())): (prev, diagnostic) =>
         if diagnostic.position.isPresent then
@@ -105,7 +105,7 @@ object Compiler:
           
           val stack = diagnostic.position.get.nn match
             case pos: dtdu.SourcePosition => getRanges(pos)
-            case pos: dtdi.SourcePosition => codeRange(pos).to(List)
+            case pos: dtdi.SourcePosition => codeRange(pos).option.to(List)
           
           stack.headOption.fold(prev): head =>
             prev + Result.Complete(Set(Issue(level, pwd.path, head, stack.tail, diagnostic.message.show)))
