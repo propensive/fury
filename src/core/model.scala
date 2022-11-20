@@ -18,7 +18,7 @@ case class Publishing(username: Text, group: Text, url: Text, organization: Orga
 
 case class Issue(level: Level, baseDir: DiskPath[Unix], code: CodeRange, stack: List[CodeRange], message: Text)
 
-case class CodeRange(module: Maybe[Ref], path: Relative, startLine: Int, from: Int, to: Int, endLine: Int,
+case class CodeRange(module: Maybe[Ref], path: Maybe[Relative], startLine: Int, from: Int, to: Int, endLine: Int,
                          content: IArray[Char])
 
 case class Repo(base: Text, url: Text):

@@ -344,11 +344,17 @@ object Irk extends Daemon():
     val sorted =
       try
         result.issues.groupBy(_.baseDir).to(List).map: (baseDir, issues) =>
-          issues.groupBy(_.code.path).to(List).map: (path, issues) =>
-            val file = unsafely(baseDir + path)
-            if !file.exists() then
-              Log.warn(t"Missing source file: ${file}")
-            unsafely(baseDir + path).file(Ensure) -> issues
+          issues.groupBy(_.code.path).to(List).flatMap: (path, issues) =>
+            path match
+              case Unset =>
+                Log.warn(t"Unknown source path")
+                None
+              case path: Relative =>
+                val file = unsafely(baseDir + path)
+                if !file.exists() then
+                  Log.warn(t"Missing source file: ${file}")
+                  None
+                else Some(file.file(Ensure) -> issues)
           .sortBy(_(0).modified)
         .sortBy(_.last(0).modified).flatten
         
@@ -402,7 +408,8 @@ object Irk extends Daemon():
             case Issue(level, baseDir, pos, stack, message) =>
               val margin = (pos.endLine + 2).show.length
               val codeWidth = columns - 2 - margin
-              val posText = t"${pos.path}:${pos.startLine + 1}:${pos.from}"
+              val path = pos.path.mfold(t"«unknown»")(_.show)
+              val posText = t"${path}:${pos.startLine + 1}:${pos.from}"
               
               val shade = level match
                 case Level.Error => colors.Crimson
@@ -451,15 +458,15 @@ object Irk extends Daemon():
               
               if !stack.isEmpty then
                 appendln(ansi"This includes inlined code from:")
-                val pathWidth = stack.map(_.path.show.length).max
+                val pathWidth = stack.map(_.path.mfold(9)(_.show.length)).max
                 val refWidth = stack.map(_.module.option.fold(10)(_.show.length)).max
                 val indent = pathWidth + refWidth + 7
                 
                 stack.foreach: pos =>
                   val ref = pos.module.option.fold(t"[external]")(_.show).pad(refWidth, Rtl)
-                  val path = pos.path.show.pad(pathWidth, Rtl)
+                  val path = pos.path.mmap(_.show.pad(pathWidth, Rtl))
                   val code = codeLine(margin + indent, pos.content.text, pos.startLine).drop(indent)
-                  appendln(ansi"${arrow(colors.DarkCyan -> ref, colors.LightSeaGreen -> path)} $code${escapes.Reset}")
+                  appendln(ansi"${arrow(colors.DarkCyan -> ref, colors.LightSeaGreen -> path.otherwise(t"«unknown»"))} $code${escapes.Reset}")
                 
                 appendln(ansi"")
               appendln(ansi"${escapes.Reset}")

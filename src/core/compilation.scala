@@ -4,10 +4,10 @@ import rudiments.*
 import parasitism.*
 import gossamer.*
 import joviality.*
+import serpentine.*
 import tetromino.*
 import escapade.*
 import eucalyptus.*
-import serpentine.*
 
 import rendering.ansi
 
@@ -84,9 +84,13 @@ object Compiler:
         val file = pos.source.nn.path.nn.show
         
         safely(Unix.parse(file)).option.map: p =>
-          val (root: DiskPath[Unix], step: Step) = owners.filter(_(0).precedes(p)).maxBy(_(0).parts.size)
-          val path = p.relativeTo(step.pwd.path)
-          CodeRange(step.id, path, pos.line, pos.startColumn, pos.endColumn, pos.endLine, content)
+          val roots = owners.filter(_(0).precedes(p))
+          val (step: Maybe[Step], path: Maybe[Relative]) =
+            if roots.isEmpty then Unset -> Unset else
+              val (root: DiskPath[Unix], step: Step) = roots.maxBy(_(0).parts.size)
+              step -> p.relativeTo(step.pwd.path)
+          
+          CodeRange(step.mmap(_.id), path, pos.line, pos.startColumn, pos.endColumn, pos.endLine, content)
 
       def getRanges(pos: dtdu.SourcePosition | Null, acc: List[CodeRange] = Nil): List[CodeRange] =
         if pos == dtdu.NoSourcePosition || pos == null then acc else
