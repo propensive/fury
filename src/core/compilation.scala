@@ -33,7 +33,7 @@ object Compiler:
     val reporter = CustomReporter()
     
     try
-      val separator: Text = try Sys.path.separator() catch case err: KeyNotFoundError => t":"
+      val separator = env.pathSeparator.show
       
       val classpath: List[Text] = inputs.map: path =>
         if path.isDirectory then t"${path.fullname}/" else path.fullname

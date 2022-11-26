@@ -9,7 +9,7 @@ import eucalyptus.Log
 import joviality.*, filesystems.unix
 import anticipation.*, integration.jovialityPath
 import guillotine.*
-import parasitism.*, threading.platform, monitors.global
+import parasitism.*, threading.virtual, monitors.global
 import kaleidoscope.*
 import escapade.*
 import gastronomy.*
@@ -24,11 +24,10 @@ import profanity.*
 import xylophone.*
 import telekinesis.*
 import escritoire.*
-import tetromino.*, allocators.default
+import tetromino.*, allocators.dumb
 import surveillance.*
 
 import timekeeping.long
-import encodings.Utf8
 import rendering.ansi
 
 import scala.collection.mutable as scm
@@ -87,7 +86,7 @@ object Irk extends Daemon():
           ExitStatus.Fail(2)
   
   def version: Text = Option(getClass.nn.getPackage.nn.getImplementationVersion).fold(t"0")(_.nn.show)
-  def javaVersion: Text = safely(Sys.java.version()).otherwise(t"unknown")
+  def javaVersion: Text = safely(Sys.java.version()).or(t"unknown")
   def githubActions(using Environment): Boolean = env(t"GITHUB_ACTIONS") != Unset
 
   def scalaVersion: Text =
@@ -466,7 +465,7 @@ object Irk extends Daemon():
                   val ref = pos.module.mfold(t"[external]")(_.show).pad(refWidth, Rtl)
                   val path = pos.path.mmap(_.show.pad(pathWidth, Rtl))
                   val code = codeLine(margin + indent, pos.content.text, pos.startLine).drop(indent)
-                  appendln(ansi"${arrow(colors.DarkCyan -> ref, colors.LightSeaGreen -> path.otherwise(t"«unknown»"))} $code${escapes.Reset}")
+                  appendln(ansi"${arrow(colors.DarkCyan -> ref, colors.LightSeaGreen -> path.or(t"«unknown»"))} $code${escapes.Reset}")
                 
                 appendln(ansi"")
               appendln(ansi"${escapes.Reset}")
@@ -603,7 +602,7 @@ object Irk extends Daemon():
   
               val build: Build =
                 if changes.exists(_.changeType.rebuild)
-                then safely(generateBuild()).otherwise(oldBuild)
+                then safely(generateBuild()).or(oldBuild)
                 else oldBuild
 
               build.clearHashes()

@@ -2,7 +2,7 @@ package irk
 
 import gossamer.*
 import rudiments.*
-import parasitism.*, threading.platform
+import parasitism.*, threading.virtual
 import turbulence.*
 import acyclicity.*
 import euphemism.*
@@ -28,11 +28,11 @@ import scala.util.chaining.scalaUtilChainingOps
 import java.io as ji
 
 import timekeeping.long
-import encodings.Utf8
 import rendering.ansi
 
 erased given CanThrow[AppError] = compiletime.erasedValue
 given LogFormat[File[Unix]] = LogFormat.standardAnsi
+given Encoding = encodings.Utf8
 //given Log = logging.stdout(using monitors.global)
 
 val LogFile = unsafely(Unix.parse(t"/var/log/irk.log").file(Ensure).sink)
