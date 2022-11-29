@@ -4,12 +4,14 @@ import rudiments.*
 import gossamer.*
 import kaleidoscope.*
 import joviality.*
+import cellulose.*
 import serpentine.*
 import xylophone.*
 import euphemism.*
 import gastronomy.*
 import escapade.*
 import surveillance.*
+import tetromino.*
 
 case class Target(name: Text, module: Text, run: Text, parallel: Boolean, trigger: Boolean)
 
@@ -153,3 +155,36 @@ case class Version(digest: Text, major: Int, minor: Int):
   def version: Text = t"$major.$minor"
 
 case class PluginRef(jarFile: DiskPath[Unix], params: List[Text])
+
+object NextGen:
+  
+  val buildSchema = summon[Codec[Build]].schema
+
+  def read(file: File[Unix])(using Allocator): (cellulose.Doc, Build) throws IoError =
+    val source = unsafely(file.read[Text]())
+    try
+      val doc = buildSchema.parse(source)
+      (doc, doc.as[Build])
+    catch
+      case err: CodlValidationError => throw AppError(t"Couldn't read build file: ${err.toString.show}")
+      case err: CodlParseError      => throw AppError(t"Couldn't read build file: ${err.toString.show}")
+
+  given Codec[Directory[Unix]] with
+    def schema = Field(Arity.One)
+    def serialize(dir: Directory[Unix]): List[IArray[Node]] = List(IArray(Node(Data(dir.fullname))))
+    def deserialize(value: List[IArray[Node]]): Directory[Unix] = unsafely(Unix.parse(readField(value).option.get).directory(Expect))
+
+  given Codec[DiskPath[Unix]] with
+    def schema = Field(Arity.One)
+    def serialize(dir: DiskPath[Unix]): List[IArray[Node]] = List(IArray(Node(Data(dir.fullname))))
+    def deserialize(value: List[IArray[Node]]): DiskPath[Unix] = unsafely(Unix.parse(readField(value).option.get))
+  
+  given Codec[Relative] with
+    def schema = Field(Arity.One)
+    def serialize(dir: Relative): List[IArray[Node]] = List(IArray(Node(Data(dir.show))))
+    def deserialize(value: List[IArray[Node]]): Relative = unsafely(Relative.parse(readField(value).option.get))
+
+  case class Build(`:<<` : Text, project: List[Project], script: Text)
+  case class Project(id: Text, name: Maybe[Text], count: Int, module: List[Module], stream: Maybe[Text])
+  case class Module(id: Text)//, sources: List[Relative], include: List[Text], use: List[Text],
+                        //`export`: List[Text])

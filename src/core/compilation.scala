@@ -83,21 +83,21 @@ object Compiler:
         val content = pos.source.nn.content.nn.immutable(using Unsafe)
         val file = pos.source.nn.path.nn.show
         
-        safely(Unix.parse(file)).mmap: p =>
+        safely(Unix.parse(file)).mm: p =>
           val roots = owners.filter(_(0).precedes(p))
           val (step: Maybe[Step], path: Maybe[Relative]) =
             if roots.isEmpty then Unset -> Unset else
               val (root: DiskPath[Unix], step: Step) = roots.maxBy(_(0).parts.size)
               step -> p.relativeTo(step.pwd.path)
           
-          CodeRange(step.mmap(_.id), path, pos.line, pos.startColumn, pos.endColumn, pos.endLine, content)
+          CodeRange(step.mm(_.id), path, pos.line, pos.startColumn, pos.endColumn, pos.endLine, content)
 
       def getRanges(pos: dtdu.SourcePosition | Null, acc: List[CodeRange] = Nil): List[CodeRange] =
         if pos == dtdu.NoSourcePosition || pos == null then acc else
           val cr = codeRange(pos)
           // FIXME
           if cr.unset then Out.println(t"Could not get code range for ${pos.toString}")
-          getRanges(pos.outer, cr.mfold(acc)(_ :: acc))
+          getRanges(pos.outer, cr.fm(acc)(_ :: acc))
 
       driver.run(files, classpathText).foldLeft(Result.Complete(Set())): (prev, diagnostic) =>
         if diagnostic.position.isPresent then

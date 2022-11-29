@@ -14,6 +14,7 @@ import kaleidoscope.*
 import escapade.*
 import gastronomy.*
 import oubliette.*
+import cellulose.{Codec, Codl}
 import harlequin.*
 import iridescence.*, solarized.*
 import serpentine.*
@@ -183,6 +184,7 @@ object Irk extends Daemon():
         case err: InvalidPathError => throw AppError(t"Could not access the dependency JAR, $ref", err)
         case err: IoError          => throw AppError(t"Could not access the dependency JAR, $ref", err)
 
+
   val sessionCount: Counter = Counter(0)
 
   private lazy val fileHashes: FileCache[Digest[Crc32]] = new FileCache()
@@ -190,6 +192,18 @@ object Irk extends Daemon():
   private def initBuild(pwd: Directory[Unix])(using Stdout, Monitor, Allocator, Environment)
                        : Build throws IoError | BuildfileError =
     val path = unsafely(pwd / t"build.irk")
+
+    val nextgenBuild = pwd / p"fury"
+    if nextgenBuild.exists() then
+      import cellulose.*
+      val (doc, build) = NextGen.read(nextgenBuild.file(Expect))
+      Out.println(build.codl.serialize)
+      val build2 = NextGen.Build(t"script", List(NextGen.Project(t"one", t"New Name", 10, Nil, Unset)), t"echo foo")
+      Out.println(doc.serialize)
+
+      Out.println(doc.merge(build2.codl).serialize)
+
+
     readBuilds(Build(pwd, Map(), None, Map(), Map()), Set(), path)
   
   def hashFile(file: File[Unix])(using Allocator): Digest[Crc32] throws IoError | AppError =
@@ -407,7 +421,7 @@ object Irk extends Daemon():
             case Issue(level, baseDir, pos, stack, message) =>
               val margin = (pos.endLine + 2).show.length
               val codeWidth = columns - 2 - margin
-              val path = pos.path.mfold(t"«unknown»")(_.show)
+              val path = pos.path.fm(t"«unknown»")(_.show)
               val posText = t"${path}:${pos.startLine + 1}:${pos.from}"
               
               val shade = level match
@@ -415,7 +429,7 @@ object Irk extends Daemon():
                 case Level.Warn  => colors.Orange
                 case Level.Info  => colors.SteelBlue
               
-              appendln(arrow(colors.Purple -> pos.module.mfold(t"[external]")(_.show), shade -> posText))
+              appendln(arrow(colors.Purple -> pos.module.fm(t"[external]")(_.show), shade -> posText))
               
               if pos.startLine > 1 then appendln(codeLine(margin, codeText, pos.startLine))
 
@@ -457,13 +471,13 @@ object Irk extends Daemon():
               
               if !stack.isEmpty then
                 appendln(ansi"This includes inlined code from:")
-                val pathWidth = stack.map(_.path.mfold(9)(_.show.length)).max
-                val refWidth = stack.map(_.module.mfold(10)(_.show.length)).max
+                val pathWidth = stack.map(_.path.fm(9)(_.show.length)).max
+                val refWidth = stack.map(_.module.fm(10)(_.show.length)).max
                 val indent = pathWidth + refWidth + 7
                 
                 stack.foreach: pos =>
-                  val ref = pos.module.mfold(t"[external]")(_.show).pad(refWidth, Rtl)
-                  val path = pos.path.mmap(_.show.pad(pathWidth, Rtl))
+                  val ref = pos.module.fm(t"[external]")(_.show).pad(refWidth, Rtl)
+                  val path = pos.path.mm(_.show.pad(pathWidth, Rtl))
                   val code = codeLine(margin + indent, pos.content.text, pos.startLine).drop(indent)
                   appendln(ansi"${arrow(colors.DarkCyan -> ref, colors.LightSeaGreen -> path.or(t"«unknown»"))} $code${escapes.Reset}")
                 
