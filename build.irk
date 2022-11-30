@@ -24,7 +24,7 @@
       "links": ["harlequin/core", "xylophone/core", "profanity/core", "guillotine/core",
           "acyclicity/core", "joviality/integration", "telekinesis/client", "euphemism/core", "honeycomb/core",
           "exoskeleton/core", "anticipation/time", "imperial/core", "tarantula/core", "surveillance/core",
-          "escritoire/core", "oubliette/core"],
+          "escritoire/core", "oubliette/core", "cellulose/core"],
       "sources": ["src/core"],
       "version": "0.6.1",
       "docs": ["doc"],

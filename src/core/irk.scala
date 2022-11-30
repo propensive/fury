@@ -33,7 +33,6 @@ import rendering.ansi
 erased given CanThrow[AppError] = compiletime.erasedValue
 given LogFormat[File[Unix]] = LogFormat.standardAnsi
 given Encoding = encodings.Utf8
-//given Log = logging.stdout(using monitors.global)
 
 val LogFile = unsafely(Unix.parse(t"/var/log/irk.log").file(Ensure).sink)
 given log: Log = Log(

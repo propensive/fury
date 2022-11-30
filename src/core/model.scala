@@ -160,31 +160,32 @@ object NextGen:
   
   val buildSchema = summon[Codec[Build]].schema
 
-  def read(file: File[Unix])(using Allocator): (cellulose.Doc, Build) throws IoError =
+  def read(file: File[Unix])(using Allocator, Stdout): (cellulose.Doc, Build) throws AggregateError =
     val source = unsafely(file.read[Text]())
-    try
-      val doc = buildSchema.parse(source)
-      (doc, doc.as[Build])
-    catch
-      case err: CodlValidationError => throw AppError(t"Couldn't read build file: ${err.toString.show}")
-      case err: CodlParseError      => throw AppError(t"Couldn't read build file: ${err.toString.show}")
+    val lines = IArray.from(source.cut('\n'))
+    val doc = buildSchema.parse(source)
+    
+    (doc, doc.as[Build])
 
-  given Codec[Directory[Unix]] with
-    def schema = Field(Arity.One)
-    def serialize(dir: Directory[Unix]): List[IArray[Node]] = List(IArray(Node(Data(dir.fullname))))
-    def deserialize(value: List[IArray[Node]]): Directory[Unix] = unsafely(Unix.parse(readField(value).option.get).directory(Expect))
-
-  given Codec[DiskPath[Unix]] with
-    def schema = Field(Arity.One)
-    def serialize(dir: DiskPath[Unix]): List[IArray[Node]] = List(IArray(Node(Data(dir.fullname))))
-    def deserialize(value: List[IArray[Node]]): DiskPath[Unix] = unsafely(Unix.parse(readField(value).option.get))
-  
   given Codec[Relative] with
     def schema = Field(Arity.One)
     def serialize(dir: Relative): List[IArray[Node]] = List(IArray(Node(Data(dir.show))))
-    def deserialize(value: List[IArray[Node]]): Relative = unsafely(Relative.parse(readField(value).option.get))
+    def deserialize(value: List[Indexed]): Relative = unsafely(Relative.parse(readField(value).option.get))
 
-  case class Build(`:<<` : Text, project: List[Project], script: Text)
-  case class Project(id: Text, name: Maybe[Text], count: Int, module: List[Module], stream: Maybe[Text])
-  case class Module(id: Text)//, sources: List[Relative], include: List[Text], use: List[Text],
-                        //`export`: List[Text])
+  case class Build(`:<<` : Text, user: Text, project: List[Project], script: Text, universe: Maybe[Text], command: List[Command])
+  
+  case class Project(id: Text, name: Text, description: Maybe[Text], repo: List[Repo], module: List[Module],
+                         variant: List[Variant], expiry: Maybe[Int])
+
+  case class Repo(id: Text, url: Text, commit: Text, branch: Maybe[Text])
+  
+  case class Command(id: Text, main: Text, include: List[Text])
+
+  case class Module(id: Text, source: List[Relative], use: List[Text], `export`: List[Text],
+                        include: List[Text], assist: List[Text], plugin: List[Text], artifact: List[Artifact],
+                        resource: List[Relative], compiler: Maybe[Compiler], java: Int)
+  
+  case class Compiler(id: Text, version: Maybe[Text])
+
+  case class Artifact(`type`: Text, path: Relative)
+  case class Variant(id: Text)

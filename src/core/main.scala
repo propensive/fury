@@ -191,19 +191,34 @@ object Irk extends Daemon():
 
   private def initBuild(pwd: Directory[Unix])(using Stdout, Monitor, Allocator, Environment)
                        : Build throws IoError | BuildfileError =
+    import cellulose.*
+    
     val path = unsafely(pwd / t"build.irk")
-
     val nextgenBuild = pwd / p"fury"
+    
+    val lines = unsafely(IArray.from(nextgenBuild.file(Expect).read[Text]().cut('\n')))
+    
     if nextgenBuild.exists() then
-      import cellulose.*
-      val (doc, build) = NextGen.read(nextgenBuild.file(Expect))
-      Out.println(build.codl.serialize)
-      val build2 = NextGen.Build(t"script", List(NextGen.Project(t"one", t"New Name", 10, Nil, Unset)), t"echo foo")
-      Out.println(doc.serialize)
+      try NextGen.read(nextgenBuild.file(Expect))
+      catch case err: AggregateError => err.errors.sortBy(_.line).foreach:
+        case CodlError(line, col, length, issue) =>
+          val content = lines(line)
 
-      Out.println(doc.merge(build2.codl).serialize)
+          val margin = (line + 2).show.length
 
-
+          Out.println(ansi"${Bg(colors.SeaGreen)}( $Bold(${colors.Black}(Build error)) )${Bg(colors.SpringGreen)}(${colors.SeaGreen}()${colors.Black}( ${nextgenBuild.name}:${line + 1}:${col + 1} ))${Bg(colors.Black)}(${colors.SpringGreen}())")
+          lines.lift(line - 1).foreach: content =>
+            Out.println(ansi"${colors.Gray}(${line.show.pad(margin, Rtl)} ║)${Bg(Srgb(0.0, 0.01, 0.01))}(${content}${t" "*(80 - content.length)})")
+          
+          Out.println(ansi"${colors.Gray}(${(line + 1).show.pad(margin, Rtl)} ║)${Bg(Srgb(0.0, 0.01, 0.01))}(${content.take(col)}${colors.OrangeRed}(${Underline}(${content.drop(col).take(length)}))${content.drop(col + length)}${t" "*(80 - content.length)})")
+          
+          lines.lift(line + 1).foreach: content =>
+            Out.println(ansi"${colors.Gray}(${line + 2} ║)${Bg(Srgb(0.0, 0.01, 0.01))}(${content}${t" "*(80 - content.length)})")
+          
+          Out.println(ansi"${t" "*((line + 2).show.length + 2)}${issue}")
+          
+          Out.println(t"")
+    
     readBuilds(Build(pwd, Map(), None, Map(), Map()), Set(), path)
   
   def hashFile(file: File[Unix])(using Allocator): Digest[Crc32] throws IoError | AppError =
