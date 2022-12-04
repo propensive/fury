@@ -6,6 +6,7 @@ import parasitism.*, threading.virtual
 import turbulence.*
 import acyclicity.*
 import euphemism.*
+import cellulose.*
 import joviality.*
 import serpentine.*
 import guillotine.*
@@ -46,8 +47,34 @@ object palette:
   val Hash = colors.MediumSeaGreen
   val Class = colors.MediumAquamarine
 
-case class Build(pwd: Directory[Unix], repos: Map[DiskPath[Unix], Text], publishing: Option[Publishing],
-    index: Map[Ref, Step] = Map(), targets: Map[Text, Target] = Map()):
+object Build:
+  def apply(pwd: Directory[Unix], command: Maybe[Target], universe: Universe)
+           (using Environment, Monitor, Threading, Stdout, Log)
+           : Build throws GitError | IoError | EnvError | RootParentError | CancelError =
+    
+    Log.info(t"Running command ${command.toString}")
+
+    def steps(todo: List[Ref], done: Map[Ref, Step]): Build = todo match
+      case Nil => Build(pwd, done)
+      case head :: tail =>
+        if done.contains(head) then steps(tail, done) else
+          Log.warn(head.toString)
+          val project = universe.index(ProjectId(head.project))
+          val module = project.index(head.module)
+          val ref = module.id.in(project.id)
+          
+          val includes = module.include.map(_.in(project.id))
+          val uses = module.use.map(_.in(project.id))
+          val resources = module.resource.map(project.resolve(_))
+          val sources: Set[Directory[Unix]] = module.source.map(project.resolve(_)).sift[Directory[Unix]]
+          
+          steps((includes ++ uses).to(List) ::: tail, done.updated(ref, Step(universe, project.root, ref.show, ref, includes ++ uses, resources, sources,
+                   Set(), t"1.0.0", Nil, None, None, Nil, None)))
+
+    command.mm { cmd => steps(cmd.include.map(_.ref), Map()) }.or(throw AppError(t"No build command was specified"))
+
+    
+case class Build(pwd: Directory[Unix], index: Map[Ref, Step] = Map()):
   val steps: Set[Step] = index.values.to(Set)
   val stepsMap = steps.map { step => step.id -> step }.to(Map)
   val plugins: Set[Ref] = steps.flatMap(_.plugins.map(_.id))
@@ -88,7 +115,7 @@ case class Build(pwd: Directory[Unix], repos: Map[DiskPath[Unix], Text], publish
 
   @targetName("addAll")
   infix def ++(build: Build): Build =
-    Build(build.pwd, build.repos, publishing.orElse(build.publishing), index ++ build.index)
+    Build(build.pwd, /*build.repos, publishing.orElse(build.publishing), */index ++ build.index)
   
   def resolve(id: Ref): Step throws BrokenLinkError = index.get(id).getOrElse(throw BrokenLinkError(id))
   def bases: Set[Directory[Unix]] = steps.map(_.pwd).to(Set)
@@ -96,7 +123,7 @@ case class Build(pwd: Directory[Unix], repos: Map[DiskPath[Unix], Text], publish
   def cache(using Allocator, Environment): Map[Step, Digest[Crc32]] =
     try
       val caches = bases.map(Irk.hashDir / _.path.fullname.digest[Crc32].encode[Hex]).filter(_.exists()).map: cacheFile =>
-        Json.parse(cacheFile.file().read[Text]()).as[Cache].hashes
+        Json.parse(cacheFile.file(Ensure).read[Text]()).as[Cache].hashes
       
       caches.flatten.flatMap:
         case Hash(id, hash, _) => try Set(resolve(id) -> hash) catch case e: BrokenLinkError => Set()
@@ -113,7 +140,7 @@ case class Build(pwd: Directory[Unix], repos: Map[DiskPath[Unix], Text], publish
       val cacheFile = Irk.hashDir / step.pwd.path.fullname.digest[Crc32].encode[Hex]
       val cache = Cache:
         if cacheFile.exists()
-        then Json.parse(cacheFile.file().read[Text]()).as[Cache].hashes.filter: hash =>
+        then Json.parse(cacheFile.file(Ensure).read[Text]()).as[Cache].hashes.filter: hash =>
           try resolve(hash.id).pwd == step.pwd catch case err: BrokenLinkError => false
         else Set()
       
@@ -122,7 +149,7 @@ case class Build(pwd: Directory[Unix], repos: Map[DiskPath[Unix], Text], publish
       
       newCache.json.show.bytes.writeTo:
         if cacheFile.exists() then cacheFile.file(Expect).delete()
-        cacheFile.file()
+        cacheFile.file(Ensure)
     catch
       case err: JsonParseError  => throw AppError(t"The cache file is not in the correct format", err)
       case err: StreamCutError  => throw AppError(t"The stream was cut while reading the cache file", err)
@@ -187,16 +214,15 @@ object Artifact:
     
     artifact.path.file(Expect).setPermissions(executable = true)
 
-case class Step(path: File[Unix], publishing: Option[Publishing], name: Text,
+case class Step(uni: Universe, pwd: Directory[Unix], /*path: File[Unix], publishing: Option[Publishing],*/ name: Text,
                     id: Ref, links: Set[Ref], resources: Set[Directory[Unix]],
-                    sources: Set[Directory[Unix]], jars: Set[Text], dependencies: Set[Dependency],
+                    sources: Set[Directory[Unix]], jars: Set[Text],
                     version: Text, docs: List[DiskPath[Unix]], artifact: Option[Artifact],
                     exec: Option[Exec], plugins: List[Plugin], main: Option[Text]):
   
-  def publish(build: Build): Publishing = publishing.orElse(build.publishing).getOrElse:
+  def publish(build: Build): Publishing =// publishing.orElse(build.publishing).getOrElse:
     throw AppError(t"There are no publishing details for $id")
  
-  def pwd: Directory[Unix] = unsafely(path.parent)
   def group(build: Build): Text = publish(build).group
   def docFile: DiskPath[Unix] = output(t"-javadoc.jar")
   def srcsPkg: DiskPath[Unix] = output(t"-sources.jar")
@@ -223,10 +249,10 @@ case class Step(path: File[Unix], publishing: Option[Publishing], name: Text,
     try unsafely(Irk.cacheDir / t"cls" / id.project / id.module).directory(Ensure)
     catch case err: IoError => throw AppError(t"Could not write to the user's home directory", err)
 
-  def pomDependency(build: Build): Dependency = Dependency(group(build), id.dashed, version)
+  def pomDependency(build: Build): Maven.Dependency = Maven.Dependency(group(build), id.dashed, version)
 
-  def pomDependencies(build: Build): List[Dependency] =
-    try allLinks.map(build.resolve(_)).map(_.pomDependency(build)).to(List) ++ dependencies
+  def pomDependencies(build: Build): List[Maven.Dependency] =
+    try allLinks.map(build.resolve(_)).map(_.pomDependency(build)).to(List)// ++ dependencies
     catch case err: BrokenLinkError => throw AppError(t"Couldn't resolve dependencies", err)
 
   def compile(hashes: Map[Step, Digest[Crc32]], oldHashes: Map[Step, Digest[Crc32]], build: Build,
@@ -261,53 +287,6 @@ case class Step(path: File[Unix], publishing: Option[Publishing], name: Text,
       case err: BrokenLinkError => throw AppError(t"There was an unsatisfied reference to ${err.link}", err)
       //case err: Error[?]        => throw AppError(t"An unexpected error occurred", err)
 
-case class BuildConfig(imports: Option[List[Text]], publishing: Option[Publishing], modules: List[Module],
-                           repos: Option[List[Repo]], targets: Option[List[Target]]):
-  
-  def gen(current: DiskPath[Unix], build: Build, seen: Set[Digest[Crc32]], files: DiskPath[Unix]*)(using Stdout, Allocator, Environment)
-         : Build throws IoError | AppError | BuildfileError =
-    
-    repos.presume.foreach:
-      case Repo(base, uri) =>
-        val root = unsafely(current.parent + Relative.parse(base))
-        if !root.exists() then
-          Out.println(ansi"Cloning repository $uri to $base".render)
-          Irk.cloneRepo(root, uri)
-
-    files.to(List) match
-      case Nil =>
-        build
-      
-      case path :: tail =>
-        val steps: Map[Ref, Step] = modules.map: module =>
-          def relativize(text: Text): DiskPath[Unix] = unsafely(path.file(Expect).parent.path + Relative.parse(text))
-          val links = module.links.presume.map(Ref(_))
-          val plugins = module.plugins.presume.map(Plugin(_))
-          val resources = module.resources.presume.map(relativize).map(_.directory(Expect))
-          val sources = module.sources.map(relativize).map(_.directory(Expect))
-          val dependencies = module.dependencies.presume
-          val docs = module.docs.presume.map(relativize)
-          val version = module.version.getOrElse(t"1.0.0")
-          
-          val artifact = module.artifact.map: spec =>
-            val format = spec.format.flatMap(Format.unapply(_)).getOrElse(Format.FatJar)
-            Artifact(unsafely(path.parent + Relative.parse(spec.path)), spec.main, format)
-          
-          val id = Ref(module.id)
-          
-          Step(path.file(), publishing, module.name, id, links, resources, sources, module.jars.presume,
-              dependencies, version, docs, artifact, module.exec, plugins, module.main)
-        .mtwin.map(_.id -> _).to(Map)
-        
-        val importPaths = imports.presume.map: p =>
-          unsafely(path.parent + Relative.parse(p))
-        
-        val reposMap: Map[DiskPath[Unix], Text] = repos.presume.map: repo =>
-          unsafely(build.pwd.path + Relative.parse(repo.base)) -> repo.url
-        .to(Map)
-
-        Irk.readBuilds(build ++ Build(build.pwd, reposMap, build.publishing, steps), seen,
-            (importPaths ++ tail)*)
 
 class FileCache[T]:
   private val files: scm.HashMap[Text, (Long, T)] = scm.HashMap()
@@ -345,7 +324,7 @@ object Cache:
       
       Cache.synchronized:
         latest.get(key).foreach: oldHash =>
-          if oldHash != hash then unsafely(Irk.cacheDir / hash).directory().delete()
+          if oldHash != hash then unsafely(Irk.cacheDir / hash).directory().mm(_.delete())
         
         latest(key) = hash
         workDir

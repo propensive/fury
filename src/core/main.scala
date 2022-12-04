@@ -14,7 +14,7 @@ import kaleidoscope.*
 import escapade.*
 import gastronomy.*
 import oubliette.*
-import cellulose.{Codec, Codl}
+import cellulose.{Token as _, *}
 import harlequin.*
 import iridescence.*, solarized.*
 import serpentine.*
@@ -51,23 +51,12 @@ object Irk extends Daemon():
         case t"help" :: _         => Irk.help()
         case t"init" :: name :: _ => Irk.init(unsafely(env.pwd.directory(Expect)), name)
         case t"version" :: _      => Irk.showVersion()
-        case t"go" :: _           =>
-          unsafely:
-            Tty.capture:
-              Tty.stream[Keypress].take(10).foreach: event =>
-                eucalyptus.Log.info(t"Received keypress: ${event}")
-          ExitStatus.Ok
-        case t"build" :: params   =>
-          val target = params.headOption.filter(!_.startsWith(t"-"))
-          val watch = params.contains(t"-w") || params.contains(t"--watch")
-          val exec = params.contains(t"-b") || params.contains(t"--browser")
-          Irk.build(target, false, watch, cli.script, exec)
         case t"stop" :: params    => Irk.stop(cli)
         case params               =>
-          val target = params.headOption.filter(!_.startsWith(t"-"))
+          val command = params.headOption.filter(!_.startsWith(t"-")).maybe
           val watch = params.contains(t"-w") || params.contains(t"--watch")
           val exec = params.contains(t"-b") || params.contains(t"--browser")
-          Irk.build(target, false, watch, cli.script, exec)
+          Irk.build(command, false, watch, cli.script, exec)
   
     catch
       case error: AppError => error match
@@ -101,9 +90,17 @@ object Irk extends Daemon():
     try (Home.Cache[DiskPath[Unix]]() / p"irk").directory(Ensure)
     catch case err: IoError => throw AppError(t"The user's cache directory could not be created", err)
 
+  def universeDir(using Environment): Directory[Unix] =
+    try (cacheDir / p"uni").directory(Ensure)
+    catch case err: IoError => throw AppError(t"The user's universe directory could not be created", err)
+  
   def libDir(using Environment): Directory[Unix] =
     try (cacheDir / p"lib").directory(Ensure)
     catch case err: IoError => throw AppError(t"The user's lib directory could not be created", err)
+  
+  def repoDir(using Environment): Directory[Unix] =
+    try (cacheDir / p"repo").directory(Ensure)
+    catch case err: IoError => throw AppError(t"The user's repo cache could not be created", err)
   
   def libJar(hash: Digest[Crc32])(using Environment): DiskPath[Unix] =
     unsafely(libDir / t"${hash.encode[Hex].lower}.jar")
@@ -189,38 +186,6 @@ object Irk extends Daemon():
 
   private lazy val fileHashes: FileCache[Digest[Crc32]] = new FileCache()
 
-  private def initBuild(pwd: Directory[Unix])(using Stdout, Monitor, Allocator, Environment)
-                       : Build throws IoError | BuildfileError =
-    import cellulose.*
-    
-    val path = unsafely(pwd / t"build.irk")
-    val nextgenBuild = pwd / p"fury"
-    
-    val lines = unsafely(IArray.from(nextgenBuild.file(Expect).read[Text]().cut('\n')))
-    
-    if nextgenBuild.exists() then
-      try NextGen.read(nextgenBuild.file(Expect))
-      catch case err: AggregateError => err.errors.sortBy(_.line).foreach:
-        case CodlError(line, col, length, issue) =>
-          val content = lines(line)
-
-          val margin = (line + 2).show.length
-
-          Out.println(ansi"${Bg(colors.SeaGreen)}( $Bold(${colors.Black}(Build error)) )${Bg(colors.SpringGreen)}(${colors.SeaGreen}()${colors.Black}( ${nextgenBuild.name}:${line + 1}:${col + 1} ))${Bg(colors.Black)}(${colors.SpringGreen}())")
-          lines.lift(line - 1).foreach: content =>
-            Out.println(ansi"${colors.Gray}(${line.show.pad(margin, Rtl)} ║)${Bg(Srgb(0.0, 0.01, 0.01))}(${content}${t" "*(80 - content.length)})")
-          
-          Out.println(ansi"${colors.Gray}(${(line + 1).show.pad(margin, Rtl)} ║)${Bg(Srgb(0.0, 0.01, 0.01))}(${content.take(col)}${colors.OrangeRed}(${Underline}(${content.drop(col).take(length)}))${content.drop(col + length)}${t" "*(80 - content.length)})")
-          
-          lines.lift(line + 1).foreach: content =>
-            Out.println(ansi"${colors.Gray}(${line + 2} ║)${Bg(Srgb(0.0, 0.01, 0.01))}(${content}${t" "*(80 - content.length)})")
-          
-          Out.println(ansi"${t" "*((line + 2).show.length + 2)}${issue}")
-          
-          Out.println(t"")
-    
-    readBuilds(Build(pwd, Map(), None, Map(), Map()), Set(), path)
-  
   def hashFile(file: File[Unix])(using Allocator): Digest[Crc32] throws IoError | AppError =
     try fileHashes(file.path.fullname, file.modified):
       file.read[Bytes]().digest[Crc32]
@@ -232,32 +197,9 @@ object Irk extends Daemon():
   def cloneRepo(path: DiskPath[Unix], url: Text)(using Environment): Unit =
     try sh"git clone -q $url ${path.fullname}".exec[Unit]()
     catch
-      case err: ExecError => throw AppError(t"Could not run `git clone` for repository $url")
-      case err: EnvError  => throw AppError(t"Could not run `git clone` for repository $url")
-
-  def readBuilds(build: Build, seen: Set[Digest[Crc32]], files: DiskPath[Unix]*)
-                (using Stdout, Allocator, Environment)
-                : Build throws BuildfileError | IoError =
-    try
-      files.to(List) match
-        case Nil =>
-          build
-        
-        case path :: tail =>
-          def digest: Digest[Crc32] = hashFile(path.file())
-          if path.exists() && seen.contains(digest) then readBuilds(build, seen, tail*)
-          else if path.exists() then
-            Out.println(ansi"Reading build file ${palette.File}(${path.relativeTo(build.pwd.path).show})")
-            val buildConfig = Json.parse(path.file().read[Text]()).as[BuildConfig]
-            buildConfig.gen(path, build, seen + digest, files*)
-          else throw AppError(txt"""Build contains an import reference to a nonexistant build""")
-    catch
-      case err: IoError         => throw AppError(t"There was an I/O error", err)
-      case err: ExcessDataError => throw BuildfileError(t"The build file was larger than 1MB")
-      case err: StreamCutError  => throw AppError(t"The configuration file could not be read completely", err)
-      case err: JsonParseError  => throw BuildfileError(err.message)
-      case err: JsonAccessError => throw BuildfileError(err.message)
-
+      case err: ExecError => throw AppError(t"Could not run `git clone` for repository $url", err)
+      case err: EnvError  => throw AppError(t"Could not run `git clone` for repository $url", err)
+          
   def readImports(seen: Map[Digest[Crc32], File[Unix]], files: File[Unix]*)
                  (using Stdout, Allocator, Environment)
                  : Set[File[Unix]] =
@@ -267,6 +209,7 @@ object Irk extends Daemon():
         case file :: tail =>
           val importFiles: List[File[Unix]] = imports.presume.flatMap: path =>
             val ref = unsafely(file.parent.path + Relative.parse(path))
+            
             try
               if ref.exists() then
                 List(unsafely(file.parent.path + Relative.parse(path)).file(Expect))
@@ -334,30 +277,31 @@ object Irk extends Daemon():
     ExitStatus.Ok
 
   def init(pwd: Directory[Unix], name: Text)(using Stdout): ExitStatus =
-    val buildPath = unsafely(pwd / t"build.irk")
-    if buildPath.exists() then
-      Out.println(t"Build file build.irk already exists")
-      ExitStatus.Fail(1)
-    else
-      import unsafeExceptions.canThrowAny
-      val buildFile = buildPath.file(Create)
-      val src = (pwd / t"src").directory(Ensure)
-      val sourceDir = (src / t"core").directory(Ensure)
+    ExitStatus.Fail(1)
+    // val buildPath = unsafely(pwd / t"build.irk")
+    // if buildPath.exists() then
+    //   Out.println(t"Build file build.irk already exists")
+    //   ExitStatus.Fail(1)
+    // else
+    //   import unsafeExceptions.canThrowAny
+    //   val buildFile = buildPath.file(Create)
+    //   val src = (pwd / t"src").directory(Ensure)
+    //   val sourceDir = (src / t"core").directory(Ensure)
       
-      val module = Module(name, t"${pwd.path.name}/core", None, None,
-          Set(sourceDir.path.relativeTo(pwd.path).show), None, None, None, None, None, None, None, None)
+    //   val module = Project(t"${pwd.path.name}/core", Nil, None, None,
+    //       Set(sourceDir.path.relativeTo(pwd.path).show), None, None, None, None, None, None, None, Nil)
 
-      val config = BuildConfig(None, None, List(module), None, None)
-      try
-        config.json.show.writeTo(buildFile)
-        ExitStatus.Ok
-      catch
-        case err: IoError =>
-          Out.println(t"Could not write to build.irk")
-          ExitStatus.Fail(1)
-        case err: StreamCutError =>
-          Out.println(t"Could not write to build.irk")
-          ExitStatus.Fail(1)
+    //   val config = BuildConfig(None, None, None, List(module), List(), None, None)
+    //   try
+    //     config.json.show.writeTo(buildFile)
+    //     ExitStatus.Ok
+    //   catch
+    //     case err: IoError =>
+    //       Out.println(t"Could not write to build.irk")
+    //       ExitStatus.Fail(1)
+    //     case err: StreamCutError =>
+    //       Out.println(t"Could not write to build.irk")
+    //       ExitStatus.Fail(1)
 
   private val snip = t" — "*100
 
@@ -514,7 +458,7 @@ object Irk extends Daemon():
       case Source    => t"source"
       case Resource  => t"resource"
 
-  def build(target: Option[Text], publishSonatype: Boolean, watch: Boolean = false, scriptFile: File[Unix],
+  def build(command: Maybe[Text], publishSonatype: Boolean, watch: Boolean = false, scriptFile: File[Unix],
                 exec: Boolean)
            (using Stdout, InputSource, Monitor, Allocator, Environment)
            : ExitStatus throws AppError = unsafely:
@@ -572,13 +516,21 @@ object Irk extends Daemon():
         case err: InotifyError => throw AppError(t"Could not update watch directories", err)
         case err: IoError      => throw AppError(t"Could not update watch directories", err)
 
-      def generateBuild(): Build =
+      def generateBuild(command: Maybe[Text]): Build =
         try
-          if watch then updateWatches(watcher, initBuild(env.pwd.directory(Expect)))
-          else initBuild(env.pwd.directory(Expect))
+          val pwd = env.pwd.directory(Expect)
+          val (commands, universe) = Universe.resolve(pwd)
+          
+          Log.info(t"Looking for ${command.toString} in ${commands.toString}")
+          val command2: Maybe[Target] = command.mm: cmd =>
+            commands.find(_.id == cmd).getOrElse:
+              throw AppError(t"The command $cmd is not defined")
+
+          val build = Build(pwd, command2, universe)
+          if watch then updateWatches(watcher, build) else build
         catch
           case err: BuildfileError => throw AppError(err.message)
-          case err: IoError => throw AppError(t"The build file could not be read")
+          case err: IoError => throw AppError(t"The build file could not be read because $err")
 
       @tailrec
       def loop(first: Boolean, stream: LazyList[Event], oldBuild: Build, lastSuccess: Boolean,
@@ -631,7 +583,7 @@ object Irk extends Daemon():
   
               val build: Build =
                 if changes.exists(_.changeType.rebuild)
-                then safely(generateBuild()).or(oldBuild)
+                then safely(generateBuild(command)).or(oldBuild)
                 else oldBuild
 
               build.clearHashes()
@@ -792,7 +744,7 @@ object Irk extends Daemon():
         if !watch then LazyList()
         else interrupts.multiplexWith(watcher.stream.regulate(tap).cluster(100).map(Event.Changeset(_)))
       
-      val build = generateBuild()
+      val build = generateBuild(command)
       
       internet:
         if exec then Chrome.session(8869):

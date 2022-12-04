@@ -25,7 +25,6 @@ case class UnknownProfile(name: Text)
 extends Exception(t"the profile $name was not found for these credentials".s)
 
 case class ProfileId(id: Text, repoTargetId: Text)
-case class RepoId(id: Text)
 
 object Sonatype:
   def publish(build: Build, passwordOpt: Option[Text])(using Stdout, Internet, Allocator, Environment): Unit =
@@ -42,7 +41,7 @@ object Sonatype:
         steps.foreach: step =>
           Out.println(t"Generating POM file for ${step.id}")
           
-          val pomXml = Pom(build, step, 2022,
+          val pomXml = Maven.Pom(build, step, 2022,
               t"https://propensive.com/opensource/${step.id.project}",
               t"github.com/${step.id.project}", pub).xml
           

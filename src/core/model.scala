@@ -1,6 +1,7 @@
 package irk
 
 import rudiments.*
+import parasitism.*
 import gossamer.*
 import kaleidoscope.*
 import joviality.*
@@ -13,10 +14,8 @@ import escapade.*
 import surveillance.*
 import tetromino.*
 
-case class Target(name: Text, module: Text, run: Text, parallel: Boolean, trigger: Boolean)
-
-case class Publishing(username: Text, group: Text, url: Text, organization: Organization,
-                          developers: List[Developer])
+case class Publishing(username: Text, group: Text, url: Text, organization: Maven.Organization,
+                          developers: List[Maven.Developer])
 
 case class Issue(level: Level, baseDir: DiskPath[Unix], code: CodeRange, stack: List[CodeRange], message: Text)
 
@@ -26,11 +25,100 @@ case class CodeRange(module: Maybe[Ref], path: Maybe[Relative], startLine: Int, 
 case class Repo(base: Text, url: Text):
   def basePath(dir: DiskPath[Unix]): DiskPath[Unix] = unsafely(dir + Relative.parse(base))
 
-case class Module(name: Text, id: Text, links: Option[Set[Text]], resources: Option[Set[Text]],
-                      sources: Set[Text], jars: Option[Set[Text]], docs: Option[List[Text]],
-                      dependencies: Option[Set[Dependency]], version: Option[Text],
-                      artifact: Option[ArtifactSpec], exec: Option[Exec], plugins: Option[List[PluginSpec]],
-                      main: Option[Text])
+object RepoPath:
+  given Show[RepoPath] = rp => rp.repoId.fm(rp.path.show) { id => t"${id}:${rp.path.show}" }
+
+  given Codec[RepoPath] with
+    def schema = Field(Arity.One, RepoPath.unapply(_).isDefined)
+    def serialize(value: RepoPath): List[IArray[Node]] = List(IArray(Node(Data(value.show))))
+    def deserialize(value: List[Indexed]): RepoPath throws IncompatibleTypeError =
+      RepoPath.unapply(text(value)).getOrElse(throw IncompatibleTypeError())
+
+  def unapply(text: Text): Option[RepoPath] = text match
+    case r"$repo@([a-z][a-z0-9]*):$path@(.+)" => Some(RepoPath(repo.show, Relative.parse(path.show)))
+    case r"$path@(.+)"                        => Some(RepoPath(Unset, Relative.parse(path.show)))
+    case _                                    => None
+
+
+
+case class RepoPath(repoId: Maybe[Text], path: Relative)
+
+object ModuleId:
+  def unapply(text: Text): Option[ModuleId] = text match
+    case r"$p@([a-z][a-z0-9]+)\/$m@([a-z][a-z0-9]+)" => Some(ModuleId(p.show, m.show))
+    case r"[a-z][a-z0-9]+"                           => Some(ModuleId(Unset, text))
+    case text                                        => None
+
+  given Codec[ModuleId] with
+    def schema = Field(Arity.One, ModuleId.unapply(_).isDefined)
+    def serialize(value: ModuleId): List[IArray[Node]] = List(IArray(Node(Data(value.show))))
+    
+    def deserialize(value: List[Indexed]): ModuleId throws IncompatibleTypeError =
+      ModuleId.unapply(text(value)).getOrElse(throw IncompatibleTypeError())
+  
+  given Show[ModuleId] = id => id.project.fm(id.module) { p => t"${p}/${id.module}" }
+
+case class ModuleId(project: Maybe[Text], module: Text):
+  def in(id: ProjectId): Ref = Ref(project.or(id.project), module)
+  def ref: Ref = Ref(project.or(throw AppError(t"Project has not been specified")), module)
+
+object RepoId:
+  def unapply(text: Text): Option[RepoId] = text match
+    case r"[a-z][a-z0-9]+" => Some(RepoId(text))
+    case _                 => None
+  
+  given Show[RepoId] = _.id
+  
+  given Codec[RepoId] with
+    def schema = Field(Arity.One)
+    def serialize(value: RepoId): List[IArray[Node]] = List(IArray(Node(Data(value.show))))
+    
+    def deserialize(value: List[Indexed]): RepoId throws IncompatibleTypeError =
+      RepoId.unapply(text(value)).getOrElse(throw IncompatibleTypeError())
+
+
+case class RepoId(id: Text)
+
+given Codec[Relative] with
+  def schema = Field(Arity.One)
+  def serialize(value: Relative) = List(IArray(Node(Data(value.show))))
+  def deserialize(value: List[Indexed]): Relative throws IncompatibleTypeError =
+    Relative.parse(text(value))
+
+object ProjectId:
+  def unapply(text: Text): Option[ProjectId] = text match
+    case r"[a-z][a-z0-9]+" => Some(ProjectId(text))
+    case _                 => None
+  
+  given Show[ProjectId] = _.project
+  
+  given Codec[ProjectId] with
+    def schema = Field(Arity.One)
+    def serialize(value: ProjectId): List[IArray[Node]] = List(IArray(Node(Data(value.show))))
+    
+    def deserialize(value: List[Indexed]): ProjectId throws IncompatibleTypeError =
+      ProjectId.unapply(text(value)).getOrElse(throw IncompatibleTypeError())
+
+
+case class ProjectId(project: Text)
+
+case class BuildConfig(`:<<`: Maybe[Text], universe: Maybe[Text], overlay: List[Overlay], project: List[Project],
+                           command: List[Target], script: Maybe[Text])
+
+case class Project(id: ProjectId, description: Maybe[Text], module: List[Module], repo: List[NextGen.Repo]):
+  lazy val index: Map[Text, Module] = unsafely(module.indexBy(_.id.module))
+
+case class Module(id: ModuleId, include: Set[ModuleId], use: Set[ModuleId], resource: Set[RepoPath],
+                        source: Set[RepoPath], binary: Set[RepoPath], docs: Maybe[RepoPath],
+                        artifact: Option[ArtifactSpec], exec: Option[Exec], plugin: List[PluginSpec],
+                        main: Option[Text], publish: Option[Boolean])
+
+case class Overlay(id: ProjectId, url: Text, commit: Text)
+  //def resolve(): Directory[Unix] = GitCache(url, commit)
+
+case class Fork(id: Text, path: Relative)
+
+case class Forks(fork: List[Fork])
 
 case class ArtifactSpec(path: Text, main: Option[Text], format: Option[Text])
 
@@ -68,50 +156,52 @@ extends Error(err"an application error occurred: $appMsg", originalCause)
 case class BuildfileError(bfMsg: Text) extends Error(err"the build file contained an error: $bfMsg")
 case class BrokenLinkError(link: Ref) extends Error(err"the reference to $link cannot be resolved")
 
-@xmlLabel("organization")
-case class Organization(name: Text, url: Text)
+object Maven:
 
-@xmlLabel("license")
-case class License(name: Text, url: Text, distribution: Text)
+  object Dependency:
+    given Json.Reader[Dependency] = summon[Json.Reader[Text]].map:
+      case s"$group:$artifact:$version" => Dependency(group.show, artifact.show, version.show)
+      case value                        => throw AppError(t"Could not parse dependency $value")
 
-@xmlLabel("scm")
-case class Scm(url: Text, connection: Text)
+  @xmlLabel("organization")
+  case class Organization(name: Text, url: Text)
 
-@xmlLabel("developer")
-case class Developer(id: Text, name: Text, url: Text)
+  @xmlLabel("license")
+  case class License(name: Text, url: Text, distribution: Text)
 
-object Dependency:
-  given Json.Reader[Dependency] = summon[Json.Reader[Text]].map:
-    case s"$group:$artifact:$version" => Dependency(group.show, artifact.show, version.show)
-    case value                        => throw AppError(t"Could not parse dependency $value")
+  @xmlLabel("scm")
+  case class Scm(url: Text, connection: Text)
 
-@xmlLabel("dependency")
-case class Dependency(groupId: Text, artifactId: Text, version: Text)
+  @xmlLabel("developer")
+  case class Developer(id: Text, name: Text, url: Text)
 
-@xmlLabel("project")
-case class Project(modelVersion: Text, groupId: Text, artifactId: Text, version: Text,
-    licenses: List[License], name: Text, description: Text, inceptionYear: Text, url: Text,
-    organization: Organization, scm: Scm, developers: List[Developer],
-    dependencies: List[Dependency])
+  @xmlLabel("dependency")
+  case class Dependency(groupId: Text, artifactId: Text, version: Text)
 
-object Pom:
-  def apply(build: Build, step: Step, year: Int, url: Text, git: Text, publishing: Publishing)
-           : Project =
-    Project(
-      modelVersion = t"4.0.0",
-      groupId = step.group(build),
-      artifactId = step.id.dashed,
-      version = step.version,
-      licenses = List(License(t"Apache 2", t"http://www.apache.org/licenses/LICENSE-2.0.txt", t"repo")),
-      name = step.name,
-      description = step.name,
-      inceptionYear = year.show,
-      url = url,
-      organization = publishing.organization,
-      scm = Scm(t"https://$git/", t"scm:git:git@$git.git"),
-      developers = publishing.developers,
-      dependencies = step.pomDependencies(build)
-    )
+  @xmlLabel("project")
+  case class Project(modelVersion: Text, groupId: Text, artifactId: Text, version: Text,
+      licenses: List[License], name: Text, description: Text, inceptionYear: Text, url: Text,
+      organization: Organization, scm: Scm, developers: List[Developer],
+      dependencies: List[Dependency])
+
+  object Pom:
+    def apply(build: Build, step: Step, year: Int, url: Text, git: Text, publishing: Publishing)
+             : Project =
+      Project(
+        modelVersion = t"4.0.0",
+        groupId = step.group(build),
+        artifactId = step.id.dashed,
+        version = step.version,
+        licenses = List(License(t"Apache 2", t"http://www.apache.org/licenses/LICENSE-2.0.txt", t"repo")),
+        name = step.name,
+        description = step.name,
+        inceptionYear = year.show,
+        url = url,
+        organization = publishing.organization,
+        scm = Scm(t"https://$git/", t"scm:git:git@$git.git"),
+        developers = publishing.developers,
+        dependencies = step.pomDependencies(build)
+      )
 
 enum Event:
   case Changeset(changes: List[WatchEvent])
@@ -156,35 +246,16 @@ case class Version(digest: Text, major: Int, minor: Int):
 
 case class PluginRef(jarFile: DiskPath[Unix], params: List[Text])
 
+case class Target(id: Text, main: Maybe[Text], args: List[Text], include: List[ModuleId])
+
 object NextGen:
-  
-  val buildSchema = summon[Codec[Build]].schema
-
-  def read(file: File[Unix])(using Allocator, Stdout): (cellulose.Doc, Build) throws AggregateError =
-    val source = unsafely(file.read[Text]())
-    val lines = IArray.from(source.cut('\n'))
-    val doc = buildSchema.parse(source)
-    
-    (doc, doc.as[Build])
-
-  given Codec[Relative] with
-    def schema = Field(Arity.One)
-    def serialize(dir: Relative): List[IArray[Node]] = List(IArray(Node(Data(dir.show))))
-    def deserialize(value: List[Indexed]): Relative = unsafely(Relative.parse(readField(value).option.get))
-
-  case class Build(`:<<` : Text, user: Text, project: List[Project], script: Text, universe: Maybe[Text], command: List[Command])
   
   case class Project(id: Text, name: Text, description: Maybe[Text], repo: List[Repo], module: List[Module],
                          variant: List[Variant], expiry: Maybe[Int])
 
-  case class Repo(id: Text, url: Text, commit: Text, branch: Maybe[Text])
+  case class Repo(id: RepoId, url: Text, commit: Text)
   
-  case class Command(id: Text, main: Text, include: List[Text])
 
-  case class Module(id: Text, source: List[Relative], use: List[Text], `export`: List[Text],
-                        include: List[Text], assist: List[Text], plugin: List[Text], artifact: List[Artifact],
-                        resource: List[Relative], compiler: Maybe[Compiler], java: Int)
-  
   case class Compiler(id: Text, version: Maybe[Text])
 
   case class Artifact(`type`: Text, path: Relative)
