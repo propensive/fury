@@ -49,16 +49,13 @@ object palette:
 
 object Build:
   def apply(pwd: Directory[Unix], command: Maybe[Target], universe: Universe)
-           (using Environment, Monitor, Threading, Stdout, Log)
+           (using Environment, Monitor, Threading, Stdout)
            : Build throws GitError | IoError | EnvError | RootParentError | CancelError =
     
-    Log.info(t"Running command ${command.toString}")
-
     def steps(todo: List[Ref], done: Map[Ref, Step]): Build = todo match
       case Nil => Build(pwd, done)
       case head :: tail =>
         if done.contains(head) then steps(tail, done) else
-          Log.warn(head.toString)
           val project = universe.index(ProjectId(head.project))
           val module = project.index(head.module)
           val ref = module.id.in(project.id)
@@ -67,12 +64,13 @@ object Build:
           val uses = module.use.map(_.in(project.id))
           val resources = module.resource.map(project.resolve(_))
           val sources: Set[Directory[Unix]] = module.source.map(project.resolve(_)).sift[Directory[Unix]]
-          
+
           steps((includes ++ uses).to(List) ::: tail, done.updated(ref, Step(universe, project.root, ref.show, ref, includes ++ uses, resources, sources,
                    Set(), t"1.0.0", Nil, None, None, Nil, None)))
 
-    command.mm { cmd => steps(cmd.include.map(_.ref), Map()) }.or(throw AppError(t"No build command was specified"))
-
+    command.mm: cmd =>
+      steps(cmd.include.map(_.ref), Map())
+    .or(throw AppError(t"No valid build command was specified, and there is no default command"))
     
 case class Build(pwd: Directory[Unix], index: Map[Ref, Step] = Map()):
   val steps: Set[Step] = index.values.to(Set)

@@ -521,11 +521,7 @@ object Irk extends Daemon():
           val pwd = env.pwd.directory(Expect)
           val (commands, universe) = Universe.resolve(pwd)
           
-          Log.info(t"Looking for ${command.toString} in ${commands.toString}")
-          val command2: Maybe[Target] = command.mm: cmd =>
-            commands.find(_.id == cmd).getOrElse:
-              throw AppError(t"The command $cmd is not defined")
-
+          val command2: Maybe[Target] = commands.find(_.id == command.or(t"default")).maybe
           val build = Build(pwd, command2, universe)
           if watch then updateWatches(watcher, build) else build
         catch

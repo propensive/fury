@@ -246,7 +246,7 @@ case class Version(digest: Text, major: Int, minor: Int):
 
 case class PluginRef(jarFile: DiskPath[Unix], params: List[Text])
 
-case class Target(id: Text, main: Maybe[Text], args: List[Text], include: List[ModuleId])
+case class Target(id: Text, include: List[ModuleId], main: Maybe[Text], args: List[Text])
 
 object NextGen:
   
