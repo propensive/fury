@@ -19,8 +19,8 @@
   },
   "modules": [
     {
-      "name": "Irk",
-      "id": "irk/core",
+      "name": "Fury",
+      "id": "fury/core",
       "links": ["harlequin/core", "xylophone/core", "profanity/core", "guillotine/core",
           "acyclicity/core", "joviality/integration", "telekinesis/client", "euphemism/core", "honeycomb/core",
           "exoskeleton/core", "anticipation/time", "imperial/core", "tarantula/core", "surveillance/core",
@@ -29,8 +29,8 @@
       "version": "0.6.1",
       "docs": ["doc"],
       "artifact": {
-        "main": "irk.Irk",
-        "path": "irk",
+        "main": "fury.Fury",
+        "path": "fury",
         "format": "daemon-app"
       },
       "webdev": {

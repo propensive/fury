@@ -1,6 +1,6 @@
 VERSION = $(shell jq -r '.modules[0].version' build.irk)
 
-distribution: dist/irk-$(VERSION) dist/launcher-$(VERSION)
+distribution: dist/fury-$(VERSION) dist/launcher-$(VERSION)
 
 one.zip:
 	rsync -a --delete --delete-excluded --exclude 'mod/*/out' --exclude '.*' --exclude scala ../one ./
@@ -8,8 +8,8 @@ one.zip:
 
 
 .image: one.zip src/*/*.scala Dockerfile
-	docker build --tag=irk .
-	#docker build --tag=irk . --no-cache
+	docker build --tag=fury .
+	#docker build --tag=fury . --no-cache
 	touch .image
 
 dist:
@@ -18,20 +18,20 @@ dist:
 quick:
 	VERSION="$(VERSION)" etc/build
 
-dist/irk-$(VERSION): dist .image
-	docker rm irk || true
-	docker run --name irk irk /bin/true
-	docker cp irk:/irk/irk dist/irk-$(VERSION)
-	docker rm irk
+dist/fury-$(VERSION): dist .image
+	docker rm fury || true
+	docker run --name fury fury /bin/true
+	docker cp fury:/fury/fury dist/fury-$(VERSION)
+	docker rm fury
 
 dist/launcher-$(VERSION): dist etc/launcher
 	VERSION="$(VERSION)" envsubst < etc/launcher > dist/launcher-$(VERSION)
 
-install: dist/irk-$(VERSION)
-	sudo cp dist/irk-$(VERSION) /usr/local/bin/irk
+install: dist/fury-$(VERSION)
+	sudo cp dist/fury-$(VERSION) /usr/local/bin/fury
 
 release: distribution
-	cd dist && gh release upload --clobber "v$(VERSION)" irk-$(VERSION)
+	cd dist && gh release upload --clobber "v$(VERSION)" fury-$(VERSION)
 	cd dist && gh release upload --clobber "v$(VERSION)" launcher-$(VERSION)
 
 test:

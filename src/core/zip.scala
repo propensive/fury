@@ -1,4 +1,4 @@
-package irk
+package fury
 
 import rudiments.*
 import gossamer.*
@@ -30,7 +30,7 @@ object Zip:
   def write(base: joviality.File[Unix], path: joviality.DiskPath[Unix], inputs: LazyList[ZipEntry], prefix: Maybe[Bytes] = Unset)
            (using Stdout, Environment)
            : Unit throws StreamCutError | IoError =
-    val tmpPath = Irk.tmpDir.tmpPath()
+    val tmpPath = Fury.tmpDir.tmpPath()
     base.copyTo(tmpPath)
     val uri: java.net.URI = java.net.URI.create(t"jar:file:${tmpPath.fullname}".s).nn
     

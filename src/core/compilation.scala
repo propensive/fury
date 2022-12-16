@@ -1,4 +1,4 @@
-package irk
+package fury
 
 import rudiments.*
 import parasitism.*
@@ -24,7 +24,7 @@ object Compiler:
 
   def compile(id: Ref, pwd: Directory[Unix], files: List[File[Unix]], inputs: List[DiskPath[Unix]],
                   out: Directory[Unix], script: File[Unix], plugins: List[PluginRef], cancel: Promise[Unit],
-                  owners: Map[DiskPath[Unix], Step])
+                  owners: Map[DiskPath[Unix], Step], js: Boolean)
              (using Stdout, Monitor, Allocator, Environment, Log)
              : Result =
     import unsafeExceptions.canThrowAny
@@ -37,7 +37,7 @@ object Compiler:
       
       val classpath: List[Text] = inputs.map: path =>
         if path.isDirectory then t"${path.fullname}/" else path.fullname
-      .to(List) :+ Irk.irkJar(script).fullname
+      .to(List) :+ Fury.furyJar(script).fullname
       
       val classpathText = classpath.reverse.join(separator)
       
@@ -51,8 +51,9 @@ object Compiler:
         val currentCtx =
           val ctx = initCtx.fresh
           val pluginParams = plugins.map(_.jarFile.fullname).map(t"-Xplugin:"+_).ss.to(Array)
+          val jsParams = if js then Array[String]("-scalajs") else Array[String]()
 
-          setup(pluginParams ++ Array[String]("-d", out.fullname.s, "-deprecation", "-feature", "-Wunused:all",
+          setup(pluginParams ++ jsParams ++ Array[String]("-d", out.fullname.s, "-deprecation", "-feature", "-Wunused:all",
               "-new-syntax", "-Yrequire-targetName", "-Ysafe-init", "-Yexplicit-nulls", "-Xmax-inlines", "64",
               "-Ycheck-all-patmat", "-classpath", classpathText.s, ""), ctx).map(_(1)).get
         

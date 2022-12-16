@@ -1,4 +1,4 @@
-package irk
+package fury
 
 import gastronomy.*
 import gossamer.*

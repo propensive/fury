@@ -1,60 +1,60 @@
 FROM openjdk:11
 RUN apt update
 RUN apt install -y jq
-RUN mkdir /irk
-RUN git clone https://github.com/lampepfl/dotty /irk/scala
-RUN mkdir -p /irk/bin
-RUN curl -Lo /irk/sbt.tgz https://github.com/sbt/sbt/releases/download/v1.7.1/sbt-1.7.1.tgz
-RUN tar xvf /irk/sbt.tgz -C /irk
-ENV PATH="/irk/sbt/bin:${PATH}"
+RUN mkdir /fury
+RUN git clone https://github.com/lampepfl/dotty /fury/scala
+RUN mkdir -p /fury/bin
+RUN curl -Lo /fury/sbt.tgz https://github.com/sbt/sbt/releases/download/v1.7.1/sbt-1.7.1.tgz
+RUN tar xvf /fury/sbt.tgz -C /fury
+ENV PATH="/fury/sbt/bin:${PATH}"
 ENV GITHUB_ACTIONS="true"
-RUN /irk/scala/bin/scalac -version
-RUN mkdir /irk/lib
+RUN /fury/scala/bin/scalac -version
+RUN mkdir /fury/lib
 
-RUN curl -Lo "/irk/jdk20.tar.gz" "https://api.adoptium.net/v3/binary/latest/20/ea/linux/x64/jre/hotspot/normal/eclipse"
-RUN sh -c "tar xvf /irk/jdk20.tar.gz && mv /jdk-20* /irk/jdk"
-ENV PATH="/irk/jdk/bin:$PATH"
+RUN curl -Lo "/fury/jdk20.tar.gz" "https://api.adoptium.net/v3/binary/latest/20/ea/linux/x64/jre/hotspot/normal/eclipse"
+RUN sh -c "tar xvf /fury/jdk20.tar.gz && mv /jdk-20* /fury/jdk"
+ENV PATH="/fury/jdk/bin:$PATH"
 
-RUN curl -Lo /irk/lib/jawn-parser.jar \
+RUN curl -Lo /fury/lib/jawn-parser.jar \
   https://repo1.maven.org/maven2/org/typelevel/jawn-parser_3/1.2.0/jawn-parser_3-1.2.0.jar
 
-RUN curl -Lo /irk/lib/jawn-ast.jar \
+RUN curl -Lo /fury/lib/jawn-ast.jar \
   https://repo1.maven.org/maven2/org/typelevel/jawn-ast_3/1.2.0/jawn-ast_3-1.2.0.jar
 
-RUN curl -Lo /irk/lib/jawn-util.jar \
+RUN curl -Lo /fury/lib/jawn-util.jar \
   https://repo1.maven.org/maven2/org/typelevel/jawn-util_3/1.2.0/jawn-util_3-1.2.0.jar
 
-RUN curl -Lo /irk/lib/servlet-api.jar \
+RUN curl -Lo /fury/lib/servlet-api.jar \
   https://repo1.maven.org/maven2/javax/servlet/javax.servlet-api/3.0.1/javax.servlet-api-3.0.1.jar
 
-RUN curl -Lo /irk/lib/jna.jar \
+RUN curl -Lo /fury/lib/jna.jar \
   https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.3.1/jna-5.3.1.jar
 
-RUN unzip -q -o -d /irk/bin /irk/lib/jawn-parser.jar
-RUN unzip -q -o -d /irk/bin /irk/lib/jawn-ast.jar
-RUN unzip -q -o -d /irk/bin /irk/lib/jawn-util.jar
-RUN unzip -q -o -d /irk/bin /irk/lib/servlet-api.jar
-RUN unzip -q -o -d /irk/bin /irk/lib/jna.jar
-RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/flexmark-0.42.12.jar
-RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/flexmark-util-0.42.12.jar
-RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/flexmark-formatter-0.42.12.jar
-RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/flexmark-ext-tables-0.42.12.jar
-RUN rm -r /irk/bin/META-INF
-ADD src /irk/src
-ADD one.zip /irk/one.zip
-RUN unzip -q /irk/one.zip -d /
+RUN unzip -q -o -d /fury/bin /fury/lib/jawn-parser.jar
+RUN unzip -q -o -d /fury/bin /fury/lib/jawn-ast.jar
+RUN unzip -q -o -d /fury/bin /fury/lib/jawn-util.jar
+RUN unzip -q -o -d /fury/bin /fury/lib/servlet-api.jar
+RUN unzip -q -o -d /fury/bin /fury/lib/jna.jar
+RUN unzip -q -o -d /fury/bin /fury/scala/dist/target/pack/lib/flexmark-0.42.12.jar
+RUN unzip -q -o -d /fury/bin /fury/scala/dist/target/pack/lib/flexmark-util-0.42.12.jar
+RUN unzip -q -o -d /fury/bin /fury/scala/dist/target/pack/lib/flexmark-formatter-0.42.12.jar
+RUN unzip -q -o -d /fury/bin /fury/scala/dist/target/pack/lib/flexmark-ext-tables-0.42.12.jar
+RUN rm -r /fury/bin/META-INF
+ADD src /fury/src
+ADD one.zip /fury/one.zip
+RUN unzip -q /fury/one.zip -d /
 
-RUN javac -classpath /irk/lib/jna.jar \
-  -d /irk/bin \
+RUN javac -classpath /fury/lib/jna.jar \
+  -d /fury/bin \
   /one/mod/profanity/src/java/profanity/Termios.java
 
-RUN cp -r /one/mod/gesticulate/res/gesticulate /irk/bin/
-RUN cp -r /one/mod/oubliette/res/oubliette /irk/bin/
+RUN cp -r /one/mod/gesticulate/res/gesticulate /fury/bin/
+RUN cp -r /one/mod/oubliette/res/oubliette /fury/bin/
 
 RUN java -version
-ENV JAVA_HOME=/irk/jdk
+ENV JAVA_HOME=/fury/jdk
 
-RUN cd /irk && scala/bin/scalac \
+RUN cd /fury && scala/bin/scalac \
   -classpath bin \
   -Xmax-inlines 64 \
   -J-Xss1536k \
@@ -105,7 +105,7 @@ RUN cd /irk && scala/bin/scalac \
   /one/mod/wisteria/src/core/*.scala \
   /one/mod/rudiments/src/core/*.scala
 
-RUN cd /irk && scala/bin/scalac \
+RUN cd /fury && scala/bin/scalac \
   -classpath bin \
   -Xmax-inlines 64 \
   -J-Xss1536k \
@@ -131,7 +131,10 @@ RUN cd /irk && scala/bin/scalac \
   /one/mod/joviality/src/core/*.scala \
   /one/mod/joviality/src/integration/*.scala \
   /one/mod/cataclysm/src/core/*.scala \
+  /one/mod/cellulose/src/core/*.scala \
+  /one/mod/quagmire/src/core/*.scala \
   /one/mod/oubliette/src/core/*.scala \
+  /one/mod/polyvinyl/src/core/*.scala \
   /one/mod/punctuation/src/core/*.scala \
   /one/mod/telekinesis/src/client/*.scala \
   /one/mod/telekinesis/src/uri/*.scala \
@@ -143,7 +146,7 @@ RUN cd /irk && scala/bin/scalac \
   /one/mod/surveillance/src/core/*.scala \
   /one/mod/tarantula/src/core/*.scala
 
-RUN cd /irk && scala/bin/scalac \
+RUN cd /fury && scala/bin/scalac \
   -classpath bin \
   -J--enable-preview \
   -Xmax-inlines 64 \
@@ -162,84 +165,87 @@ RUN cd /irk && scala/bin/scalac \
   -d bin \
   src/core/*.scala
 
-RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/tasty-core*.jar
-RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/compiler-interface*.jar
-RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala-library*.jar
-RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala3-compiler*.jar
-RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala3-library*.jar
-RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala3-staging*.jar
-RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala3-interfaces*.jar
-RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala3-tasty-inspector*.jar
-RUN unzip -q -o -d /irk/bin /irk/scala/dist/target/pack/lib/scala-asm*.jar
-RUN cp /one/mod/exoskeleton/res/exoskeleton/invoke /irk/bin/exoskeleton/invoke
-ADD build.irk /irk/build.irk
-RUN echo 'Manifest-Version: 1.0' > /irk/manifest
-RUN echo -n 'Created-By: Irk ' >> /irk/manifest
-RUN jq -r '.modules[0].version' /irk/build.irk >> /irk/manifest
-RUN echo 'Implementation-Title: Irk' >> /irk/manifest
-RUN echo -n 'Implementation-Version: ' >> /irk/manifest
-RUN jq -r '.modules[0].version' /irk/build.irk >> /irk/manifest
-RUN echo 'Main-Class: irk.Irk' >> /irk/manifest
+RUN unzip -q -o -d /fury/bin /fury/scala/dist/target/pack/lib/tasty-core*.jar
+RUN unzip -q -o -d /fury/bin /fury/scala/dist/target/pack/lib/compiler-interface*.jar
+RUN unzip -q -o -d /fury/bin /fury/scala/dist/target/pack/lib/scala-library*.jar
+RUN unzip -q -o -d /fury/bin /fury/scala/dist/target/pack/lib/scala3-compiler*.jar
+RUN unzip -q -o -d /fury/bin /fury/scala/dist/target/pack/lib/scala3-library*.jar
+RUN unzip -q -o -d /fury/bin /fury/scala/dist/target/pack/lib/scala3-staging*.jar
+RUN unzip -q -o -d /fury/bin /fury/scala/dist/target/pack/lib/scala3-interfaces*.jar
+RUN unzip -q -o -d /fury/bin /fury/scala/dist/target/pack/lib/scala3-tasty-inspector*.jar
+RUN unzip -q -o -d /fury/bin /fury/scala/dist/target/pack/lib/scala-asm*.jar
+RUN cp /one/mod/exoskeleton/res/exoskeleton/invoke /fury/bin/exoskeleton/invoke
+ADD build.irk /fury/build.irk
+RUN echo 'Manifest-Version: 1.0' > /fury/manifest
+RUN echo -n 'Created-By: Fury ' >> /fury/manifest
+RUN jq -r '.modules[0].version' /fury/build.irk >> /fury/manifest
+RUN echo 'Implementation-Title: Fury' >> /fury/manifest
+RUN echo -n 'Implementation-Version: ' >> /fury/manifest
+RUN jq -r '.modules[0].version' /fury/build.irk >> /fury/manifest
+RUN echo 'Main-Class: fury.Fury' >> /fury/manifest
 
-RUN jar cmf /irk/manifest /irk/irk.jar  \
-  -C /irk/bin NOTICE \
-  -C /irk/bin compiler.properties \
-  -C /irk/bin incrementalcompiler.version.properties \
-  -C /irk/bin library.properties \
-  -C /irk/bin scala-asm.properties \
-  -C /irk/bin xsbti \
-  -C /irk/bin scala \
-  -C /irk/bin dotty \
-  -C /irk/bin acyclicity \
-  -C /irk/bin adversaria \
-  -C /irk/bin anticipation \
-  -C /irk/bin caesura \
-  -C /irk/bin cardinality \
-  -C /irk/bin cataclysm \
-  -C /irk/bin com \
-  -C /irk/bin contextual \
-  -C /irk/bin cosmopolite \
-  -C /irk/bin escapade \
-  -C /irk/bin escritoire \
-  -C /irk/bin eucalyptus \
-  -C /irk/bin euphemism \
-  -C /irk/bin exoskeleton \
-  -C /irk/bin gastronomy \
-  -C /irk/bin gesticulate \
-  -C /irk/bin gossamer \
-  -C /irk/bin guillotine \
-  -C /irk/bin harlequin \
-  -C /irk/bin honeycomb \
-  -C /irk/bin iridescence \
-  -C /irk/bin irk \
-  -C /irk/bin imperial \
-  -C /irk/bin javax \
-  -C /irk/bin joviality \
-  -C /irk/bin kaleidoscope \
-  -C /irk/bin oubliette \
-  -C /irk/bin org \
-  -C /irk/bin parasitism \
-  -C /irk/bin probably \
-  -C /irk/bin profanity \
-  -C /irk/bin punctuation \
-  -C /irk/bin rudiments \
-  -C /irk/bin scintillate \
-  -C /irk/bin serpentine \
-  -C /irk/bin surveillance \
-  -C /irk/bin tarantula \
-  -C /irk/bin telekinesis \
-  -C /irk/bin tetromino \
-  -C /irk/bin turbulence \
-  -C /irk/bin wisteria \
-  -C /irk/bin xylophone
+RUN jar cmf /fury/manifest /fury/fury.jar  \
+  -C /fury/bin NOTICE \
+  -C /fury/bin compiler.properties \
+  -C /fury/bin incrementalcompiler.version.properties \
+  -C /fury/bin library.properties \
+  -C /fury/bin scala-asm.properties \
+  -C /fury/bin xsbti \
+  -C /fury/bin scala \
+  -C /fury/bin dotty \
+  -C /fury/bin acyclicity \
+  -C /fury/bin adversaria \
+  -C /fury/bin anticipation \
+  -C /fury/bin caesura \
+  -C /fury/bin cardinality \
+  -C /fury/bin cataclysm \
+  -C /fury/bin com \
+  -C /fury/bin contextual \
+  -C /fury/bin cosmopolite \
+  -C /fury/bin escapade \
+  -C /fury/bin escritoire \
+  -C /fury/bin eucalyptus \
+  -C /fury/bin euphemism \
+  -C /fury/bin exoskeleton \
+  -C /fury/bin gastronomy \
+  -C /fury/bin gesticulate \
+  -C /fury/bin gossamer \
+  -C /fury/bin guillotine \
+  -C /fury/bin harlequin \
+  -C /fury/bin honeycomb \
+  -C /fury/bin iridescence \
+  -C /fury/bin fury \
+  -C /fury/bin imperial \
+  -C /fury/bin javax \
+  -C /fury/bin joviality \
+  -C /fury/bin kaleidoscope \
+  -C /fury/bin oubliette \
+  -C /fury/bin polyvinyl \
+  -C /fury/bin quagmire \
+  -C /fury/bin cellulose \
+  -C /fury/bin org \
+  -C /fury/bin parasitism \
+  -C /fury/bin probably \
+  -C /fury/bin profanity \
+  -C /fury/bin punctuation \
+  -C /fury/bin rudiments \
+  -C /fury/bin scintillate \
+  -C /fury/bin serpentine \
+  -C /fury/bin surveillance \
+  -C /fury/bin tarantula \
+  -C /fury/bin telekinesis \
+  -C /fury/bin tetromino \
+  -C /fury/bin turbulence \
+  -C /fury/bin wisteria \
+  -C /fury/bin xylophone
 
-RUN cat /one/mod/exoskeleton/res/exoskeleton/invoke /irk/irk.jar > /irk/bootstrap
-RUN chmod +x /irk/bootstrap
-RUN rm /irk/irk.jar
-RUN cd /irk && ./bootstrap
-RUN mv /irk/irk /irk/irk-bootstrap
-RUN rm -rf /root/.cache/irk
-RUN md5sum /irk/irk-bootstrap | cut -d' ' -f1 > bootstrap.md5
-RUN cd /irk && ./irk-bootstrap
-RUN md5sum /irk/irk | cut -d' ' -f1 > irk.md5
-RUN diff irk.md5 bootstrap.md5
+RUN cat /one/mod/exoskeleton/res/exoskeleton/invoke /fury/fury.jar > /fury/bootstrap
+RUN chmod +x /fury/bootstrap
+RUN rm /fury/fury.jar
+RUN cd /fury && ./bootstrap
+RUN mv /fury/fury /fury/fury-bootstrap
+RUN rm -rf /root/.cache/fury
+RUN md5sum /fury/fury-bootstrap | cut -d' ' -f1 > bootstrap.md5
+RUN cd /fury && ./fury-bootstrap
+RUN md5sum /fury/fury | cut -d' ' -f1 > fury.md5
+RUN diff fury.md5 bootstrap.md5

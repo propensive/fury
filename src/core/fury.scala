@@ -1,4 +1,4 @@
-package irk
+package fury
 
 import gossamer.*
 import rudiments.*
@@ -35,10 +35,12 @@ erased given CanThrow[AppError] = compiletime.erasedValue
 given LogFormat[File[Unix]] = LogFormat.standardAnsi
 given Encoding = encodings.Utf8
 
-val LogFile = unsafely(Unix.parse(t"/var/log/irk.log").file(Ensure).sink)
-given log: Log = Log(
-  { case _ => LogFile }
-)(using monitors.global)
+//val LogFile = unsafely(Unix.parse(t"/var/log/fury.log").file(Ensure).sink)
+//given log: Log = Log(
+  //{ case _ => LogFile }
+//)(using monitors.global)
+
+given log: Log = logging.silent
 
 object palette:
   val File = colors.Coral
@@ -57,16 +59,19 @@ object Build:
       case head :: tail =>
         if done.contains(head) then steps(tail, done) else
           val project = universe.index(ProjectId(head.project))
-          val module = project.index(head.module)
-          val ref = module.id.in(project.id)
           
+          val module =
+            try project.index(head.module) catch case err: Exception =>
+              throw AppError(t"The module ${head.module} was not found in project ${project.id}")
+          
+          val ref = module.id.in(project.id)
           val includes = module.include.map(_.in(project.id))
           val uses = module.use.map(_.in(project.id))
           val resources = module.resource.map(project.resolve(_))
           val sources: Set[Directory[Unix]] = module.source.map(project.resolve(_)).sift[Directory[Unix]]
 
           steps((includes ++ uses).to(List) ::: tail, done.updated(ref, Step(universe, project.root, ref.show, ref, includes ++ uses, resources, sources,
-                   Set(), t"1.0.0", Nil, None, None, Nil, None)))
+                   Set(), t"1.0.0", Nil, None, None, Nil, None, module.js.or(false))))
 
     command.mm: cmd =>
       steps(cmd.include.map(_.ref), Map())
@@ -98,7 +103,7 @@ case class Build(pwd: Directory[Unix], index: Map[Ref, Step] = Map()):
       if todo.isEmpty then hashes
       else try
         val step = todo.head
-        val inputsHash: List[Digest[Crc32]] = step.srcFiles.to(List).sortBy(_.path.fullname).map(Irk.hashFile)
+        val inputsHash: List[Digest[Crc32]] = step.srcFiles.to(List).sortBy(_.path.fullname).map(Fury.hashFile)
         val jarsHash: List[Digest[Crc32]] = step.jars.to(List).map(_.digest[Crc32])
         val linksHash: List[Digest[Crc32]] = step.allLinks.to(List).map(index(_)).map(hashes(_))
         val newHash = (inputsHash ++ linksHash).digest[Crc32]
@@ -120,7 +125,7 @@ case class Build(pwd: Directory[Unix], index: Map[Ref, Step] = Map()):
 
   def cache(using Allocator, Environment): Map[Step, Digest[Crc32]] =
     try
-      val caches = bases.map(Irk.hashDir / _.path.fullname.digest[Crc32].encode[Hex]).filter(_.exists()).map: cacheFile =>
+      val caches = bases.map(Fury.hashDir / _.path.fullname.digest[Crc32].encode[Hex]).filter(_.exists()).map: cacheFile =>
         Json.parse(cacheFile.file(Ensure).read[Text]()).as[Cache].hashes
       
       caches.flatten.flatMap:
@@ -135,7 +140,7 @@ case class Build(pwd: Directory[Unix], index: Map[Ref, Step] = Map()):
   
   def updateCache(step: Step, binDigest: Text)(using Allocator, Environment): Unit = synchronized:
     try
-      val cacheFile = Irk.hashDir / step.pwd.path.fullname.digest[Crc32].encode[Hex]
+      val cacheFile = Fury.hashDir / step.pwd.path.fullname.digest[Crc32].encode[Hex]
       val cache = Cache:
         if cacheFile.exists()
         then Json.parse(cacheFile.file(Ensure).read[Text]()).as[Cache].hashes.filter: hash =>
@@ -182,7 +187,7 @@ object Artifact:
     
     val basicMf = ListMap(
       t"Manifest-Version"       -> t"1.0",
-      t"Created-By"             -> t"Irk ${Irk.version}",
+      t"Created-By"             -> t"Fury ${Fury.version}",
       t"Implementation-Title"   -> name,
       t"Implementation-Version" -> version
     )
@@ -216,7 +221,7 @@ case class Step(uni: Universe, pwd: Directory[Unix], /*path: File[Unix], publish
                     id: Ref, links: Set[Ref], resources: Set[Directory[Unix]],
                     sources: Set[Directory[Unix]], jars: Set[Text],
                     version: Text, docs: List[DiskPath[Unix]], artifact: Option[Artifact],
-                    exec: Option[Exec], plugins: List[Plugin], main: Option[Text]):
+                    exec: Option[Exec], plugins: List[Plugin], main: Option[Text], js: Boolean):
   
   def publish(build: Build): Publishing =// publishing.orElse(build.publishing).getOrElse:
     throw AppError(t"There are no publishing details for $id")
@@ -235,7 +240,7 @@ case class Step(uni: Universe, pwd: Directory[Unix], /*path: File[Unix], publish
 
   def classpath(build: Build)(using Stdout, Environment): Set[DiskPath[Unix]] throws IoError | BrokenLinkError =
     build.graph.reachable(this).flatMap: step =>
-      step.jars.map(Irk.getFile(_)).map(_.path) + step.classesDir.path
+      step.jars.map(Fury.getFile(_)).map(_.path) + step.classesDir.path
   
   def allResources(build: Build)(using Stdout): Set[Directory[Unix]] throws IoError | BrokenLinkError =
     build.graph.reachable(this).flatMap(_.resources)
@@ -244,7 +249,7 @@ case class Step(uni: Universe, pwd: Directory[Unix], /*path: File[Unix], publish
     classpath(build) - classesDir.path
 
   def classesDir(using Environment): Directory[Unix] = synchronized:
-    try unsafely(Irk.cacheDir / t"cls" / id.project / id.module).directory(Ensure)
+    try unsafely(Fury.cacheDir / t"cls" / id.project / id.module).directory(Ensure)
     catch case err: IoError => throw AppError(t"Could not write to the user's home directory", err)
 
   def pomDependency(build: Build): Maven.Dependency = Maven.Dependency(group(build), id.dashed, version)
@@ -264,10 +269,10 @@ case class Step(uni: Universe, pwd: Directory[Unix], /*path: File[Unix], publish
       val cp = compileClasspath(build)
       
       val pluginRefs = plugins.map: plugin =>
-        PluginRef(Irk.libJar(build.hashes(build(plugin.id))), plugin.params)
+        PluginRef(Fury.libJar(build.hashes(build(plugin.id))), plugin.params)
       
       val result = Compiler.compile(id, pwd, srcFiles.to(List).sortBy(_.fullname), cp.to(List).sortBy(_.fullname),
-          classesDir, scriptFile, pluginRefs, cancel, owners)
+          classesDir, scriptFile, pluginRefs, cancel, owners, js)
       
       val time = now() - t0
       
@@ -317,12 +322,12 @@ object Cache:
            : Directory[Unix] throws IoError =
     val hash = input.digest[Crc32].encode[Hex].lower
     
-    sync(unsafely(Irk.cacheDir / hash)): workDir =>
+    sync(unsafely(Fury.cacheDir / hash)): workDir =>
       make(input, workDir)
       
       Cache.synchronized:
         latest.get(key).foreach: oldHash =>
-          if oldHash != hash then unsafely(Irk.cacheDir / hash).directory().mm(_.delete())
+          if oldHash != hash then unsafely(Fury.cacheDir / hash).directory().mm(_.delete())
         
         latest(key) = hash
         workDir
@@ -375,7 +380,7 @@ case class Progress(active: TreeMap[Verb, (Digest[Crc32], Long)],
       else copy(buffers = buffers.updated(verb, StringBuilder(data.uString.s)))
 
     case Progress.Update.Print =>
-      val starting = if !Irk.githubActions then
+      val starting = if !Fury.githubActions then
         val starting = !started && completed.nonEmpty
         if done == 0 && completed.size > 0 then Out.println(t"─"*columns)
         status.map(_.render).foreach(Out.println(_))
@@ -403,7 +408,7 @@ case class Progress(active: TreeMap[Verb, (Digest[Crc32], Long)],
     
     if active then
       val animation = unsafely(spinner((((now() - start)/100)%spinner.length).toInt))
-      val description = verb.present.padTo(columns - 17, ' ')
+      val description = verb.present.pad(columns - 17)
       ansi"${colors.White}([$Yellow($animation)] $hashText $description $padding${palette.ActiveNumber}($time))"
     else
       val finish = result match
@@ -412,10 +417,10 @@ case class Progress(active: TreeMap[Verb, (Digest[Crc32], Long)],
         case Result.Aborted       => ansi"[$Blue(⤹)]"
         case Result.Incomplete    => ansi"[${colors.Orange}(?)]"
       
-      ansi"$Bold($finish) $hashText ${verb.past.padTo(columns - 17, ' ')} $padding${palette.Number}($time)"
+      ansi"$Bold($finish) $hashText ${verb.past.pad(columns - 17)} $padding${palette.Number}($time)"
 
   private def status: List[AnsiText] =
-    val title = Progress.titleText(t"Irk: building (${(done*100)/(totalTasks max 1)}%)")
+    val title = Progress.titleText(t"Fury: building (${(done*100)/(totalTasks max 1)}%)")
 
     val content: List[AnsiText] = completed.flatMap: (task, _, start, _) =>
       val description = task match
@@ -431,4 +436,4 @@ case class Progress(active: TreeMap[Verb, (Digest[Crc32], Long)],
       active.to(List).map:
         case (name, (hash, start)) => line(name, hash, start, Result.Incomplete, true)
 
-given realm: Realm = Realm(t"irk")
+given realm: Realm = Realm(t"fury")

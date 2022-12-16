@@ -1,4 +1,4 @@
-package irk
+package fury
 
 import gossamer.*
 import rudiments.*
@@ -24,7 +24,7 @@ import tarantula.*
 import profanity.*
 import xylophone.*
 import telekinesis.*
-import escritoire.*
+import escritoire.*, tableStyles.horizontalDots
 import tetromino.*, allocators.dumb
 import surveillance.*
 
@@ -36,8 +36,10 @@ import scala.util.chaining.scalaUtilChainingOps
 
 import java.nio.BufferOverflowException
 
-object Irk extends Daemon():
-  
+object Fury extends Daemon():
+
+  val logo: Text = t"CiAgICAgICAgICAgICAgIBtbMzg7MjsyMTc7MTsxMDFtwrcg4oCiIOKXjyAbWzM4OzI7MjA7NjA7MTAwbeKXjyDil48g4oCiIMK3CiAgICAgICAgIBtbMzg7MjsyMTc7MTsxMDFtwrcg4pePIOKXjyAbWzM4OzI7MTEyOzQ7NDNt4pePIBtbMzg7MjsxODs1Njs5NW3il48g4pePIOKXjyDil48gG1szODsyOzgzOzQ5OzJt4pePIBtbMzg7MjsxODs1Njs5NW3il48g4pePIOKXjyDCtwogICAgICAgIBtbMzg7MjsyMjc7MTs5MW3igKIg4pePIOKXjyAbWzM4OzI7MTEyOzQ7NDNt4pePIBtbMzg7MjsxODs1Njs5NW3il48g4pePIOKXjyAbWzM4OzI7MjEwOzExNTs3beKXjyDil48gG1szODsyOzA7MzM7MzZt4pePIBtbMzg7MjsxODs1Njs5NW3il48g4pePIOKXjyDigKIgICAgICAgIBtbMzg7MjsxNTA7MTUwOzE1MG3ila3ilIDilIDilIDilIDilIDila4KICAgICAgIBtbMzg7MjsyMjc7MTs5MW3il48g4pePIOKXjyDil48gG1szODsyOzE2OzUyOzkwbeKXjyAbWzM4OzI7ODM7NDk7Mm3il48gG1szODsyOzIxMDsxMTU7N23il48g4pePIOKXjyAbWzM4OzI7MDszMzszNm3il48gG1szODsyOzE2OzUyOzkwbeKXjyDil48g4pePIOKXjyDil48gICAgICAgG1szODsyOzE1MDsxNTA7MTUwbeKUgiAg4pWt4pSA4pSA4pWvCiAgICAgIBtbMzg7MjsyMjc7MTs5MW3il48g4pePIOKXjyDil48gG1szODsyOzgzOzQ5OzJt4pePIBtbMzg7MjsyMTA7MTE1Ozdt4pePIOKXjyDil48g4pePIBtbMzg7MjswOzMzOzM2beKXjyAbWzM4OzI7MTY7NTI7OTBt4pePIOKXjyAbWzM4OzI7Njg7NzY7MjZt4pePIBtbMzg7MjsxNjs1Mjs5MG3il48g4pePIOKXjyAgICAgIBtbMzg7MjsxNTA7MTUwOzE1MG3ilIIgIOKUggogICAgIBtbMzg7MjsyMzc7MTs4MW3igKIg4pePIOKXjyDil48gG1szODsyOzIyODsxMDQ7OW3il48gG1szODsyOzIxMDsxMTU7N23il48g4pePIOKXjyDil48gG1szODsyOzA7MzM7MzZt4pePIBtbMzg7MjsxNDs0ODs4NW3il48g4pePIBtbMzg7MjsxNzA7MTY4OzMxbeKXjyDil48gG1szODsyOzE0OzQ4Ozg1beKXjyDil48g4oCiICAgICAbWzM4OzI7MTUwOzE1MDsxNTBt4pSCICDilJTilIDilIDila7ila3ilIDilIDila4g4pWt4pSA4pSA4pWu4pWt4pSA4pSA4pWu4pSA4pSA4pSA4pWu4pWt4pSA4pSA4pWuIOKVreKUgOKUgOKVrgogICAgG1szODsyOzIzNzsxOzgxbcK3IOKXjyDil48gG1szODsyOzIxMTs0NDsxN23il48gG1szODsyOzIyODsxMDQ7OW3il48g4pePIBtbMzg7MjsyMTA7MTE1Ozdt4pePIOKXjyDil48gG1szODsyOzgzOzQ5OzJt4pePIBtbMzg7MjsxNDs0ODs4NW3il48gG1szODsyOzE3MDsxNjg7MzFt4pePIOKXjyAbWzM4OzI7Njg7NzY7MjZt4pePIBtbMzg7MjsxNDs0ODs4NW3il48g4pePIOKXjyDCtyAgICAbWzM4OzI7MTUwOzE1MDsxNTBt4pSCICDilIzilIDilIDila/ilIIgIOKUgiDilIIgIOKUguKUgiAg4pWt4pSA4pSA4pSA4pWv4pSCICDilIIg4pSCICDilIIKICAgICAbWzM4OzI7MjM3OzE7ODFt4pePIOKXjyAbWzM4OzI7MjI4OzEwNDs5beKXjyDil48g4pePIOKXjyAbWzM4OzI7MjEwOzExNTs3beKXjyDil48gG1szODsyOzIzMDsxNzU7OG3il48gG1szODsyOzE3MDsxNjg7MzFt4pePIOKXjyDil48gG1szODsyOzY4Ozc2OzI2beKXjyAbWzM4OzI7MTI7NDQ7ODBt4pePIOKXjyDil48g4pePICAgICAbWzM4OzI7MTUwOzE1MDsxNTBt4pSCICDilIIgICDilIIgIOKUgiDilIIgIOKUguKUgiAg4pSCICAgIOKUgiAg4pSCIOKUgiAg4pSCCiAgICAbWzM4OzI7MjQ3OzE7NzFtwrcg4pePIBtbMzg7MjsyMjg7MTA0Ozlt4pePIOKXjyDil48g4pePIOKXjyAbWzM4OzI7MjQ3OzE4MTsyNG3il48g4pePIBtbMzg7MjsxNzA7MTY4OzMxbeKXjyDil48g4pePIBtbMzg7Mjs2ODs3NjsyNm3il48gG1szODsyOzEyOzQ0OzgwbeKXjyDil48g4pePIOKXjyDCtyAgICAbWzM4OzI7MTUwOzE1MDsxNTBt4pSCICDilIIgICDilIIgIOKVsOKUgOKVryAg4pSC4pSCICDilIIgICAg4pSCICDilbDilIDila8gIOKUggogICAgIBtbMzg7MjsyNDc7MTs3MW3igKIgG1szODsyOzIxMTs0NDsxN23il48gG1szODsyOzIyODsxMDQ7OW3il48g4pePIOKXjyAbWzM4OzI7MjQ3OzE4MTsyNG3il48g4pePIOKXjyDil48gG1szODsyOzE3MDsxNjg7MzFt4pePIOKXjyAbWzM4OzI7Njg7NzY7MjZt4pePIBtbMzg7MjsxMDs0MDs3NW3il48g4pePIOKXjyDil48g4oCiICAgICAbWzM4OzI7MTUwOzE1MDsxNTBt4pWw4pSA4pSA4pWvICAg4pWw4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pWv4pWw4pSA4pSA4pWvICAgIOKVsOKUgOKUgOKUgOKUgOKUkCAg4pSCCiAgICAgIBtbMzg7MjsyNDc7MTs3MW3il48gG1szODsyOzIyODsxMDQ7OW3il48g4pePIBtbMzg7MjsyMzA7MTc1Ozht4pePIBtbMzg7MjsyNDc7MTgxOzI0beKXjyDil48g4pePIOKXjyAbWzM4OzI7MTcwOzE2ODszMW3il48g4pePIBtbMzg7MjswOzMzOzM2beKXjyAbWzM4OzI7MTA7NDA7NzVt4pePIOKXjyDil48g4pePIOKXjyAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgG1szODsyOzE1MDsxNTA7MTUwbeKUgiAg4pSCCiAgICAgICAbWzM4OzI7MjI4OzEwNDs5beKXjyDil48gG1szODsyOzIzMDsxNzU7OG3il48gG1szODsyOzI0NzsxODE7MjRt4pePIOKXjyDil48g4pePIOKXjyAbWzM4OzI7MTcwOzE2ODszMW3il48gG1szODsyOzA7MzM7MzZt4pePIBtbMzg7Mjs4OzM2OzcwbeKXjyDil48g4pePIOKXjyDil48gICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgG1szODsyOzE1MDsxNTA7MTUwbeKVreKUgOKUgOKUgOKUgOKVryAg4pSCCiAgICAgICAgG1szODsyOzIyODsxMDQ7OW3igKIg4pePIBtbMzg7MjsyMzA7MTc1Ozht4pePIBtbMzg7MjsyNDc7MTgxOzI0beKXjyDil48g4pePIOKXjyAbWzM4OzI7MTcwOzE2ODszMW3il48gG1szODsyOzg7MzY7NzBt4pePIOKXjyDil48g4pePIOKXjyDigKIgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIBtbMzg7MjsxNTA7MTUwOzE1MG3ilbDilIDilIDilIDilIDilIDilIDilIDila8KICAgICAgICAgG1szODsyOzIyODsxMDQ7OW3CtyAbWzM4OzI7MjQ3OzE4MTsyNG3il48g4pePIOKXjyDil48g4pePIOKXjyAbWzM4OzI7NjszMjs2NW3il48g4pePIOKXjyDil48g4pePIMK3CiAgICAgICAgICAgICAgIBtbMzg7MjsyNDc7MTgxOzI0bcK3IOKAoiDil48gG1szODsyOzE1MDsxMTc7MzRt4pePIBtbMzg7Mjs0OzI4OzYwbeKXjyDigKIgwrcKG1swbQo=".decode[Base64].uString
+
   def main(using CommandLine, Environment): ExitStatus =
     Sys.scala.concurrent.context.maxExtraThreads() = t"800"
     Sys.scala.concurrent.context.maxThreads() = t"1000"
@@ -47,16 +49,16 @@ object Irk extends Daemon():
     try supervise(t"session-${sessionCount()}"):
       given Allocator = allocators.default
       cli.args match
-        case t"about" :: _        => Irk.about()
-        case t"help" :: _         => Irk.help()
-        case t"init" :: name :: _ => Irk.init(unsafely(env.pwd.directory(Expect)), name)
-        case t"version" :: _      => Irk.showVersion()
-        case t"stop" :: params    => Irk.stop(cli)
+        case t"about" :: _        => Fury.about()
+        case t"help" :: _         => Fury.help()
+        case t"init" :: name :: _ => Fury.init(unsafely(env.pwd.directory(Expect)), name)
+        case t"version" :: _      => Fury.showVersion()
+        case t"stop" :: params    => Fury.stop(cli)
         case params               =>
           val command = params.headOption.filter(!_.startsWith(t"-")).maybe
           val watch = params.contains(t"-w") || params.contains(t"--watch")
           val exec = params.contains(t"-b") || params.contains(t"--browser")
-          Irk.build(command, false, watch, cli.script, exec)
+          Fury.build(command, false, watch, cli.script, exec)
   
     catch
       case error: AppError => error match
@@ -87,7 +89,7 @@ object Irk extends Daemon():
   def homeDir(using Environment): Directory[Unix] = unsafely(Home[DiskPath[Unix]]().directory(Expect))
       
   def cacheDir(using Environment): Directory[Unix] =
-    try (Home.Cache[DiskPath[Unix]]() / p"irk").directory(Ensure)
+    try (Home.Cache[DiskPath[Unix]]() / p"fury").directory(Ensure)
     catch case err: IoError => throw AppError(t"The user's cache directory could not be created", err)
 
   def universeDir(using Environment): Directory[Unix] =
@@ -119,7 +121,7 @@ object Irk extends Daemon():
   private def scriptSize(using Allocator): Int throws StreamCutError | ClasspathRefError =
     unsafely(Classpath() / p"exoskeleton" / p"invoke").resource.read[Bytes]().size
 
-  def irkJar(scriptFile: File[Unix])(using Stdout, Allocator, Environment): File[Unix] throws StreamCutError = synchronized:
+  def furyJar(scriptFile: File[Unix])(using Stdout, Allocator, Environment): File[Unix] throws StreamCutError = synchronized:
     import java.nio.file.*
     val jarPath = unsafely(libDir.path / t"base-$version.jar")
 
@@ -148,7 +150,7 @@ object Irk extends Daemon():
       
       jarPath.file(Expect)
     catch case err: IoError =>
-      throw AppError(t"The Irk binary could not be copied to the user's cache directory")
+      throw AppError(t"The fury binary could not be copied to the user's cache directory")
 
   def getFile(ref: Text)(using Environment): File[Unix] = unsafely(libJar(ref.digest[Crc32]).file(Expect))
 
@@ -223,7 +225,7 @@ object Irk extends Daemon():
                       throw AppError(txt"""Could not find a remote repository containing the import $path""")
                     
                     case Some(repo) =>
-                      Irk.cloneRepo(unsafely(ref.parent), repo.url)
+                      Fury.cloneRepo(unsafely(ref.parent), repo.url)
                       List(ref.file(Expect))
                         
             catch case err: IoError =>
@@ -254,23 +256,38 @@ object Irk extends Daemon():
     ExitStatus.Ok
 
   def showVersion()(using Stdout): ExitStatus =
-    Out.println(Irk.version)
+    Out.println(Fury.version)
     ExitStatus.Ok
   
   def about()(using Stdout): ExitStatus =
-    Out.println(t"Irk ${Irk.version}")
-    Out.println(t"Scala ${Irk.scalaVersion}")
-    Out.println(t"Java ${Irk.javaVersion}")
+    Out.println(logo)
+    case class Software(name: Text, version: Text, license: Text)
+    
+    val software = List(
+      Software(t"Fury", Fury.version, t"Apache License, Version 2.0"),
+      Software(t"Scala", Fury.scalaVersion, t"Apache License, Version 2.0"),
+      Software(t"Java", Fury.javaVersion, t"GNU General Public License, version 2 with Classpath Exception")
+    )
+    
+    Table[Software](
+      Column(ansi"$Bold(Software)")(_.name),
+      Column(ansi"$Bold(Version)")(_.version),
+      Column(ansi"$Bold(License)")(_.license)
+    ).tabulate(software, 80, DelimitRows.SpaceIfMultiline).foreach(Out.println(_))
+
+    Out.println(ansi"  ${colors.Gray}($Italic(© Copyright 2022 Propensive OÜ and Jon Pretty. All Rights Reserved.))")
+    Out.println(t"")
+
     ExitStatus.Ok
 
   def help()(using Stdout): ExitStatus =
-    Out.println(t"Usage: irk [subcommand] [options]")
+    Out.println(t"Usage: fury [subcommand] [options]")
     Out.println(t"")
     Out.println(t"Subcommands:")
     Out.println(t"  build    -- runs the build in the current directory (default)")
-    Out.println(t"  about    -- show version information for Irk")
+    Out.println(t"  about    -- show version information for Fury")
     Out.println(t"  help     -- show this message")
-    Out.println(t"  stop     -- stop the Irk daemon process")
+    Out.println(t"  stop     -- stop the Fury daemon process")
     Out.println(t"")
     Out.println(t"Options:")
     Out.println(t"  -w, --watch    Wait for changes and re-run build.")
@@ -600,7 +617,7 @@ object Irk extends Daemon():
               
               val tasks = build.graph.traversal[Task[Result]]: (set, step) =>
                 set.sequence.flatMap: results =>
-                  step.jars.map(Irk.fetchFile(_, Some(funnel))).sequence.flatMap: downloads =>
+                  step.jars.map(Fury.fetchFile(_, Some(funnel))).sequence.flatMap: downloads =>
                     if cancel.ready then Task(step.id.show)(Result.Aborted) else Task(step.id.show):
                       val verb = Verb.Compile(ansi"${Green}(${step.name})")
                       val result: Result = results.foldLeft(Result.Complete())(_ + _)
@@ -617,12 +634,12 @@ object Irk extends Daemon():
                             
                             if newResult.success && build.plugins.contains(step.id) then
                               val verb2 = Verb.Build(ansi"compiler plugin ${palette.File}(${step.id})")
-                              val path = Irk.libJar(build.hashes(step))
+                              val path = Fury.libJar(build.hashes(step))
                               if !path.exists() then
                                 funnel.put(Progress.Update.Add(verb2, build.hashes(step)))
                                 val artifact = Artifact(path, step.main, Format.CompilerPlugin)
                                 
-                                Artifact.build(artifact, irkJar(scriptFile), step.name, step.version, step.classpath(build).to(List),
+                                Artifact.build(artifact, furyJar(scriptFile), step.name, step.version, step.classpath(build).to(List),
                                     step.allResources(build).to(List), step.main)
                                 
                                 funnel.put(Progress.Update.Remove(verb2, Result.Complete()))
@@ -631,7 +648,7 @@ object Irk extends Daemon():
                               val verb = Verb.Build(ansi"artifact ${palette.File}(${artifact.path.relativeTo(env.pwd).show})")
                               funnel.put(Progress.Update.Add(verb, build.hashes(step)))
                               
-                              Artifact.build(artifact, irkJar(scriptFile), step.name, step.version,
+                              Artifact.build(artifact, furyJar(scriptFile), step.name, step.version,
                                   step.classpath(build).to(List), step.allResources(build).to(List),
                                   artifact.main.orElse(step.main))
                               
@@ -677,7 +694,7 @@ object Irk extends Daemon():
                         running.foreach(_.abort())
                         val resources = step.allResources(build).map(_.path)
                         val classpath = (step.classpath(build) ++ resources).to(List)
-                        val jvm = Run.main(irkJar(scriptFile).path :: classpath)(start, stop)
+                        val jvm = Run.main(furyJar(scriptFile).path :: classpath)(start, stop)
                         jvm
 
                       val subprocess: Jvm = mainTask.await()
@@ -728,7 +745,7 @@ object Irk extends Daemon():
               Out.println(t"\e[0m\e[?25h\e[A")
 
               if watch then
-                Out.print(Progress.titleText(t"Irk: waiting for changes"))
+                Out.print(Progress.titleText(t"Fury: waiting for changes"))
                 Out.print(ansi"${t"\n"}${Bg(colors.Orange)}(  )")
                 Out.print(ansi"${colors.Orange}() ")
                 Out.println(ansi"Watching ${colors.Gold}(${watcher.directories.size}) directories for changes...")

@@ -1,4 +1,4 @@
-package irk
+package fury
 
 import joviality.*
 import rudiments.*
@@ -30,8 +30,8 @@ object GitCache:
         task.await()
 
   def universe(name: Text, url: Text)(using Environment, Stdout): Directory[Unix] throws GitError | EnvError | IoError =
-    val tmp = Irk.repoDir.tmpPath()
-    val dest = unsafely(Irk.universeDir / name)
+    val tmp = Fury.repoDir.tmpPath()
+    val dest = unsafely(Fury.universeDir / name)
 
     if dest.exists() then dest.directory(Expect).tap(_.touch())
     else
@@ -42,8 +42,8 @@ object GitCache:
 
   private def fetch(url: Text, commit: Text)(using Environment, Stdout)
            : Directory[Unix] throws GitError | EnvError | IoError =
-    val tmp = Irk.repoDir.tmpPath()
-    val dest = unsafely(Irk.repoDir / commit.take(10))
+    val tmp = Fury.repoDir.tmpPath()
+    val dest = unsafely(Fury.repoDir / commit.take(10))
     val tmpGitDir = tmp / p".git"
 
     if dest.exists() then dest.directory(Expect).tap(_.touch())

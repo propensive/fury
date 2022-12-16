@@ -1,4 +1,4 @@
-package irk
+package fury
 
 import rudiments.*
 import turbulence.*

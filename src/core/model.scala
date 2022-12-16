@@ -1,4 +1,4 @@
-package irk
+package fury
 
 import rudiments.*
 import parasitism.*
@@ -38,8 +38,6 @@ object RepoPath:
     case r"$repo@([a-z][a-z0-9]*):$path@(.+)" => Some(RepoPath(repo.show, Relative.parse(path.show)))
     case r"$path@(.+)"                        => Some(RepoPath(Unset, Relative.parse(path.show)))
     case _                                    => None
-
-
 
 case class RepoPath(repoId: Maybe[Text], path: Relative)
 
@@ -101,19 +99,22 @@ object ProjectId:
 
 
 case class ProjectId(project: Text)
+case class PackageName(pkg: Text)
 
-case class BuildConfig(`:<<`: Maybe[Text], universe: Maybe[Text], overlay: List[Overlay], project: List[Project],
-                           command: List[Target], script: Maybe[Text])
+case class Intro(terminator: Text, header: Maybe[Text])
 
-case class Project(id: ProjectId, description: Maybe[Text], module: List[Module], repo: List[NextGen.Repo]):
+case class BuildConfig(`:<<`: Maybe[Intro], universe: Maybe[Text], overlay: List[Overlay],
+                           project: List[Project], command: List[Target], script: Maybe[Text])
+
+case class Project(id: ProjectId, description: Maybe[Text], module: List[Module], repo: List[GitRepo]):
   lazy val index: Map[Text, Module] = unsafely(module.indexBy(_.id.module))
 
 case class Module(id: ModuleId, include: Set[ModuleId], use: Set[ModuleId], resource: Set[RepoPath],
                         source: Set[RepoPath], binary: Set[RepoPath], docs: Maybe[RepoPath],
                         artifact: Option[ArtifactSpec], exec: Option[Exec], plugin: List[PluginSpec],
-                        main: Option[Text], publish: Option[Boolean])
+                        main: Option[Text], publish: Option[Boolean], js: Maybe[Boolean])
 
-case class Overlay(id: ProjectId, url: Text, commit: Text)
+case class Overlay(url: Text, commit: Text, project: ProjectId)
   //def resolve(): Directory[Unix] = GitCache(url, commit)
 
 case class Fork(id: Text, path: Relative)
@@ -248,15 +249,4 @@ case class PluginRef(jarFile: DiskPath[Unix], params: List[Text])
 
 case class Target(id: Text, include: List[ModuleId], main: Maybe[Text], args: List[Text])
 
-object NextGen:
-  
-  case class Project(id: Text, name: Text, description: Maybe[Text], repo: List[Repo], module: List[Module],
-                         variant: List[Variant], expiry: Maybe[Int])
-
-  case class Repo(id: RepoId, url: Text, commit: Text)
-  
-
-  case class Compiler(id: Text, version: Maybe[Text])
-
-  case class Artifact(`type`: Text, path: Relative)
-  case class Variant(id: Text)
+case class GitRepo(id: RepoId, url: Text, commit: Text)
