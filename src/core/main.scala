@@ -6,15 +6,15 @@ import turbulence.*
 import acyclicity.*
 import euphemism.*
 import eucalyptus.Log
-import joviality.*, filesystems.unix
-import anticipation.*, integration.jovialityPath
+import galilei.*, filesystems.unix
+import anticipation.*, integration.galileiPath
 import guillotine.*
 import parasitism.*, threading.virtual, monitors.global
 import kaleidoscope.*
 import escapade.*
 import gastronomy.*
 import oubliette.*
-import cellulose.{Token as _, *}
+import cellulose.*
 import harlequin.*
 import iridescence.*, solarized.*
 import serpentine.*
@@ -25,7 +25,6 @@ import profanity.*
 import xylophone.*
 import telekinesis.*
 import escritoire.*, tableStyles.horizontalDots
-import tetromino.*, allocators.dumb
 import surveillance.*
 
 import timekeeping.long
@@ -47,7 +46,6 @@ object Fury extends Daemon():
 
 
     try supervise(t"session-${sessionCount()}"):
-      given Allocator = allocators.default
       cli.args match
         case t"about" :: _        => Fury.about()
         case t"help" :: _         => Fury.help()
@@ -55,7 +53,7 @@ object Fury extends Daemon():
         case t"version" :: _      => Fury.showVersion()
         case t"stop" :: params    => Fury.stop(cli)
         case params               =>
-          val command = params.headOption.filter(!_.startsWith(t"-")).maybe
+          val command = params.headOption.filter(!_.starts(t"-")).maybe
           val watch = params.contains(t"-w") || params.contains(t"--watch")
           val exec = params.contains(t"-b") || params.contains(t"--browser")
           Fury.build(command, false, watch, cli.script, exec)
@@ -118,10 +116,10 @@ object Fury extends Daemon():
   private val prefixes = Set(t"/scala", t"/dotty", t"/compiler.properties", t"/org/scalajs", t"/com",
       t"/incrementalcompiler.version.properties", t"/library.properties", t"/NOTICE")
 
-  private def scriptSize(using Allocator): Int throws StreamCutError | ClasspathRefError =
+  private def scriptSize: Int throws StreamCutError | ClasspathRefError =
     unsafely(Classpath() / p"exoskeleton" / p"invoke").resource.read[Bytes]().size
 
-  def furyJar(scriptFile: File[Unix])(using Stdout, Allocator, Environment): File[Unix] throws StreamCutError = synchronized:
+  def furyJar(scriptFile: File[Unix])(using Stdout, Environment): File[Unix] throws StreamCutError = synchronized:
     import java.nio.file.*
     val jarPath = unsafely(libDir.path / t"base-$version.jar")
 
@@ -139,7 +137,7 @@ object Fury extends Daemon():
       Files.walk(fs.getPath("/")).nn.iterator.nn.asScala.to(List).sortBy(-_.toString.length).foreach:
         file =>
           def keep(name: Text): Boolean =
-            name == t"" || name == t"/org" || prefixes.exists(name.startsWith(_))
+            name == t"" || name == t"/org" || prefixes.exists(name.starts(_))
           
           try
             if !keep(file.nn.toString.show) then Files.delete(file.nn)
@@ -156,7 +154,7 @@ object Fury extends Daemon():
 
   def fetchFile(ref: Text, funnel: Option[Funnel[Progress.Update]])(using Stdout, Internet, Monitor, Environment)
                : Task[File[Unix]] =
-    if ref.startsWith(t"https:") then
+    if ref.starts(t"https:") then
       val hash = ref.digest[Crc32]
       if libJar(hash).exists() then Task(t"hash"):
         try libJar(hash).file(Expect) catch case err: IoError =>
@@ -188,12 +186,11 @@ object Fury extends Daemon():
 
   private lazy val fileHashes: FileCache[Digest[Crc32]] = new FileCache()
 
-  def hashFile(file: File[Unix])(using Allocator): Digest[Crc32] throws IoError | AppError =
+  def hashFile(file: File[Unix]): Digest[Crc32] throws IoError | AppError =
     try fileHashes(file.path.fullname, file.modified):
       file.read[Bytes]().digest[Crc32]
     catch
       case err: StreamCutError  => throw AppError(t"The stream was cut while hashing a file", err)
-      case err: ExcessDataError => throw AppError(t"The file was too big to hash", err)
       case err: Error[?]        => throw AppError(t"An unexpected error occurred", err)
   
   def cloneRepo(path: DiskPath[Unix], url: Text)(using Environment): Unit =
@@ -203,7 +200,7 @@ object Fury extends Daemon():
       case err: EnvError  => throw AppError(t"Could not run `git clone` for repository $url", err)
           
   def readImports(seen: Map[Digest[Crc32], File[Unix]], files: File[Unix]*)
-                 (using Stdout, Allocator, Environment)
+                 (using Stdout, Environment)
                  : Set[File[Unix]] =
     case class Imports(repos: Option[List[Repo]], imports: Option[List[Text]]):
       def repoList: List[Repo] = repos.presume
@@ -366,17 +363,17 @@ object Fury extends Daemon():
       val syntax = highlight(text)
       if line >= syntax.length then ansi""
       else syntax(line).map:
-        case Token.Code(code, flair) => flair match
-          case Flair.Type              => ansi"${colors.YellowGreen}(${code})"
-          case Flair.Term              => ansi"${colors.CadetBlue}(${code})"
-          case Flair.Symbol            => ansi"${colors.Turquoise}(${code})"
-          case Flair.Keyword           => ansi"${colors.DarkOrange}(${code})"
-          case Flair.Modifier          => ansi"${colors.Chocolate}(${code})"
-          case Flair.Ident             => ansi"${colors.BurlyWood}(${code})"
-          case Flair.Error             => ansi"${colors.OrangeRed}($Underline(${code}))"
-          case Flair.Number            => ansi"${colors.Gold}(${code})"
-          case Flair.String            => ansi"${colors.Plum}(${code})"
-          case other                   => ansi"${code}"
+        case Token.Code(code, accent) => accent match
+          case Accent.Type              => ansi"${colors.YellowGreen}(${code})"
+          case Accent.Term              => ansi"${colors.CadetBlue}(${code})"
+          case Accent.Symbol            => ansi"${colors.Turquoise}(${code})"
+          case Accent.Keyword           => ansi"${colors.DarkOrange}(${code})"
+          case Accent.Modifier          => ansi"${colors.Chocolate}(${code})"
+          case Accent.Ident             => ansi"${colors.BurlyWood}(${code})"
+          case Accent.Error             => ansi"${colors.OrangeRed}($Underline(${code}))"
+          case Accent.Number            => ansi"${colors.Gold}(${code})"
+          case Accent.String            => ansi"${colors.Plum}(${code})"
+          case other                    => ansi"${code}"
         case Token.Unparsed(txt)     => ansi"$txt"
         case Token.Markup(_)         => ansi""
         case Token.Newline           => throw Mistake("Should not have a newline")
@@ -477,7 +474,7 @@ object Fury extends Daemon():
 
   def build(command: Maybe[Text], publishSonatype: Boolean, watch: Boolean = false, scriptFile: File[Unix],
                 exec: Boolean)
-           (using Stdout, InputSource, Monitor, Allocator, Environment)
+           (using Stdout, InputSource, Monitor, Environment)
            : ExitStatus throws AppError = unsafely:
     Tty.capture:
       val rootBuild = unsafely(env.pwd / t"build.irk")
@@ -580,9 +577,9 @@ object Fury extends Daemon():
                   val file = ansi"${palette.File}(${event.path[DiskPath[Unix]].relativeTo(env.pwd)})"
                   Out.println(ansi"The file $file was $change")
                 
-                if event.path[DiskPath[Unix]].name.endsWith(t".irk")
+                if event.path[DiskPath[Unix]].name.ends(t".irk")
                 then Change(ChangeType.Build, event.path) :: changes
-                else if event.path[DiskPath[Unix]].name.endsWith(t".scala")
+                else if event.path[DiskPath[Unix]].name.ends(t".scala")
                 then Change(ChangeType.Source, event.path) :: changes
                 else if oldBuild.resourceDirs.exists(_.path.precedes(event.path))
                 then Change(ChangeType.Resource, event.path) :: changes
@@ -660,11 +657,6 @@ object Fury extends Daemon():
                             funnel.put(Progress.Update.SkipOne)
                             result
                         catch
-                          case err: ExcessDataError =>
-                            val result = Result.Terminal(ansi"Too much data was received during ${step.name}")
-                            funnel.put(Progress.Update.Remove(verb, result))
-                            result
-          
                           case err: StreamCutError =>
                             val result = Result.Terminal(ansi"An I/O stream failed during ${step.name}")
                             funnel.put(Progress.Update.Remove(verb, result))

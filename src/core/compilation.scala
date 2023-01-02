@@ -3,9 +3,8 @@ package fury
 import rudiments.*
 import parasitism.*
 import gossamer.*
-import joviality.*
+import galilei.*
 import serpentine.*
-import tetromino.*
 import escapade.*
 import eucalyptus.*
 
@@ -25,7 +24,7 @@ object Compiler:
   def compile(id: Ref, pwd: Directory[Unix], files: List[File[Unix]], inputs: List[DiskPath[Unix]],
                   out: Directory[Unix], script: File[Unix], plugins: List[PluginRef], cancel: Promise[Unit],
                   owners: Map[DiskPath[Unix], Step], js: Boolean)
-             (using Stdout, Monitor, Allocator, Environment, Log)
+             (using Stdout, Monitor, Environment, Log)
              : Result =
     import unsafeExceptions.canThrowAny
     import dotty.tools.*, io.{File as _, *}, repl.*, dotc.core.*

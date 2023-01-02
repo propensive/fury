@@ -5,9 +5,10 @@ import rudiments.*
 import parasitism.*, threading.virtual
 import turbulence.*
 import acyclicity.*
-import euphemism.*
+import merino.*
+import euphemism.*, jsonSerializers.minimal
 import cellulose.*
-import joviality.*
+import galilei.*
 import serpentine.*
 import guillotine.*
 import kaleidoscope.*
@@ -19,7 +20,6 @@ import imperial.*
 import profanity.*
 import xylophone.*
 import telekinesis.*
-import tetromino.*
 import anticipation.*
 import java.nio.BufferOverflowException
 
@@ -70,7 +70,7 @@ object Build:
           val resources = module.resource.map(project.resolve(_))
           val sources: Set[Directory[Unix]] = module.source.map(project.resolve(_)).sift[Directory[Unix]]
 
-          steps((includes ++ uses).to(List) ::: tail, done.updated(ref, Step(universe, project.root, ref.show, ref, includes ++ uses, resources, sources,
+          steps((includes ++ uses).to(List) ::: tail, done.updated(ref, Step(project.root, ref.show, ref, includes ++ uses, resources, sources,
                    Set(), t"1.0.0", Nil, None, None, Nil, None, module.js.or(false))))
 
     command.mm: cmd =>
@@ -95,11 +95,10 @@ case class Build(pwd: Directory[Unix], index: Map[Ref, Step] = Map()):
 
   private var hashesResult: Option[Map[Step, Digest[Crc32]]] = None
   def clearHashes(): Unit = synchronized { hashesResult = None }
-  def hashes(using Allocator)
-            : Map[Step, Digest[Crc32]] throws BrokenLinkError | IoError | StreamCutError | ExcessDataError =
+  def hashes: Map[Step, Digest[Crc32]] throws BrokenLinkError | IoError | StreamCutError =
 
     def recur(todo: List[Step], hashes: Map[Step, Digest[Crc32]])
-             : Map[Step, Digest[Crc32]] throws BrokenLinkError | StreamCutError | ExcessDataError =
+             : Map[Step, Digest[Crc32]] throws BrokenLinkError | StreamCutError =
       if todo.isEmpty then hashes
       else try
         val step = todo.head
@@ -123,7 +122,7 @@ case class Build(pwd: Directory[Unix], index: Map[Ref, Step] = Map()):
   def resolve(id: Ref): Step throws BrokenLinkError = index.get(id).getOrElse(throw BrokenLinkError(id))
   def bases: Set[Directory[Unix]] = steps.map(_.pwd).to(Set)
 
-  def cache(using Allocator, Environment): Map[Step, Digest[Crc32]] =
+  def cache(using Environment): Map[Step, Digest[Crc32]] =
     try
       val caches = bases.map(Fury.hashDir / _.path.fullname.digest[Crc32].encode[Hex]).filter(_.exists()).map: cacheFile =>
         Json.parse(cacheFile.file(Ensure).read[Text]()).as[Cache].hashes
@@ -138,7 +137,7 @@ case class Build(pwd: Directory[Unix], index: Map[Ref, Step] = Map()):
       case err: JsonAccessError => throw AppError(t"The cache file was not in the correct JSON format", err)
       case err: Exception       => throw AppError(StackTrace(err).ansi.plain)
   
-  def updateCache(step: Step, binDigest: Text)(using Allocator, Environment): Unit = synchronized:
+  def updateCache(step: Step, binDigest: Text)(using Environment): Unit = synchronized:
     try
       val cacheFile = Fury.hashDir / step.pwd.path.fullname.digest[Crc32].encode[Hex]
       val cache = Cache:
@@ -153,6 +152,7 @@ case class Build(pwd: Directory[Unix], index: Map[Ref, Step] = Map()):
       newCache.json.show.bytes.writeTo:
         if cacheFile.exists() then cacheFile.file(Expect).delete()
         cacheFile.file(Ensure)
+    
     catch
       case err: JsonParseError  => throw AppError(t"The cache file is not in the correct format", err)
       case err: StreamCutError  => throw AppError(t"The stream was cut while reading the cache file", err)
@@ -170,7 +170,7 @@ case class Artifact(path: DiskPath[Unix], main: Option[Text], format: Format)
 
 object Artifact:
   def build(artifact: Artifact, base: File[Unix], name: Text, version: Text, classpath: List[DiskPath[Unix]],
-                resources: List[Directory[Unix]], mainClass: Option[Text])(using Allocator, Environment)
+                resources: List[Directory[Unix]], mainClass: Option[Text])(using Environment)
            : Unit throws IoError =
     import stdouts.drain
     
@@ -217,7 +217,7 @@ object Artifact:
     
     artifact.path.file(Expect).setPermissions(executable = true)
 
-case class Step(uni: Universe, pwd: Directory[Unix], /*path: File[Unix], publishing: Option[Publishing],*/ name: Text,
+case class Step(pwd: Directory[Unix], /*path: File[Unix], publishing: Option[Publishing],*/ name: Text,
                     id: Ref, links: Set[Ref], resources: Set[Directory[Unix]],
                     sources: Set[Directory[Unix]], jars: Set[Text],
                     version: Text, docs: List[DiskPath[Unix]], artifact: Option[Artifact],
@@ -233,10 +233,10 @@ case class Step(uni: Universe, pwd: Directory[Unix], /*path: File[Unix], publish
   def allLinks = links ++ plugins.map(_.id)
   
   private def output(extension: Text): DiskPath[Unix] = unsafely(pwd / t"bin" / t"${id.dashed}-$version$extension")
-  private def compilable(f: File[Unix]): Boolean = f.name.endsWith(t".scala") || f.name.endsWith(t".java")
+  private def compilable(f: File[Unix]): Boolean = f.name.ends(t".scala") || f.name.ends(t".java")
 
   def srcFiles: Set[File[Unix]] throws IoError =
-    sources.flatMap(_.path.descendantFiles(!_.name.startsWith(t"."))).filter(compilable)
+    sources.flatMap(_.path.descendantFiles(!_.name.starts(t"."))).filter(compilable)
 
   def classpath(build: Build)(using Stdout, Environment): Set[DiskPath[Unix]] throws IoError | BrokenLinkError =
     build.graph.reachable(this).flatMap: step =>
@@ -260,7 +260,7 @@ case class Step(uni: Universe, pwd: Directory[Unix], /*path: File[Unix], publish
 
   def compile(hashes: Map[Step, Digest[Crc32]], oldHashes: Map[Step, Digest[Crc32]], build: Build,
                   scriptFile: File[Unix], cancel: Promise[Unit], owners: Map[DiskPath[Unix], Step])
-             (using Stdout, Internet, Monitor, Allocator, Environment)
+             (using Stdout, Internet, Monitor, Environment)
              : Result =
     val t0 = now()
     
@@ -286,7 +286,6 @@ case class Step(uni: Universe, pwd: Directory[Unix], /*path: File[Unix], publish
     catch
       case err: IoError         => throw AppError(t"Could not read the source files", err)
       case err: StreamCutError  => throw AppError(t"Reading the source files broke before it completed", err)
-      case err: ExcessDataError => throw AppError(t"Too much data was returned", err)
       case err: BrokenLinkError => throw AppError(t"There was an unsatisfied reference to ${err.link}", err)
       //case err: Error[?]        => throw AppError(t"An unexpected error occurred", err)
 

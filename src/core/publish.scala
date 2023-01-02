@@ -4,16 +4,18 @@ import rudiments.*
 import turbulence.*
 import gastronomy.*
 import telekinesis.*
-import euphemism.*
-import joviality.*
+import euphemism.*, jsonSerializers.minimal
+import galilei.*
 import filesystems.unix
-import anticipation.integration.jovialityPath
+import anticipation.integration.galileiPath
+import anticipation.timekeeping.long
 import gossamer.*
 import eucalyptus.*
+import temporaneous.*
+import parasitism.*, monitors.global
 import gesticulate.*
 import xylophone.*
 import guillotine.*
-import tetromino.*
 
 import scala.concurrent.*
 
@@ -27,7 +29,7 @@ extends Exception(t"the profile $name was not found for these credentials".s)
 case class ProfileId(id: Text, repoTargetId: Text)
 
 object Sonatype:
-  def publish(build: Build, passwordOpt: Option[Text])(using Stdout, Internet, Allocator, Environment): Unit =
+  def publish(build: Build, passwordOpt: Option[Text])(using Stdout, Internet, Environment): Unit =
     val password = passwordOpt.getOrElse:
       throw AppError(t"The environment variable SONATYPE_PASSWORD is not set")
     
@@ -49,8 +51,8 @@ object Sonatype:
           
           val srcFiles: List[Text] = step.sources.to(List).flatMap: dir =>
             Out.println(t"Adding source dir $dir")
-            dir.path.descendantFiles(!_.name.startsWith(t".")).filter: file =>
-              file.name.endsWith(t".scala") || file.name.endsWith(t".java")
+            dir.path.descendantFiles(!_.name.starts(t".")).filter: file =>
+              file.name.ends(t".scala") || file.name.ends(t".java")
             .flatMap: file =>
               List(t"-C", dir.fullname, file.path.relativeTo(dir.path).show)
           
@@ -58,7 +60,7 @@ object Sonatype:
           
           val docFiles: List[Text] = step.docs.to(List).flatMap: dir =>
             Out.println(t"Adding doc dir $dir")
-            dir.descendantFiles(!_.name.startsWith(t".")).flatMap: file =>
+            dir.descendantFiles(!_.name.starts(t".")).flatMap: file =>
               List(t"-C", dir.fullname, file.path.relativeTo(dir).show)
           
           sh"jar cf ${step.docFile} $docFiles".exec[ExitStatus]()
@@ -103,14 +105,14 @@ case class Sonatype(username: Text, password: Text, profileName: Text,
   def start(profileId: ProfileId)(using Log, Internet): RepoId throws AppError =
     case class Payload(description: Text)
     case class Data(data: Payload)
-    val input = Data(Payload(t"")).json
+    val input: Json = Data(Payload(t"")).json
     Log.info(t"Starting a new session for ${profileId.id}")
-    val json = Json.parse(uri"https://$domain/$servicePath/profiles/${profileId.id}/start".post(auth, acceptJson)(input).as[Text])
+    val json: Json = Json.parse(uri"https://$domain/$servicePath/profiles/${profileId.id}/start".post(auth, acceptJson)(input).as[Text])
     val output = json.data.stagedRepositoryId.as[Text]
     Log.info(t"Got repository ID $output")
     RepoId(output)
   
-  def deploy(repoId: RepoId, dir: Text, files: List[File[Unix]])(using Log, Internet, Allocator): Unit =
+  def deploy(repoId: RepoId, dir: Text, files: List[File[Unix]])(using Log, Internet): Unit =
     val futures = for file <- files yield Future:
       val uri = uri"https://$domain/$servicePath/deployByRepositoryId/${repoId.id}/${profileName.sub(t".", t"/").nn}/$dir/${file.name}"
       Log.info(t"Uploading file $file to $uri")
@@ -129,8 +131,8 @@ case class Sonatype(username: Text, password: Text, profileName: Text,
     if !events.transitioning.as[Boolean] || events.`type`.as[Text] == t"closed"
     then Log.info("Finished")
     else
-      Log.info(events.show)
-      Thread.sleep(1000)
+      //Log.info(events.show)
+      sleep(1000L)
       activity(repoId)
 
   def promote(profileId: ProfileId, repoId: RepoId)(using Internet): Text =

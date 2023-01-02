@@ -1,6 +1,6 @@
 package fury
 
-import joviality.*
+import galilei.*
 import rudiments.*
 import gossamer.*
 import parasitism.*

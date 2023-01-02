@@ -4,7 +4,7 @@ import rudiments.*
 import parasitism.*
 import gossamer.*
 import kaleidoscope.*
-import joviality.*
+import galilei.*
 import cellulose.*
 import serpentine.*
 import xylophone.*
@@ -12,7 +12,6 @@ import euphemism.*
 import gastronomy.*
 import escapade.*
 import surveillance.*
-import tetromino.*
 
 case class Publishing(username: Text, group: Text, url: Text, organization: Maven.Organization,
                           developers: List[Maven.Developer])
@@ -25,14 +24,14 @@ case class CodeRange(module: Maybe[Ref], path: Maybe[Relative], startLine: Int, 
 case class Repo(base: Text, url: Text):
   def basePath(dir: DiskPath[Unix]): DiskPath[Unix] = unsafely(dir + Relative.parse(base))
 
+case class InvalidIdError(id: Text) extends Error(err"The value $id was not a valid ID")
+
 object RepoPath:
   given Show[RepoPath] = rp => rp.repoId.fm(rp.path.show) { id => t"${id}:${rp.path.show}" }
 
-  given Codec[RepoPath] with
-    def schema = Field(Arity.One, RepoPath.unapply(_).isDefined)
-    def serialize(value: RepoPath): List[IArray[Node]] = List(IArray(Node(Data(value.show))))
-    def deserialize(value: List[Indexed]): RepoPath throws IncompatibleTypeError =
-      RepoPath.unapply(text(value)).getOrElse(throw IncompatibleTypeError())
+  given (using CanThrow[InvalidIdError]): Codec[RepoPath] =
+    new FieldCodec[RepoPath](_.show, v => RepoPath.unapply(v).getOrElse(throw InvalidIdError(v))):
+      override val schema = Field(Arity.One, RepoPath.unapply(_).isDefined)
 
   def unapply(text: Text): Option[RepoPath] = text match
     case r"$repo@([a-z][a-z0-9]*):$path@(.+)" => Some(RepoPath(repo.show, Relative.parse(path.show)))
@@ -47,12 +46,8 @@ object ModuleId:
     case r"[a-z][a-z0-9]+"                           => Some(ModuleId(Unset, text))
     case text                                        => None
 
-  given Codec[ModuleId] with
-    def schema = Field(Arity.One, ModuleId.unapply(_).isDefined)
-    def serialize(value: ModuleId): List[IArray[Node]] = List(IArray(Node(Data(value.show))))
-    
-    def deserialize(value: List[Indexed]): ModuleId throws IncompatibleTypeError =
-      ModuleId.unapply(text(value)).getOrElse(throw IncompatibleTypeError())
+  given (using CanThrow[InvalidIdError]): Codec[ModuleId] =
+    FieldCodec[ModuleId](_.show, v => ModuleId.unapply(v).getOrElse(throw InvalidIdError(v)))
   
   given Show[ModuleId] = id => id.project.fm(id.module) { p => t"${p}/${id.module}" }
 
@@ -67,21 +62,13 @@ object RepoId:
   
   given Show[RepoId] = _.id
   
-  given Codec[RepoId] with
-    def schema = Field(Arity.One)
-    def serialize(value: RepoId): List[IArray[Node]] = List(IArray(Node(Data(value.show))))
-    
-    def deserialize(value: List[Indexed]): RepoId throws IncompatibleTypeError =
-      RepoId.unapply(text(value)).getOrElse(throw IncompatibleTypeError())
-
+  given (using CanThrow[InvalidIdError]): Codec[RepoId] =
+    FieldCodec[RepoId](_.show, v => RepoId.unapply(v).getOrElse(throw InvalidIdError(v)))
 
 case class RepoId(id: Text)
 
-given Codec[Relative] with
-  def schema = Field(Arity.One)
-  def serialize(value: Relative) = List(IArray(Node(Data(value.show))))
-  def deserialize(value: List[Indexed]): Relative throws IncompatibleTypeError =
-    Relative.parse(text(value))
+given Codec[Relative] =
+  FieldCodec[Relative](_.show, Relative.parse(_))
 
 object ProjectId:
   def unapply(text: Text): Option[ProjectId] = text match
@@ -90,15 +77,11 @@ object ProjectId:
   
   given Show[ProjectId] = _.project
   
-  given Codec[ProjectId] with
-    def schema = Field(Arity.One)
-    def serialize(value: ProjectId): List[IArray[Node]] = List(IArray(Node(Data(value.show))))
-    
-    def deserialize(value: List[Indexed]): ProjectId throws IncompatibleTypeError =
-      ProjectId.unapply(text(value)).getOrElse(throw IncompatibleTypeError())
-
+  given (using CanThrow[InvalidIdError]): Codec[ProjectId] =
+    FieldCodec[ProjectId](_.show, v => ProjectId.unapply(v).getOrElse(throw InvalidIdError(v)))
 
 case class ProjectId(project: Text)
+
 case class PackageName(pkg: Text)
 
 case class Intro(terminator: Text, header: Maybe[Text])

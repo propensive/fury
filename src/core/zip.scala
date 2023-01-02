@@ -3,7 +3,7 @@ package fury
 import rudiments.*
 import gossamer.*
 import serpentine.*
-import joviality.*
+import galilei.*
 import turbulence.*
 
 import java.io as ji
@@ -18,7 +18,7 @@ object Zip:
   case class ZipPath(path: Relative, diskPath: DiskPath[Unix]) extends ZipEntry
   case class Entry(path: Relative, in: ji.InputStream) extends ZipEntry
 
-  def read(file: joviality.File[Unix]): LazyList[Entry] =
+  def read(file: galilei.File[Unix]): LazyList[Entry] =
     val zipFile = ZipFile(file.javaFile).nn
     
     zipFile.entries.nn.asScala.to(LazyList).filter(!_.getName.nn.endsWith("/")).map: entry =>
@@ -27,7 +27,7 @@ object Zip:
   // 00:00:00, 1 January 2000
   val epoch = jnf.attribute.FileTime.fromMillis(946684800000L)
 
-  def write(base: joviality.File[Unix], path: joviality.DiskPath[Unix], inputs: LazyList[ZipEntry], prefix: Maybe[Bytes] = Unset)
+  def write(base: galilei.File[Unix], path: galilei.DiskPath[Unix], inputs: LazyList[ZipEntry], prefix: Maybe[Bytes] = Unset)
            (using Stdout, Environment)
            : Unit throws StreamCutError | IoError =
     val tmpPath = Fury.tmpDir.tmpPath()
