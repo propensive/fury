@@ -124,6 +124,8 @@ RUN cd /fury && scala/bin/scalac \
   -language:experimental.namedTypeArguments \
   -d bin \
   /one/mod/euphemism/src/core/*.scala \
+  /one/mod/temporaneous/src/core/*.scala \
+  /one/mod/merino/src/core/*.scala \
   /one/mod/exoskeleton/src/core/*.scala \
   /one/mod/xylophone/src/core/*.scala \
   /one/mod/harlequin/src/core/*.scala \
@@ -223,6 +225,7 @@ RUN jar cmf /fury/manifest /fury/fury.jar  \
   -C /fury/bin polyvinyl \
   -C /fury/bin quagmire \
   -C /fury/bin cellulose \
+  -C /fury/bin merino \
   -C /fury/bin org \
   -C /fury/bin parasitism \
   -C /fury/bin probably \
@@ -233,6 +236,7 @@ RUN jar cmf /fury/manifest /fury/fury.jar  \
   -C /fury/bin serpentine \
   -C /fury/bin surveillance \
   -C /fury/bin tarantula \
+  -C /fury/bin temporaneous \
   -C /fury/bin telekinesis \
   -C /fury/bin tetromino \
   -C /fury/bin turbulence \
