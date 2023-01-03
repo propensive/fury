@@ -29,8 +29,8 @@ extends Exception(t"the profile $name was not found for these credentials".s)
 case class ProfileId(id: Text, repoTargetId: Text)
 
 object Sonatype:
-  def publish(build: Build, passwordOpt: Option[Text])(using Stdout, Internet, Environment): Unit =
-    val password = passwordOpt.getOrElse:
+  def publish(build: Build, passwordOpt: Maybe[Text] = Unset)(using Stdout, Internet, Environment): Unit =
+    val password = passwordOpt.or:
       throw AppError(t"The environment variable SONATYPE_PASSWORD is not set")
     
     build.linearization.groupBy(_.publish(build)).foreach:
@@ -96,7 +96,7 @@ case class Sonatype(username: Text, password: Text, profileName: Text,
 
   def profile()(using Internet): ProfileId throws AppError =
     Log.info(t"Getting Profile ID for $username")
-    val json = Json.parse(uri"https://$domain/$servicePath/profiles".get(auth, acceptJson).as[Text])
+    val json = Json.parse(url"https://$domain/$servicePath/profiles".get(auth, acceptJson).as[Text])
     val profile = json.data.as[List[Json]].find(_.name.as[Text] == profileName).getOrElse(throw UnknownProfile(profileName))
     val profileId = ProfileId(profile.id.as[Text], profile.repositoryTargetId.as[Text])
     Log.info(t"Got profile ID ${profileId.id} and target ID ${profileId.repoTargetId}")
@@ -107,16 +107,16 @@ case class Sonatype(username: Text, password: Text, profileName: Text,
     case class Data(data: Payload)
     val input: Json = Data(Payload(t"")).json
     Log.info(t"Starting a new session for ${profileId.id}")
-    val json: Json = Json.parse(uri"https://$domain/$servicePath/profiles/${profileId.id}/start".post(auth, acceptJson)(input).as[Text])
+    val json: Json = Json.parse(url"https://$domain/$servicePath/profiles/${profileId.id}/start".post(auth, acceptJson)(input).as[Text])
     val output = json.data.stagedRepositoryId.as[Text]
     Log.info(t"Got repository ID $output")
     RepoId(output)
   
   def deploy(repoId: RepoId, dir: Text, files: List[File[Unix]])(using Log, Internet): Unit =
     val futures = for file <- files yield Future:
-      val uri = uri"https://$domain/$servicePath/deployByRepositoryId/${repoId.id}/${profileName.sub(t".", t"/").nn}/$dir/${file.name}"
-      Log.info(t"Uploading file $file to $uri")
-      uri.put(auth)(file.read[DataStream]())
+      val url = url"https://$domain/$servicePath/deployByRepositoryId/${repoId.id}/${profileName.sub(t".", t"/").nn}/$dir/${file.name}"
+      Log.info(t"Uploading file $file to $url")
+      url.put(auth)(file.read[DataStream]())
       Log.info(t"Finished uploading $file")
 
     Await.result(Future.sequence(futures), duration.Duration.Inf)
@@ -124,10 +124,10 @@ case class Sonatype(username: Text, password: Text, profileName: Text,
   def finish(profileId: ProfileId, repoId: RepoId)(using Internet): Text =
     case class Data(data: Payload)
     case class Payload(description: Text, stagedRepositoryId: Text, targetRepositoryId: Text)
-    uri"https://$domain/$servicePath/profiles/${profileId.id}/finish".post(auth, jsonContent, acceptJson)(Data(Payload(t"", repoId.id, profileId.repoTargetId)).json).as[Text]
+    url"https://$domain/$servicePath/profiles/${profileId.id}/finish".post(auth, jsonContent, acceptJson)(Data(Payload(t"", repoId.id, profileId.repoTargetId)).json).as[Text]
   
   def activity(repoId: RepoId)(using Internet): Unit =
-    val events = Json.parse(uri"https://$domain/$servicePath/repository/${repoId.id}".get(auth, acceptJson).as[Text])
+    val events = Json.parse(url"https://$domain/$servicePath/repository/${repoId.id}".get(auth, acceptJson).as[Text])
     if !events.transitioning.as[Boolean] || events.`type`.as[Text] == t"closed"
     then Log.info("Finished")
     else
@@ -138,5 +138,5 @@ case class Sonatype(username: Text, password: Text, profileName: Text,
   def promote(profileId: ProfileId, repoId: RepoId)(using Internet): Text =
     case class Data(data: Payload)
     case class Payload(description: Text, stagedRepositoryId: Text, targetRepositoryId: Text)
-    uri"https://$domain/$servicePath/profiles/${profileId.id}/promote".post(auth, jsonContent, acceptJson)(Data(Payload(t"", repoId.id, profileId.repoTargetId)).json).as[Text]
+    url"https://$domain/$servicePath/profiles/${profileId.id}/promote".post(auth, jsonContent, acceptJson)(Data(Payload(t"", repoId.id, profileId.repoTargetId)).json).as[Text]
   

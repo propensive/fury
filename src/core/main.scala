@@ -164,10 +164,18 @@ object Fury extends Daemon():
         funnel.foreach(_.put(Progress.Update.Add(verb, (hash))))
         try
           val file = libJar(hash).file(Create)
-          Uri(ref).writeTo(file)
+          Url.parse(ref).get().as[Bytes].writeTo(file)
           funnel.foreach(_.put(Progress.Update.Remove(verb, Result.Complete())))
           file
         catch
+          case err: InvalidUrlError =>
+            funnel.foreach(_.put(Progress.Update.Remove(verb, Result.Terminal(ansi"The URL was invalid"))))
+            throw AppError(t"The URL ${err.text} was not valid", err)
+          
+          case err: HttpError =>
+            funnel.foreach(_.put(Progress.Update.Remove(verb, Result.Terminal(ansi"An HTTP error occurred"))))
+            throw AppError(err.message, err)
+            
           case err: StreamCutError =>
             funnel.foreach(_.put(Progress.Update.Remove(verb, Result.Terminal(ansi"A stream error occurred"))))
             throw AppError(t"Could not download the file $ref", err)
@@ -348,7 +356,7 @@ object Fury extends Daemon():
         throw AppError(ansi"a file containing an error was deleted: ${err.toString.show}", err)//: ${err.ansi}", err)
     
     def arrow(k1: (Srgb, Text), k2: (Srgb, Text)): AnsiText =
-      def hc(c: Srgb): Srgb = if c.hsl.lightness > 0.5 then colors.Black else colors.White
+      def hc(c: Srgb): Srgb = if c.hsl.lightness > 0.5 then colors.Black.srgb else colors.White.srgb
       ansi"${Bg(k1(0))}( ${hc(k1(0))}(${k1(1)}) )${Bg(k2(0))}(${k1(0)}() ${hc(k2(0))}(${k2(1)}) )${k2(0)}()"
 
     val highlighting: scm.Map[Text, IArray[Seq[Token]]] = scm.HashMap[Text, IArray[Seq[Token]]]()
@@ -402,7 +410,7 @@ object Fury extends Daemon():
                 case Level.Warn  => colors.Orange
                 case Level.Info  => colors.SteelBlue
               
-              appendln(arrow(colors.Purple -> pos.module.fm(t"[external]")(_.show), shade -> posText))
+              appendln(arrow(colors.Purple.srgb -> pos.module.fm(t"[external]")(_.show), shade.srgb -> posText))
               
               if pos.startLine > 1 then appendln(codeLine(margin, codeText, pos.startLine))
 
@@ -452,7 +460,7 @@ object Fury extends Daemon():
                   val ref = pos.module.fm(t"[external]")(_.show).pad(refWidth, Rtl)
                   val path = pos.path.mm(_.show.pad(pathWidth, Rtl))
                   val code = codeLine(margin + indent, pos.content.text, pos.startLine).drop(indent)
-                  appendln(ansi"${arrow(colors.DarkCyan -> ref, colors.LightSeaGreen -> path.or(t"«unknown»"))} $code${escapes.Reset}")
+                  appendln(ansi"${arrow(colors.DarkCyan.srgb -> ref, colors.LightSeaGreen.srgb -> path.or(t"«unknown»"))} $code${escapes.Reset}")
                 
                 appendln(ansi"")
               appendln(ansi"${escapes.Reset}")
@@ -707,7 +715,7 @@ object Fury extends Daemon():
                       
                       Some(subprocess)
                   
-                  if publishSonatype then Sonatype.publish(build, env(t"SONATYPE_PASSWORD").option)
+                  if publishSonatype then Sonatype.publish(build, env(t"SONATYPE_PASSWORD"))
                   
                   subprocess
                 .flatten
