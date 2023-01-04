@@ -86,8 +86,9 @@ case class PackageName(pkg: Text)
 
 case class Intro(terminator: Text, header: Maybe[Text])
 
-case class BuildConfig(`:<<`: Maybe[Intro], universe: Maybe[Text], overlay: List[Overlay],
-                           project: List[Project], command: List[Target], script: Maybe[Text])
+case class BuildConfig(@targetName("prelude") `:<<`: Maybe[Intro], universe: Maybe[Text],
+                           overlay: List[Overlay], project: List[Project], command: List[Target],
+                           script: Maybe[Text])
 
 case class Project(id: ProjectId, description: Maybe[Text], module: List[Module], repo: List[GitRepo]):
   lazy val index: Map[Text, Module] = unsafely(module.indexBy(_.id.module))
