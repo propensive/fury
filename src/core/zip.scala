@@ -27,9 +27,11 @@ object Zip:
   // 00:00:00, 1 January 2000
   val epoch = jnf.attribute.FileTime.fromMillis(946684800000L)
 
-  def write(base: galilei.File[Unix], path: galilei.DiskPath[Unix], inputs: LazyList[ZipEntry], prefix: Maybe[Bytes] = Unset)
+  def write(base: galilei.File[Unix], path: galilei.DiskPath[Unix], inputs: LazyList[ZipEntry],
+                prefix: Maybe[Bytes] = Unset)
            (using Stdout, Environment)
            : Unit throws StreamCutError | IoError =
+    
     val tmpPath = Fury.tmpDir.tmpPath()
     base.copyTo(tmpPath)
     val uri: java.net.URI = java.net.URI.create(t"jar:file:${tmpPath.fullname}".s).nn
@@ -43,8 +45,9 @@ object Zip:
       (0 to dir.parts.length).map(dir.parts.take(_)).map(Relative(0, _)).to(Set)
     .to(List).map(_.show+t"/").sorted
 
-    for dir <- dirs do
+    dirs.foreach: dir =>
       val dirPath = fs.getPath(dir.s).nn
+      
       if jnf.Files.notExists(dirPath) then
         jnf.Files.createDirectory(dirPath)
         jnf.Files.setAttribute(dirPath, "creationTime", epoch)
@@ -58,6 +61,7 @@ object Zip:
         jnf.Files.setAttribute(entryPath, "creationTime", epoch)
         jnf.Files.setAttribute(entryPath, "lastAccessTime", epoch)
         jnf.Files.setAttribute(entryPath, "lastModifiedTime", epoch)
+      
       case ZipPath(path, file) =>
         val filePath = fs.getPath(path.show.s).nn
         jnf.Files.copy(file.javaPath, filePath, jnf.StandardCopyOption.REPLACE_EXISTING)
