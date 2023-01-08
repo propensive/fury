@@ -7,12 +7,18 @@ import galilei.*, filesystems.unix
 import kaleidoscope.*
 import temporaneous.*
 import cellulose.*
+import punctuation.*
 import telekinesis.*
+
+trait GitRepo:
+  def url: Url
+  def commit: Commit
+  def branch: Maybe[Branch]
 
 case class Release(                      id: ProjectId,
                                          stream: StreamId,
-                                         website: Url,
-		                                     description: Text,
+                                         website: Maybe[Url],
+		                                     description: InlineMd,
                    @codlLabel("tag")     tags: List[Tag],
 		                                     license: LicenseId,
 		                                     date: Date,
@@ -20,12 +26,17 @@ case class Release(                      id: ProjectId,
 		                                     repo: Repo,
 		               @codlLabel("provide") packages: List[Package])
 
-case class Repo(url: Url, commit: Commit, branch: Maybe[Branch])
+case class Repo(url: Url, commit: Commit, branch: Maybe[Branch]) extends GitRepo
 case class Universe(@codlLabel("release") releases: List[Release])
+  //lazy val index: Map[ProjectId, Map[StreamId, Release]] =
+
 case class Local(@codlLabel("fork") forks: List[Fork])
 case class Fork(id: BuildId, path: Relative)
-case class Overlay(id: BuildId, url: Url, commit: Commit, branch: Maybe[Branch])
-case class Mount(path: Relative)
+case class Overlay(id: BuildId, url: Url, commit: Commit, branch: Maybe[Branch]) extends GitRepo
+case class Mount(path: Relative, url: Url, commit: Commit, branch: Maybe[Branch]) extends GitRepo
+
+
+
 
 case class Build(@codlLabel(":<<")     prelude:  Maybe[Prelude],
                  @codlLabel("overlay") overlays: List[Overlay],
