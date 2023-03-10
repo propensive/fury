@@ -2,6 +2,7 @@ package fury
 
 import gastronomy.*
 import gossamer.*
+import deviation.*
 import rudiments.*
 
 trait Base256 extends EncodingScheme

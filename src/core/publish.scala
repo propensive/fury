@@ -1,17 +1,17 @@
 package fury
 
 import rudiments.*
-import turbulence.*
+import ambience.*
+import turbulence.*, lineSeparation.jvm
 import gastronomy.*
 import telekinesis.*
-import euphemism.*, jsonSerializers.minimal
+import jacinta.*, jsonPrinters.minimal
 import galilei.*
 import filesystems.unix
-import anticipation.integration.galileiPath
-import anticipation.timekeeping.long
+import anticipation.*, fileApi.galileiApi, timeApi.long
 import gossamer.*
 import eucalyptus.*
-import temporaneous.*
+import aviation.*
 import parasitism.*, monitors.global
 import gesticulate.*
 import xylophone.*
@@ -20,7 +20,7 @@ import guillotine.*
 import scala.concurrent.*
 
 import unsafeExceptions.canThrowAny
-
+/*
 given ExecutionContext = ExecutionContext.global
 
 case class UnknownProfile(name: Text)
@@ -29,28 +29,28 @@ extends Exception(t"the profile $name was not found for these credentials".s)
 case class ProfileId(id: Text, repoTargetId: Text)
 
 object Sonatype:
-  def publish(build: Build, passwordOpt: Maybe[Text] = Unset)(using Stdout, Internet, Environment): Unit =
+  def publish(build: Build, passwordOpt: Maybe[Text] = Unset)(using Stdio, Internet, Environment): Unit =
     val password = passwordOpt.or:
       throw AppError(t"The environment variable SONATYPE_PASSWORD is not set")
     
     build.linearization.groupBy(_.publish(build)).foreach:
       case (pub, steps) =>
         val sonatype = Sonatype(pub.username, password, pub.group)
-        Out.println(t"Using Sonatype settings ${sonatype.toString}")
+        Io.println(t"Using Sonatype settings ${sonatype.toString}")
         val profileId = sonatype.profile()
         val repoId = sonatype.start(profileId)
             
         steps.foreach: step =>
-          Out.println(t"Generating POM file for ${step.id}")
+          Io.println(t"Generating POM file for ${step.id}")
           
-          val pomXml = Maven.Pom(build, step, 2022,
+          val pomXml = Maven.Pom(build, step, 2023,
               t"https://propensive.com/opensource/${step.id.project}",
               t"github.com/${step.id.project}", pub).xml
           
           pomXml.show.bytes.writeTo(step.pomFile.file(Create))
           
           val srcFiles: List[Text] = step.sources.to(List).flatMap: dir =>
-            Out.println(t"Adding source dir $dir")
+            Io.println(t"Adding source dir $dir")
             dir.path.descendantFiles(!_.name.starts(t".")).filter: file =>
               file.name.ends(t".scala") || file.name.ends(t".java")
             .flatMap: file =>
@@ -59,7 +59,7 @@ object Sonatype:
           sh"jar cf ${step.srcsPkg} $srcFiles".exec[ExitStatus]()
           
           val docFiles: List[Text] = step.docs.to(List).flatMap: dir =>
-            Out.println(t"Adding doc dir $dir")
+            Io.println(t"Adding doc dir $dir")
             dir.descendantFiles(!_.name.starts(t".")).flatMap: file =>
               List(t"-C", dir.fullname, file.path.relativeTo(dir).show)
           
@@ -68,7 +68,7 @@ object Sonatype:
           List(step.docFile, step.pomFile, /*step.pkg,*/ step.srcsPkg).foreach: file =>
             sh"gpg -ab $file".exec[ExitStatus]()
 
-          Out.println(t"Publishing ${step.id}")
+          Io.println(t"Publishing ${step.id}")
           val dir = t"${step.id.dashed}/${step.version}"
 
           val uploads = List(/*step.pkg, */step.pomFile, step.docFile, step.srcsPkg).map(_.file(Expect))
@@ -85,9 +85,7 @@ object Sonatype:
         sonatype.activity(repoId)
         sonatype.promote(profileId, repoId)
 
-case class Sonatype(username: Text, password: Text, profileName: Text,
-                        domain: Text = t"oss.sonatype.org"):
-
+case class Sonatype(username: Text, password: Text, profileName: Text, domain: Text = t"oss.sonatype.org"):
   val servicePath: Text = t"service/local/staging"
 
   val auth = RequestHeader.Authorization(t"Basic ${t"$username:$password".bytes.encode[Base64]}")
@@ -112,11 +110,11 @@ case class Sonatype(username: Text, password: Text, profileName: Text,
     Log.info(t"Got repository ID $output")
     RepoId(output)
   
-  def deploy(repoId: RepoId, dir: Text, files: List[File[Unix]])(using Log, Internet): Unit =
+  def deploy(repoId: RepoId, dir: Text, files: List[File])(using Log, Internet): Unit =
     val futures = for file <- files yield Future:
       val url = url"https://$domain/$servicePath/deployByRepositoryId/${repoId.id}/${profileName.sub(t".", t"/").nn}/$dir/${file.name}"
       Log.info(t"Uploading file $file to $url")
-      url.put(auth)(file.read[DataStream]())
+      url.put(auth)(file.read[Bytes])
       Log.info(t"Finished uploading $file")
 
     Await.result(Future.sequence(futures), duration.Duration.Inf)
@@ -139,4 +137,5 @@ case class Sonatype(username: Text, password: Text, profileName: Text,
     case class Data(data: Payload)
     case class Payload(description: Text, stagedRepositoryId: Text, targetRepositoryId: Text)
     url"https://$domain/$servicePath/profiles/${profileId.id}/promote".post(auth, jsonContent, acceptJson)(Data(Payload(t"", repoId.id, profileId.repoTargetId)).json).as[Text]
-  
+
+*/

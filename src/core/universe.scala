@@ -4,12 +4,14 @@ import rudiments.*
 import galilei.*
 import gossamer.*
 import serpentine.*
-import parasitism.*, threading.virtual
+import parasitism.*
 import turbulence.*
 import cellulose.*
+import ambience.*
+import deviation.*
 
 object Universe:
-  def apply(name: Text)(using Environment, Stdout): Universe throws IoError | EnvError | GitError | AggregateError | CodlReadError | IncompatibleTypeError | InvalidPathError =
+  def apply(name: Text)(using Environment, Stdio): Universe throws IoError | EnvError | GitError | AggregateError | CodlReadError | IncompatibleTypeError | InvalidPathError | StreamCutError =
     val url = name match
       case t"hell" => t"https://github.com/propensive/hell"
       case _ => throw AppError(t"Unknown universe: $name")
@@ -19,23 +21,25 @@ object Universe:
     Universe:
       dir.files.filter(_.name.ends(t".fury")).collect: file =>
         file.name.drop(5, Rtl).as[Int]
-      .sift[Int].sorted.foldLeft(Set[ProjectRoot]()): (acc, next) =>
-        val content = unsafely((dir / t"$next.fury").file(Expect).read[Text]())
+      .collect:
+        case int: Int => int
+      .sorted.foldLeft(Set[ProjectRoot]()): (acc, next) =>
+        val content = unsafely((dir / t"$next.fury").file(Expect).read[Text])
         acc ++ Codl.read[BuildConfig](content).project.map(ProjectRoot(_, dir))
   
-  def resolve(pwd: Directory[Unix])(using Environment, Stdout, Monitor)
+  def resolve(pwd: Directory)(using Environment, Stdio, Monitor)
              : (List[Target], Universe) throws InvalidPathError | IncompatibleTypeError | CodlReadError |
                  AggregateError | GitError | EnvError | IoError | RootParentError | DuplicateIndexError |
-                 CancelError =
+                 CancelError | StreamCutError =
 
-    def dirs(pwd: Directory[Unix], overlay: List[Overlay], forks: List[Fork]): List[Directory[Unix]] =
+    def dirs(pwd: Directory, overlay: List[Overlay], forks: List[Fork]): List[Directory] =
       val forkSet = forks.indexBy(_.id)
 
       overlay.map: ov =>
         if !forkSet.contains(ov.project.project) then GitCache(ov.url, ov.commit)
         else (pwd.path + forkSet(ov.project.project).path).directory(Expect)
 
-    def recur(universe: Maybe[(List[Target], Universe)], todo: List[Directory[Unix]], seen: Set[Directory[Unix]]): (List[Target], Universe) =
+    def recur(universe: Maybe[(List[Target], Universe)], todo: List[Directory], seen: Set[Directory]): (List[Target], Universe) =
       todo match
         case Nil =>
           universe.or(throw AppError(t"Could not resolve the build"))
@@ -45,10 +49,10 @@ object Universe:
             val buildFile = (pwd / p"fury").file()
             val forksFile = (pwd / p".forks").file()
 
-            safely(buildFile.mm(_.read[Text]())).mm(Codl.read[BuildConfig](_)).mm: config =>
+            safely(buildFile.mm(_.read[Text])).mm(Codl.read[BuildConfig](_)).mm: config =>
               val universe2 = universe.or(config.command -> Universe(config.universe.or(throw AppError(t"The universe has not been specified"))))
               val forks: List[Fork] =
-                try safely(forksFile.mm(_.read[Text]())).mm(Codl.read[Forks](_).fork).or(Nil)
+                try safely(forksFile.mm(_.read[Text])).mm(Codl.read[Forks](_).fork).or(Nil)
                 catch case err: Exception => unsafely(throw new Exception(s"${summon[Codec[Forks]].schema}"))
               val projects2 = config.project.map(ProjectRoot(_, pwd)).to(Set)
               recur(universe2(0) -> (universe2(1) ++ Universe(projects2)), dirs(pwd, config.overlay, forks) ::: todo, seen + pwd)
@@ -71,11 +75,11 @@ case class Universe(projects: Set[ProjectRoot]):
 case class Release(id: ProjectId, stream: Text, description: Text, tag: List[Text], license: Text, date: Text,
                        life: Int, repo: GitRepo, provide: List[Text])
 
-case class ProjectRoot(project: Project, root: Directory[Unix]):
+case class ProjectRoot(project: Project, root: Directory):
   export project.*
 
-  def resolve(repoPath: RepoPath)(using Environment, Monitor, Threading, Stdout) 
-             : Directory[Unix] throws GitError | EnvError | IoError | CancelError | RootParentError =
+  def resolve(repoPath: RepoPath)(using Environment, Monitor, Stdio) 
+             : Directory throws GitError | EnvError | IoError | CancelError | RootParentError =
   repoPath.repoId.fm(root.path + repoPath.path): repoId =>
     val repo = project.repo.find(_.id.id == repoId).getOrElse(throw AppError(t"The repo ${repoId} was not defined in ${project.toString}"))
     GitCache(repo.url, repo.commit).path + repoPath.path

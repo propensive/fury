@@ -1,15 +1,16 @@
 package fury
 
-import gossamer.*
+import gossamer.*, textWidthCalculation.eastAsianScripts
 import rudiments.*
-import turbulence.*
+import deviation.*
+import turbulence.*, lineSeparation.jvm
 import acyclicity.*
-import euphemism.*
+import jacinta.*
 import eucalyptus.Log
 import galilei.*, filesystems.unix
-import anticipation.*, integration.galileiPath
+import anticipation.*, fileApi.galileiApi, timeApi.aviationApi
 import guillotine.*
-import parasitism.*, threading.virtual, monitors.global
+import parasitism.*, monitors.global
 import kaleidoscope.*
 import escapade.*
 import gastronomy.*
@@ -26,8 +27,9 @@ import xylophone.*
 import telekinesis.*
 import escritoire.*, tableStyles.horizontalDots
 import surveillance.*
+import ambience.*
+import aviation.*
 
-import timekeeping.long
 import rendering.ansi
 
 import scala.collection.mutable as scm
@@ -61,11 +63,11 @@ object Fury extends Daemon():
     catch
       case error: AppError => error match
         case AppError(message, _) =>
-          Out.println(message)
+          Io.println(message)
           ExitStatus.Fail(1)
       case err: Throwable =>
         try
-          Out.println(StackTrace(err).ansi)
+          Io.println(StackTrace(err).ansi)
           ExitStatus.Fail(1)
         catch case err2: Throwable =>
           System.out.nn.println(err2.toString)
@@ -84,32 +86,32 @@ object Fury extends Daemon():
     props.load(getClass.nn.getClassLoader.nn.getResourceAsStream("compiler.properties").nn)
     props.get("version.number").toString.show
  
-  def homeDir(using Environment): Directory[Unix] = unsafely(Home[DiskPath[Unix]]().directory(Expect))
+  def homeDir(using Environment): Directory = unsafely(Home[DiskPath]().directory(Expect))
       
-  def cacheDir(using Environment): Directory[Unix] =
-    try (Home.Cache[DiskPath[Unix]]() / p"fury").directory(Ensure)
+  def cacheDir(using Environment): Directory =
+    try (Home.Cache[DiskPath]() / p"fury").directory(Ensure)
     catch case err: IoError => throw AppError(t"The user's cache directory could not be created", err)
 
-  def universeDir(using Environment): Directory[Unix] =
+  def universeDir(using Environment): Directory =
     try (cacheDir / p"uni").directory(Ensure)
     catch case err: IoError => throw AppError(t"The user's universe directory could not be created", err)
   
-  def libDir(using Environment): Directory[Unix] =
+  def libDir(using Environment): Directory =
     try (cacheDir / p"lib").directory(Ensure)
     catch case err: IoError => throw AppError(t"The user's lib directory could not be created", err)
   
-  def repoDir(using Environment): Directory[Unix] =
+  def repoDir(using Environment): Directory =
     try (cacheDir / p"repo").directory(Ensure)
     catch case err: IoError => throw AppError(t"The user's repo cache could not be created", err)
   
-  def libJar(hash: Digest[Crc32])(using Environment): DiskPath[Unix] =
+  def libJar(hash: Digest[Crc32])(using Environment): DiskPath =
     unsafely(libDir / t"${hash.encode[Hex].lower}.jar")
   
-  def tmpDir(using Environment): Directory[Unix] =
+  def tmpDir(using Environment): Directory =
     try (cacheDir / p"tmp").directory(Ensure)
     catch case err: IoError => throw AppError(t"The user's tmp directory could not be created", err)
   
-  def hashDir(using Environment): Directory[Unix] =
+  def hashDir(using Environment): Directory =
     try (cacheDir / p"hash").directory(Ensure)
     catch case err: IoError => throw AppError(t"The user's hash directory could not be created", err)
 
@@ -117,9 +119,9 @@ object Fury extends Daemon():
       t"/incrementalcompiler.version.properties", t"/library.properties", t"/NOTICE")
 
   private def scriptSize: Int throws StreamCutError | ClasspathRefError =
-    unsafely(Classpath() / p"exoskeleton" / p"invoke").resource.read[Bytes]().size
+    unsafely(Classpath() / p"exoskeleton" / p"invoke").read[Bytes].size
 
-  def furyJar(scriptFile: File[Unix])(using Stdout, Environment): File[Unix] throws StreamCutError = synchronized:
+  def furyJar(scriptFile: File)(using Stdio, Environment): File throws StreamCutError = synchronized:
     import java.nio.file.*
     val jarPath = unsafely(libDir.path / t"base-$version.jar")
 
@@ -142,7 +144,7 @@ object Fury extends Daemon():
           try
             if !keep(file.nn.toString.show) then Files.delete(file.nn)
             else Files.setLastModifiedTime(file.nn, Zip.epoch)
-          catch case err: Exception => () //Out.println(t"Got a NPE on ${file.nn.toString.show}")
+          catch case err: Exception => () //Io.println(t"Got a NPE on ${file.nn.toString.show}")
       
       fs.close()
       
@@ -150,10 +152,10 @@ object Fury extends Daemon():
     catch case err: IoError =>
       throw AppError(t"The fury binary could not be copied to the user's cache directory")
 
-  def getFile(ref: Text)(using Environment): File[Unix] = unsafely(libJar(ref.digest[Crc32]).file(Expect))
+  def getFile(ref: Text)(using Environment): File = unsafely(libJar(ref.digest[Crc32]).file(Expect))
 
-  def fetchFile(ref: Text, funnel: Option[Funnel[Progress.Update]])(using Stdout, Internet, Monitor, Environment)
-               : Task[File[Unix]] =
+  def fetchFile(ref: Text, funnel: Option[Funnel[Progress.Update]])(using Stdio, Internet, Monitor, Environment)
+               : Task[File] =
     if ref.starts(t"https:") then
       val hash = ref.digest[Crc32]
       if libJar(hash).exists() then Task(t"hash"):
@@ -194,34 +196,34 @@ object Fury extends Daemon():
 
   private lazy val fileHashes: FileCache[Digest[Crc32]] = new FileCache()
 
-  def hashFile(file: File[Unix]): Digest[Crc32] throws IoError | AppError =
+  def hashFile(file: File): Digest[Crc32] throws IoError | AppError =
     try fileHashes(file.path.fullname, file.modified):
-      file.read[Bytes]().digest[Crc32]
+      file.read[Bytes].digest[Crc32]
     catch
       case err: StreamCutError  => throw AppError(t"The stream was cut while hashing a file", err)
       case err: Error[?]        => throw AppError(t"An unexpected error occurred", err)
   
-  def cloneRepo(path: DiskPath[Unix], url: Text)(using Environment): Unit =
+  def cloneRepo(path: DiskPath, url: Text)(using Environment): Unit =
     try sh"git clone -q $url ${path.fullname}".exec[Unit]()
     catch
       case err: ExecError => throw AppError(t"Could not run `git clone` for repository $url", err)
       case err: EnvError  => throw AppError(t"Could not run `git clone` for repository $url", err)
           
-  def readImports(seen: Map[Digest[Crc32], File[Unix]], files: File[Unix]*)
-                 (using Stdout, Environment)
-                 : Set[File[Unix]] =
+  def readImports(seen: Map[Digest[Crc32], File], files: File*)
+                 (using Stdio, Environment)
+                 : Set[File] =
     case class Imports(repos: Option[List[Repo]], imports: Option[List[Text]]):
       def repoList: List[Repo] = repos.presume
-      def gen(seen: Map[Digest[Crc32], File[Unix]], files: File[Unix]*): Set[File[Unix]] = files.to(List) match
+      def gen(seen: Map[Digest[Crc32], File], files: File*): Set[File] = files.to(List) match
         case file :: tail =>
-          val importFiles: List[File[Unix]] = imports.presume.flatMap: path =>
+          val importFiles: List[File] = imports.presume.flatMap: path =>
             val ref = unsafely(file.parent.path + Relative.parse(path))
             
             try
               if ref.exists() then
                 List(unsafely(file.parent.path + Relative.parse(path)).file(Expect))
               else
-                Out.println(t"Build file $ref does not exist; attempting to clone")
+                Io.println(t"Build file $ref does not exist; attempting to clone")
                 if unsafely(ref.parent).exists()
                 then throw AppError(t"The build ${ref.name} does not exist in ${unsafely(ref.parent)}")
                 else
@@ -247,7 +249,7 @@ object Fury extends Daemon():
       case file :: tail =>
         try
           def interpret(digest: Option[Digest[Crc32]]) =
-            Json.parse(file.read[Text]()).as[Imports].gen(digest.fold(seen)(seen.updated(_, file)), files*)
+            Json.parse(file.read[Text]).as[Imports].gen(digest.fold(seen)(seen.updated(_, file)), files*)
           
           if file.exists() then
             val digest: Digest[Crc32] = hashFile(file)
@@ -256,16 +258,16 @@ object Fury extends Daemon():
 
         catch case err: Exception => readImports(seen, tail*)
 
-  def stop(cli: CommandLine)(using Stdout): ExitStatus =
+  def stop(cli: CommandLine)(using Stdio): ExitStatus =
     cli.shutdown()
     ExitStatus.Ok
 
-  def showVersion()(using Stdout): ExitStatus =
-    Out.println(Fury.version)
+  def showVersion()(using Stdio): ExitStatus =
+    Io.println(Fury.version)
     ExitStatus.Ok
   
-  def about()(using Stdout): ExitStatus =
-    Out.println(logo)
+  def about()(using Stdio): ExitStatus =
+    Io.println(logo)
     case class Software(name: Text, version: Text, license: Text)
     
     val software = List(
@@ -278,31 +280,31 @@ object Fury extends Daemon():
       Column(ansi"$Bold(Software)")(_.name),
       Column(ansi"$Bold(Version)")(_.version),
       Column(ansi"$Bold(License)")(_.license)
-    ).tabulate(software, 80, DelimitRows.SpaceIfMultiline).foreach(Out.println(_))
+    ).tabulate(software, 80, DelimitRows.SpaceIfMultiline).foreach(Io.println(_))
 
-    Out.println(ansi"  ${colors.Gray}($Italic(© Copyright 2022 Propensive OÜ and Jon Pretty. All Rights Reserved.))")
-    Out.println(t"")
+    Io.println(ansi"  ${colors.Gray}($Italic(© Copyright 2022 Propensive OÜ and Jon Pretty. All Rights Reserved.))")
+    Io.println(t"")
 
     ExitStatus.Ok
 
-  def help()(using Stdout): ExitStatus =
-    Out.println(t"Usage: fury [subcommand] [options]")
-    Out.println(t"")
-    Out.println(t"Subcommands:")
-    Out.println(t"  build    -- runs the build in the current directory (default)")
-    Out.println(t"  about    -- show version information for Fury")
-    Out.println(t"  help     -- show this message")
-    Out.println(t"  stop     -- stop the Fury daemon process")
-    Out.println(t"")
-    Out.println(t"Options:")
-    Out.println(t"  -w, --watch    Wait for changes and re-run build.")
+  def help()(using Stdio): ExitStatus =
+    Io.println(t"Usage: fury [subcommand] [options]")
+    Io.println(t"")
+    Io.println(t"Subcommands:")
+    Io.println(t"  build    -- runs the build in the current directory (default)")
+    Io.println(t"  about    -- show version information for Fury")
+    Io.println(t"  help     -- show this message")
+    Io.println(t"  stop     -- stop the Fury daemon process")
+    Io.println(t"")
+    Io.println(t"Options:")
+    Io.println(t"  -w, --watch    Wait for changes and re-run build.")
     ExitStatus.Ok
 
-  def init(pwd: Directory[Unix], name: Text)(using Stdout): ExitStatus =
+  def init(pwd: Directory, name: Text)(using Stdio): ExitStatus =
     ExitStatus.Fail(1)
     // val buildPath = unsafely(pwd / t"build.irk")
     // if buildPath.exists() then
-    //   Out.println(t"Build file build.irk already exists")
+    //   Io.println(t"Build file build.irk already exists")
     //   ExitStatus.Fail(1)
     // else
     //   import unsafeExceptions.canThrowAny
@@ -319,10 +321,10 @@ object Fury extends Daemon():
     //     ExitStatus.Ok
     //   catch
     //     case err: IoError =>
-    //       Out.println(t"Could not write to build.irk")
+    //       Io.println(t"Could not write to build.irk")
     //       ExitStatus.Fail(1)
     //     case err: StreamCutError =>
-    //       Out.println(t"Could not write to build.irk")
+    //       Io.println(t"Could not write to build.irk")
     //       ExitStatus.Fail(1)
 
   private val snip = t" — "*100
@@ -468,7 +470,7 @@ object Fury extends Daemon():
     buf.text
 
 
-  case class Change(changeType: ChangeType, path: DiskPath[Unix])
+  case class Change(changeType: ChangeType, path: DiskPath)
   enum ChangeType:
     case Build, Source, Resource
 
@@ -480,9 +482,9 @@ object Fury extends Daemon():
       case Source    => t"source"
       case Resource  => t"resource"
 
-  def build(command: Maybe[Text], publishSonatype: Boolean, watch: Boolean = false, scriptFile: File[Unix],
+  def build(command: Maybe[Text], publishSonatype: Boolean, watch: Boolean = false, scriptFile: File,
                 exec: Boolean)
-           (using Stdout, InputSource, Monitor, Environment)
+           (using Stdio, InputSource, Monitor, Environment)
            : ExitStatus throws AppError = unsafely:
     Tty.capture:
       val rootBuild = unsafely(env.pwd / t"build.irk")
@@ -512,12 +514,12 @@ object Fury extends Daemon():
         case _ =>
           true
 
-      lazy val watcher: Watcher[Directory[Unix]] = try  
-        val watcher = List[Directory[Unix]]().watch()
+      lazy val watcher: Watcher[Directory] = try  
+        val watcher = List[Directory]().watch()
         
         if watch then
           val dirs = readImports(Map(), rootBuild.file(Expect)).map(_.parent).to(Set)
-          dirs.sift[Directory[Unix]].foreach(watcher.add(_))
+          dirs.foreach(watcher.add(_))
         
         watcher
       catch
@@ -526,9 +528,10 @@ object Fury extends Daemon():
 
       val suffixes = Set(t".scala", t".java", t".irk")
       
-      def updateWatches(watcher: => Watcher[Directory[Unix]], build: Build): Build = try
+      def updateWatches(watcher: => Watcher[Directory], build: Build): Build = try
         val buildDirs = readImports(Map(), rootBuild.file(Expect)).map(_.parent).to(Set)
-        val dirs = (buildDirs ++ build.sourceDirs ++ build.resourceDirs).sift[Directory[Unix]]
+        val dirs = (buildDirs ++ build.sourceDirs ++ build.resourceDirs).collect:
+          case dir: Directory => dir
         
         (dirs -- watcher.directories).foreach(watcher.add(_))
         (watcher.directories -- dirs).foreach(watcher.remove(_))
@@ -574,7 +577,7 @@ object Fury extends Daemon():
               case _                                                        => false
             
             val changes: List[Change] =
-              fileChanges.groupBy(_.path[DiskPath[Unix]]).collect:
+              fileChanges.groupBy(_.path[DiskPath]).collect:
                 case (path, es) if !ephemeral(es) => es.last
               .foldLeft[List[Change]](Nil): (changes, event) =>
                 Option(event).collect:
@@ -582,12 +585,12 @@ object Fury extends Daemon():
                   case WatchEvent.Modify(_, _)  => t"modified"
                   case WatchEvent.NewFile(_, _) => t"created"
                 .foreach: change =>
-                  val file = ansi"${palette.File}(${event.path[DiskPath[Unix]].relativeTo(env.pwd)})"
-                  Out.println(ansi"The file $file was $change")
+                  val file = ansi"${palette.File}(${event.path[DiskPath].relativeTo(env.pwd)})"
+                  Io.println(ansi"The file $file was $change")
                 
-                if event.path[DiskPath[Unix]].name.ends(t".irk")
+                if event.path[DiskPath].name.ends(t".irk")
                 then Change(ChangeType.Build, event.path) :: changes
-                else if event.path[DiskPath[Unix]].name.ends(t".scala")
+                else if event.path[DiskPath].name.ends(t".scala")
                 then Change(ChangeType.Source, event.path) :: changes
                 else if oldBuild.resourceDirs.exists(_.path.precedes(event.path))
                 then Change(ChangeType.Resource, event.path) :: changes
@@ -597,7 +600,7 @@ object Fury extends Daemon():
               loop(false, stream.tail, oldBuild, lastSuccess, browser, running, count, columns)
             else
               changes.foreach: change =>
-                Out.println(ansi"Rebuild triggered by change to a ${change.changeType.category} file")
+                Io.println(ansi"Rebuild triggered by change to a ${change.changeType.category} file")
   
               val build: Build =
                 if changes.exists(_.changeType.rebuild)
@@ -607,16 +610,16 @@ object Fury extends Daemon():
               build.clearHashes()
   
               val oldHashes = build.cache
-              Out.println(t"")
-              Out.print(ansi"${colors.Black}(${Bg(colors.DarkTurquoise)}( Build #$count ))")
-              Out.print(ansi"${colors.DarkTurquoise}(${Bg(colors.DodgerBlue)}( ${colors.Black}(${build.pwd.path.fullname}) ))")
-              Out.println(ansi"${colors.DodgerBlue}()")
+              Io.println(t"")
+              Io.print(ansi"${colors.Black}(${Bg(colors.DarkTurquoise)}( Build #$count ))")
+              Io.print(ansi"${colors.DarkTurquoise}(${Bg(colors.DodgerBlue)}( ${colors.Black}(${build.pwd.path.fullname}) ))")
+              Io.println(ansi"${colors.DodgerBlue}()")
               
               val funnel: Funnel[Progress.Update] = Funnel()
               funnel.put(Progress.Update.Resize(columns))
               val totalTasks: Int = build.steps.size
 
-              val owners: Map[DiskPath[Unix], Step] = build.steps.flatMap: step =>
+              val owners: Map[DiskPath, Step] = build.steps.flatMap: step =>
                 step.sources.map(_.path -> step)
               .to(Map)
               
@@ -672,15 +675,15 @@ object Fury extends Daemon():
                       else
                         result
   
-              val pulsar = Pulsar(using timekeeping.long)(100)
+              val pulsar = Pulsar(Duration.of(100))
               
               val ui = Task(t"ui"):
                 funnel.stream.multiplexWith:
                   pulsar.stream.map(Progress.Update.Print.waive)
                 .foldLeft(Progress(TreeMap(), Nil, totalTasks = totalTasks))(_(_))
               
-              val resultSet = tasks.values.sequence.await().to(Set)
-              val result = resultSet.foldLeft(Result.Complete())(_ + _)
+              val resultSet: Set[Result] = tasks.values.sequence.await().to(Set)
+              val result: Result = resultSet.foldLeft(Result.Complete())(_ + _)
               
               val subprocesses: List[Jvm] = if !result.success then running else
                 build.linearization.map: step =>
@@ -698,7 +701,7 @@ object Fury extends Daemon():
                         jvm
 
                       val subprocess: Jvm = mainTask.await()
-                      
+                      // FIXME: Output needs to be consumed while the process is running, otherwise it will stall
                       val newResult: Result = subprocess.await() match
                         case ExitStatus.Ok =>
                           subprocess.stdout().foreach: data =>
@@ -715,7 +718,7 @@ object Fury extends Daemon():
                       
                       Some(subprocess)
                   
-                  if publishSonatype then Sonatype.publish(build, env(t"SONATYPE_PASSWORD"))
+                  //if publishSonatype then Sonatype.publish(build, env(t"SONATYPE_PASSWORD"))
                   
                   subprocess
                 .flatten
@@ -723,39 +726,39 @@ object Fury extends Daemon():
               pulsar.stop()
               funnel.stop()
               ui.await()
-              Out.print(report(result, columns))
+              Io.print(report(result, columns))
 
               val arrowColor = if result.success then colors.YellowGreen else colors.OrangeRed
-              Out.print(ansi"${Bg(arrowColor)}(  )")
-              Out.print(ansi"${arrowColor}() ")
+              Io.print(ansi"${Bg(arrowColor)}(  )")
+              Io.print(ansi"${arrowColor}() ")
 
               if result == Result.Aborted
-              then Out.println(ansi"Build was ${colors.SteelBlue}(aborted)")
+              then Io.println(ansi"Build was ${colors.SteelBlue}(aborted)")
               else if !result.success
               then
-                Out.print(ansi"Build ${colors.OrangeRed}(failed) with ")
-                Out.println(ansi"${colors.Gold}(${result.errors.size}) ${Numerous(t"error")(result.errors)}")
+                Io.print(ansi"Build ${colors.OrangeRed}(failed) with ")
+                Io.println(ansi"${colors.Gold}(${result.errors.size}) ${Numerous(t"error")(result.errors)}")
               else
-                Out.print(ansi"Build ${colors.Green}(succeeded)")
+                Io.print(ansi"Build ${colors.Green}(succeeded)")
                 
                 if result.issues.size > 0
-                then Out.println(ansi" with ${colors.Gold}(${result.issues.size}) ${Numerous(t"warning")(result.issues)}")
-                else Out.println(ansi"")
+                then Io.println(ansi" with ${colors.Gold}(${result.issues.size}) ${Numerous(t"warning")(result.issues)}")
+                else Io.println(ansi"")
 
-              Out.println(t"\e[0m\e[?25h\e[A")
+              Io.println(t"\e[0m\e[?25h\e[A")
 
               if watch then
-                Out.print(Progress.titleText(t"Fury: waiting for changes"))
-                Out.print(ansi"${t"\n"}${Bg(colors.Orange)}(  )")
-                Out.print(ansi"${colors.Orange}() ")
-                Out.println(ansi"Watching ${colors.Gold}(${watcher.directories.size}) directories for changes...")
+                Io.print(Progress.titleText(t"Fury: waiting for changes"))
+                Io.print(ansi"${t"\n"}${Bg(colors.Orange)}(  )")
+                Io.print(ansi"${colors.Orange}() ")
+                Io.println(ansi"Watching ${colors.Gold}(${watcher.directories.size}) directories for changes...")
               
               tap.open()
               loop(false, stream.tail, build, result.success, browser, subprocesses, count + 1, columns)
           
       val fileChanges: LazyList[Event] =
         if !watch then LazyList()
-        else interrupts.multiplexWith(watcher.stream.regulate(tap).cluster(100).map(Event.Changeset(_)))
+        else interrupts.multiplexWith(watcher.stream.regulate(tap).cluster(Duration.of(100)).map(Event.Changeset(_)))
       
       val build = generateBuild(command)
       
@@ -780,7 +783,7 @@ object Run:
     given Environment = environments.system
     adoptium.get(18, jre = true, early = true, force = false)
 
-  def main(classpath: List[DiskPath[Unix]])(start: Text, stop: Option[Text])(using Stdout, Environment)
+  def main(classpath: List[DiskPath])(start: Text, stop: Option[Text])(using Stdio, Environment)
           : Jvm throws ClasspathRefError | IoError | StreamCutError | EnvError | NoValidJdkError =
     jdk.launch(classpath, start, Nil)
 

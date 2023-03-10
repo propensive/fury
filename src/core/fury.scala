@@ -1,12 +1,14 @@
 package fury
 
-import gossamer.*
+import gossamer.*, textWidthCalculation.eastAsianScripts
 import rudiments.*
-import parasitism.*, threading.virtual
-import turbulence.*
+import aviation.*
+import ambience.*
+import parasitism.*
+import turbulence.*, lineSeparation.jvm
 import acyclicity.*
 import merino.*
-import euphemism.*, jsonSerializers.minimal
+import jacinta.*, jsonPrinters.minimal
 import cellulose.*
 import galilei.*
 import serpentine.*
@@ -18,9 +20,10 @@ import iridescence.*, solarized.*
 import eucalyptus.*
 import imperial.*
 import profanity.*
+import deviation.*
 import xylophone.*
 import telekinesis.*
-import anticipation.*
+import anticipation.*, timeApi.aviationApi
 import java.nio.BufferOverflowException
 
 import scala.collection.mutable as scm
@@ -28,12 +31,11 @@ import scala.util.chaining.scalaUtilChainingOps
 
 import java.io as ji
 
-import timekeeping.long
 import rendering.ansi
 
 erased given CanThrow[AppError] = compiletime.erasedValue
-given LogFormat[File[Unix]] = LogFormat.standardAnsi
-given Encoding = encodings.Utf8
+given LogFormat[File] = LogFormat.standardAnsi
+given Encoding = characterEncodings.utf8
 
 //val LogFile = unsafely(Unix.parse(t"/var/log/fury.log").file(Ensure).sink)
 //given log: Log = Log(
@@ -50,8 +52,8 @@ object palette:
   val Class = colors.MediumAquamarine
 
 object Build:
-  def apply(pwd: Directory[Unix], command: Maybe[Target], universe: Universe)
-           (using Environment, Monitor, Threading, Stdout)
+  def apply(pwd: Directory, command: Maybe[Target], universe: Universe)
+           (using Environment, Monitor, Stdio)
            : Build throws GitError | IoError | EnvError | RootParentError | CancelError =
     
     def steps(todo: List[Ref], done: Map[Ref, Step]): Build = todo match
@@ -68,7 +70,9 @@ object Build:
           val includes = module.include.map(_.in(project.id))
           val uses = module.use.map(_.in(project.id))
           val resources = module.resource.map(project.resolve(_))
-          val sources: Set[Directory[Unix]] = module.source.map(project.resolve(_)).sift[Directory[Unix]]
+          
+          val sources: Set[Directory] = module.source.map(project.resolve(_)).collect:
+            case dir: Directory => dir
 
           steps((includes ++ uses).to(List) ::: tail, done.updated(ref, Step(project.root, ref.show, ref, includes ++ uses, resources, sources,
                    Set(), t"1.0.0", Nil, None, None, Nil, None, module.js.or(false))))
@@ -77,7 +81,7 @@ object Build:
       steps(cmd.include.map(_.ref), Map())
     .or(throw AppError(t"No valid build command was specified, and there is no default command"))
     
-case class Build(pwd: Directory[Unix], index: Map[Ref, Step] = Map()):
+case class Build(pwd: Directory, index: Map[Ref, Step] = Map()):
   val steps: Set[Step] = index.values.to(Set)
   val stepsMap = steps.map { step => step.id -> step }.to(Map)
   val plugins: Set[Ref] = steps.flatMap(_.plugins.map(_.id))
@@ -89,8 +93,8 @@ case class Build(pwd: Directory[Unix], index: Map[Ref, Step] = Map()):
     Dag(links.to(Seq)*)
 
   lazy val linearization: List[Step] throws BrokenLinkError = graph.sorted
-  def sourceDirs: List[Directory[Unix]] = steps.flatMap(_.sources).to(List)
-  def resourceDirs: List[Directory[Unix]] = steps.flatMap(_.resources).to(List)
+  def sourceDirs: List[Directory] = steps.flatMap(_.sources).to(List)
+  def resourceDirs: List[Directory] = steps.flatMap(_.resources).to(List)
 
 
   private var hashesResult: Option[Map[Step, Digest[Crc32]]] = None
@@ -120,12 +124,12 @@ case class Build(pwd: Directory[Unix], index: Map[Ref, Step] = Map()):
     Build(build.pwd, /*build.repos, publishing.orElse(build.publishing), */index ++ build.index)
   
   def resolve(id: Ref): Step throws BrokenLinkError = index.get(id).getOrElse(throw BrokenLinkError(id))
-  def bases: Set[Directory[Unix]] = steps.map(_.pwd).to(Set)
+  def bases: Set[Directory] = steps.map(_.pwd).to(Set)
 
   def cache(using Environment): Map[Step, Digest[Crc32]] =
     try
       val caches = bases.map(Fury.hashDir / _.path.fullname.digest[Crc32].encode[Hex]).filter(_.exists()).map: cacheFile =>
-        Json.parse(cacheFile.file(Ensure).read[Text]()).as[Cache].hashes
+        cacheFile.file(Ensure).read[Json].as[Cache].hashes
       
       caches.flatten.flatMap:
         case Hash(id, hash, _) => try Set(resolve(id) -> hash) catch case e: BrokenLinkError => Set()
@@ -142,7 +146,7 @@ case class Build(pwd: Directory[Unix], index: Map[Ref, Step] = Map()):
       val cacheFile = Fury.hashDir / step.pwd.path.fullname.digest[Crc32].encode[Hex]
       val cache = Cache:
         if cacheFile.exists()
-        then Json.parse(cacheFile.file(Ensure).read[Text]()).as[Cache].hashes.filter: hash =>
+        then cacheFile.file(Ensure).read[Json].as[Cache].hashes.filter: hash =>
           try resolve(hash.id).pwd == step.pwd catch case err: BrokenLinkError => false
         else Set()
       
@@ -166,13 +170,13 @@ object Format:
 enum Format:
   case Jar, FatJar, App, DaemonApp, CompilerPlugin
 
-case class Artifact(path: DiskPath[Unix], main: Option[Text], format: Format)
+case class Artifact(path: DiskPath, main: Option[Text], format: Format)
 
 object Artifact:
-  def build(artifact: Artifact, base: File[Unix], name: Text, version: Text, classpath: List[DiskPath[Unix]],
-                resources: List[Directory[Unix]], mainClass: Option[Text])(using Environment)
+  def build(artifact: Artifact, base: File, name: Text, version: Text, classpath: List[DiskPath],
+                resources: List[Directory], mainClass: Option[Text])(using Environment)
            : Unit throws IoError =
-    import stdouts.drain
+    //import stdouts.drain
     
     val zipStreams = (base.path :: classpath.sortBy(_.fullname)).to(LazyList).flatMap: path =>
       if path.isFile then Zip.read(path.file(Expect)).filter(_.path.parts.last != t"MANIFEST.MF")
@@ -200,9 +204,9 @@ object Artifact:
     val in = ji.BufferedInputStream(ji.ByteArrayInputStream(manifest.bytes.mutable(using Unsafe)))
     val mfEntry = Zip.Entry(Relative.parse(t"META-INF/MANIFEST.MF"), in)
     
-    val header = artifact.format match
-      case Format.DaemonApp => unsafely((Classpath() / p"exoskeleton" / p"invoke").resource.read[Bytes]())
-      case Format.App       => unsafely((Classpath() / p"exoskeleton" / p"invoke").resource.read[Bytes]())
+    val header: Maybe[Bytes] = artifact.format match
+      case Format.DaemonApp => unsafely((Classpath() / p"exoskeleton" / p"invoke").read[Bytes])
+      case Format.App       => unsafely((Classpath() / p"exoskeleton" / p"invoke").read[Bytes])
       case _                => Bytes.empty
     
     val extraResources: LazyList[Zip.Entry] = artifact.format match
@@ -217,38 +221,38 @@ object Artifact:
     
     artifact.path.file(Expect).setPermissions(executable = true)
 
-case class Step(pwd: Directory[Unix], /*path: File[Unix], publishing: Option[Publishing],*/ name: Text,
-                    id: Ref, links: Set[Ref], resources: Set[Directory[Unix]],
-                    sources: Set[Directory[Unix]], jars: Set[Text],
-                    version: Text, docs: List[DiskPath[Unix]], artifact: Option[Artifact],
+case class Step(pwd: Directory, /*path: File, publishing: Option[Publishing],*/ name: Text,
+                    id: Ref, links: Set[Ref], resources: Set[Directory],
+                    sources: Set[Directory], jars: Set[Text],
+                    version: Text, docs: List[DiskPath], artifact: Option[Artifact],
                     exec: Option[Exec], plugins: List[Plugin], main: Option[Text], js: Boolean):
   
   def publish(build: Build): Publishing =// publishing.orElse(build.publishing).getOrElse:
     throw AppError(t"There are no publishing details for $id")
  
   def group(build: Build): Text = publish(build).group
-  def docFile: DiskPath[Unix] = output(t"-javadoc.jar")
-  def srcsPkg: DiskPath[Unix] = output(t"-sources.jar")
-  def pomFile: DiskPath[Unix] = output(t".pom")
+  def docFile: DiskPath = output(t"-javadoc.jar")
+  def srcsPkg: DiskPath = output(t"-sources.jar")
+  def pomFile: DiskPath = output(t".pom")
   def allLinks = links ++ plugins.map(_.id)
   
-  private def output(extension: Text): DiskPath[Unix] = unsafely(pwd / t"bin" / t"${id.dashed}-$version$extension")
-  private def compilable(f: File[Unix]): Boolean = f.name.ends(t".scala") || f.name.ends(t".java")
+  private def output(extension: Text): DiskPath = unsafely(pwd / t"bin" / t"${id.dashed}-$version$extension")
+  private def compilable(f: File): Boolean = f.name.ends(t".scala") || f.name.ends(t".java")
 
-  def srcFiles: Set[File[Unix]] throws IoError =
+  def srcFiles: Set[File] throws IoError =
     sources.flatMap(_.path.descendantFiles(!_.name.starts(t"."))).filter(compilable)
 
-  def classpath(build: Build)(using Stdout, Environment): Set[DiskPath[Unix]] throws IoError | BrokenLinkError =
+  def classpath(build: Build)(using Stdio, Environment): Set[DiskPath] throws IoError | BrokenLinkError =
     build.graph.reachable(this).flatMap: step =>
       step.jars.map(Fury.getFile(_)).map(_.path) + step.classesDir.path
   
-  def allResources(build: Build)(using Stdout): Set[Directory[Unix]] throws IoError | BrokenLinkError =
+  def allResources(build: Build)(using Stdio): Set[Directory] throws IoError | BrokenLinkError =
     build.graph.reachable(this).flatMap(_.resources)
 
-  def compileClasspath(build: Build)(using Stdout, Environment): Set[DiskPath[Unix]] throws IoError | BrokenLinkError =
+  def compileClasspath(build: Build)(using Stdio, Environment): Set[DiskPath] throws IoError | BrokenLinkError =
     classpath(build) - classesDir.path
 
-  def classesDir(using Environment): Directory[Unix] = synchronized:
+  def classesDir(using Environment): Directory = synchronized:
     try unsafely(Fury.cacheDir / t"cls" / id.project / id.module).directory(Ensure)
     catch case err: IoError => throw AppError(t"Could not write to the user's home directory", err)
 
@@ -259,8 +263,8 @@ case class Step(pwd: Directory[Unix], /*path: File[Unix], publishing: Option[Pub
     catch case err: BrokenLinkError => throw AppError(t"Couldn't resolve dependencies", err)
 
   def compile(hashes: Map[Step, Digest[Crc32]], oldHashes: Map[Step, Digest[Crc32]], build: Build,
-                  scriptFile: File[Unix], cancel: Promise[Unit], owners: Map[DiskPath[Unix], Step])
-             (using Stdout, Internet, Monitor, Environment)
+                  scriptFile: File, cancel: Promise[Unit], owners: Map[DiskPath, Step])
+             (using Stdio, Internet, Monitor, Environment)
              : Result =
     val t0 = now()
     
@@ -278,7 +282,7 @@ case class Step(pwd: Directory[Unix], /*path: File[Unix], publishing: Option[Pub
       
       if result.success then
         val digestFiles = classesDir.path.descendantFiles().to(List).sortBy(_.name).to(LazyList)
-        val digest = digestFiles.map(_.read[Bytes]().digest[Crc32]).to(List).digest[Crc32]
+        val digest = digestFiles.map(_.read[Bytes].digest[Crc32]).to(List).digest[Crc32]
         build.updateCache(this, digest.encode[Base64])
       
       if cancel.ready then Result.Aborted else result
@@ -291,9 +295,9 @@ case class Step(pwd: Directory[Unix], /*path: File[Unix], publishing: Option[Pub
 
 
 class FileCache[T]:
-  private val files: scm.HashMap[Text, (Long, T)] = scm.HashMap()
+  private val files: scm.HashMap[Text, (Instant, T)] = scm.HashMap()
   
-  def apply(filename: Text, modified: Long)(calc: => T): T throws IoError =
+  def apply(filename: Text, modified: Instant)(calc: => T): T throws IoError =
     if !files.get(filename).fold(false)(_(0) == modified) then files(filename) = modified -> calc
     
     files(filename)(1)
@@ -302,10 +306,10 @@ case class Cache(hashes: Set[Hash])
 
 object Cache:
   private val latest: scm.HashMap[Text, Text] = scm.HashMap()
-  private val locks: scm.HashMap[DiskPath[Unix], Lock] = scm.HashMap()
+  private val locks: scm.HashMap[DiskPath, Lock] = scm.HashMap()
   private class Lock()
 
-  private def sync(path: DiskPath[Unix])(block: Directory[Unix] => Unit): Directory[Unix] throws IoError =
+  private def sync(path: DiskPath)(block: Directory => Unit): Directory throws IoError =
     Cache.synchronized:
       locks.get(path).getOrElse:
         val lock = Lock()
@@ -317,8 +321,8 @@ object Cache:
         block(dir)
         dir
 
-  def apply[T: Hashable](key: Text, input: T)(make: (T, Directory[Unix]) => Unit)(using Environment)
-           : Directory[Unix] throws IoError =
+  def apply[T: Hashable](key: Text, input: T)(make: (T, Directory) => Unit)(using Environment)
+           : Directory throws IoError =
     val hash = input.digest[Crc32].encode[Hex].lower
     
     sync(unsafely(Fury.cacheDir / hash)): workDir =>
@@ -343,8 +347,8 @@ object Progress:
 
   def titleText(title: Text): Text = t"\e]0;$title\u0007\b \b"
 
-case class Progress(active: TreeMap[Verb, (Digest[Crc32], Long)],
-                        completed: List[(Verb, Digest[Crc32], Long, Result)],
+case class Progress(active: TreeMap[Verb, (Digest[Crc32], Instant)],
+                        completed: List[(Verb, Digest[Crc32], Instant, Result)],
                         started: Boolean = false, done: Int = 0, totalTasks: Int,
                         columns: Int = 120, buffers: Map[Verb, StringBuilder] = Map()):
   private def add(verb: Verb, hash: Digest[Crc32]): Progress =
@@ -355,7 +359,7 @@ case class Progress(active: TreeMap[Verb, (Digest[Crc32], Long)],
     completed = (verb, active(verb)(0), active(verb)(1), result) :: completed
   )
 
-  def apply(update: Progress.Update)(using Stdout, Environment): Progress = update match
+  def apply(update: Progress.Update)(using Stdio, Environment): Progress = update match
     case Progress.Update.Resize(cols) =>
       copy(columns = cols)
 
@@ -369,7 +373,7 @@ case class Progress(active: TreeMap[Verb, (Digest[Crc32], Long)],
       copy(totalTasks = totalTasks - 1)
 
     case Progress.Update.Put(text) =>
-      Out.println(text)
+      Io.println(text)
       this
     
     case Progress.Update.Stdout(verb, data) =>
@@ -381,16 +385,16 @@ case class Progress(active: TreeMap[Verb, (Digest[Crc32], Long)],
     case Progress.Update.Print =>
       val starting = if !Fury.githubActions then
         val starting = !started && completed.nonEmpty
-        if done == 0 && completed.size > 0 then Out.println(t"─"*columns)
-        status.map(_.render).foreach(Out.println(_))
-        Out.println(t"\e[?25l\e[${active.size + 2}A")
+        if done == 0 && completed.size > 0 then Io.println(t"─"*columns)
+        status.map(_.render).foreach(Io.println(_))
+        Io.println(t"\e[?25l\e[${active.size + 2}A")
         starting
       else
         completed.foreach:
           case (task, hash, start, success) =>
             val hashText = ansi"${palette.Hash}(${hash.encode[Base256]})"
-            val time = ansi"${palette.Number}(${now() - start}ms)"
-            Out.println(ansi"${task.past} $hashText ($time)".render)
+            val time = ansi"${palette.Number}(${readDuration(now() - start)}ms)"
+            Io.println(ansi"${task.past} $hashText ($time)".render)
             buffers
         false
         
@@ -398,15 +402,15 @@ case class Progress(active: TreeMap[Verb, (Digest[Crc32], Long)],
 
   private final val spinner = t"⡀⡄⠆⠇⠋⠛⠹⢹⣸⣼⣶⣷⣯⣿⣻⣽⣼⣶⣦⣇⡇⠏⠋⠙⠘⠰⠠ "
   
-  def line(verb: Verb, hash: Digest[Crc32], start: Long, result: Result, active: Boolean): AnsiText =
-    val ds = (now() - start).show.drop(2, Rtl)
+  def line(verb: Verb, hash: Digest[Crc32], start: Instant, result: Result, active: Boolean): AnsiText =
+    val ds = readDuration(now() - start).show.drop(2, Rtl)
     val fractional = if ds.length == 0 then t"0" else ds.take(1, Rtl)
     val time = ansi"${if ds.length < 2 then t"0" else ds.drop(1, Rtl)}.${fractional}s"
     val padding = ansi" "*(7 - time.length.min(7))
     val hashText = ansi"${palette.Hash}(${hash.encode[Base256]})"
     
     if active then
-      val animation = unsafely(spinner((((now() - start)/100)%spinner.length).toInt))
+      val animation = unsafely(spinner(((readDuration(now () - start)/100)%spinner.length).toInt))
       val description = verb.present.pad(columns - 17)
       ansi"${colors.White}([$Yellow($animation)] $hashText $description $padding${palette.ActiveNumber}($time))"
     else

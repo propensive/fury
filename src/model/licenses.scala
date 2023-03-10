@@ -1,6 +1,7 @@
-package fury.model
+package fury
 
 import gossamer.*
+import deviation.*
 import rudiments.*
 
 enum License(name: Text, id: LicenseId, category: Text):
@@ -9,12 +10,20 @@ enum License(name: Text, id: LicenseId, category: Text):
   case Artistic2 extends License(t"Artistic license 2.0", lid"artistic-2.0", t"artistic")
   case Bsl1 extends License(t"Boost Software License 1.0", lid"bsl-1.0", t"bsl")
   case Bsd2Clause extends License(t"BSD 2-clause \"Simplified\" license", lid"bsd-2-clause", t"bsd")
-  case Bsd3Clause extends License(t"BSD 3-clause \"New\" or \"Revised\" license", lid"bsd-3-clause", t"bsd")
-  case Bsd3ClauseClear extends License(t"BSD 3-clause Clear license", lid"bsd-3-clause-clear", t"bsd")
+  
+  case Bsd3Clause extends License(t"BSD 3-clause \"New\" or \"Revised\" license", lid"bsd-3-clause",
+      t"bsd")
+  
+  case Bsd3ClauseClear extends License(t"BSD 3-clause Clear license", lid"bsd-3-clause-clear",
+      t"bsd")
+  
   case Cc extends License(t"Creative Commons license family", lid"cc", t"cc")
   case Cc01 extends License(t"Creative Commons Zero v1.0 Universal", lid"cc0-1.0", t"cc")
   case CcBy4 extends License(t"Creative Commons Attribution 4.0", lid"cc-by-4.0", t"cc")
-  case CcBySa4 extends License(t"Creative Commons Attribution Share Alike 4.0", lid"cc-by-sa-4.0", t"cc")
+  
+  case CcBySa4 extends License(t"Creative Commons Attribution Share Alike 4.0", lid"cc-by-sa-4.0",
+      t"cc")
+  
   case Wtfpl extends License(t"Do What The F*ck You Want To Public License", lid"wtfpl", t"wtfpl")
   case Ecl2 extends License(t"Educational Community License v2.0", lid"ecl-2.0", t"ecl")
   case Epl1 extends License(t"Eclipse Public License 1.0", lid"epl-1.0", t"epl")

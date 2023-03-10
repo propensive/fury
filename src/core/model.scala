@@ -7,22 +7,25 @@ import kaleidoscope.*
 import galilei.*
 import cellulose.*
 import serpentine.*
+import deviation.*
 import xylophone.*
-import euphemism.*
+import jacinta.*
 import gastronomy.*
 import escapade.*
 import surveillance.*
 
+import language.adhocExtensions
+
 case class Publishing(username: Text, group: Text, url: Text, organization: Maven.Organization,
                           developers: List[Maven.Developer])
 
-case class Issue(level: Level, baseDir: DiskPath[Unix], code: CodeRange, stack: List[CodeRange], message: Text)
+case class Issue(level: Level, baseDir: DiskPath, code: CodeRange, stack: List[CodeRange], message: Text)
 
 case class CodeRange(module: Maybe[Ref], path: Maybe[Relative], startLine: Int, from: Int, to: Int, endLine: Int,
                          content: IArray[Char])
 
 case class Repo(base: Text, url: Text):
-  def basePath(dir: DiskPath[Unix]): DiskPath[Unix] = unsafely(dir + Relative.parse(base))
+  def basePath(dir: DiskPath): DiskPath = unsafely(dir + Relative.parse(base))
 
 case class InvalidIdError(id: Text) extends Error(err"The value $id was not a valid ID")
 
@@ -99,7 +102,7 @@ case class Module(id: ModuleId, include: Set[ModuleId], use: Set[ModuleId], reso
                         main: Option[Text], publish: Option[Boolean], js: Maybe[Boolean])
 
 case class Overlay(url: Text, commit: Text, project: ProjectId)
-  //def resolve(): Directory[Unix] = GitCache(url, commit)
+  //def resolve(): Directory = GitCache(url, commit)
 
 case class Fork(id: Text, path: Relative)
 
@@ -144,7 +147,7 @@ case class BrokenLinkError(link: Ref) extends Error(err"the reference to $link c
 object Maven:
 
   object Dependency:
-    given Json.Reader[Dependency] = summon[Json.Reader[Text]].map:
+    given JsonReader[Dependency] = summon[JsonReader[Text]].map:
       case s"$group:$artifact:$version" => Dependency(group.show, artifact.show, version.show)
       case value                        => throw AppError(t"Could not parse dependency $value")
 
@@ -220,8 +223,8 @@ enum Result:
   
   def errors: Set[Issue] = issues.filter(_.level == Level.Error)
 
-given Json.Writer[Digest[Crc32]] = summon[Json.Writer[Text]].contramap[Digest[Crc32]](_.encode[Base64])
-given Json.Reader[Digest[Crc32]] = summon[Json.Reader[Text]].map(_.decode[Base64]).map(Digest[Crc32](_))
+given JsonWriter[Digest[Crc32]] = summon[JsonWriter[Text]].contraMap[Digest[Crc32]](_.encode[Base64])
+given JsonReader[Digest[Crc32]] = summon[JsonReader[Text]].map(_.decode[Base64]).map(Digest[Crc32](_))
 
 case class Hash(id: Ref, digest: Digest[Crc32], bin: Text)
 case class Versioning(versions: List[Version])
@@ -229,7 +232,7 @@ case class Versioning(versions: List[Version])
 case class Version(digest: Text, major: Int, minor: Int):
   def version: Text = t"$major.$minor"
 
-case class PluginRef(jarFile: DiskPath[Unix], params: List[Text])
+case class PluginRef(jarFile: DiskPath, params: List[Text])
 
 case class Target(id: Text, include: List[ModuleId], main: Maybe[Text], args: List[Text])
 

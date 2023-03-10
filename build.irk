@@ -19,23 +19,25 @@
   },
   "modules": [
     {
-      "name": "Fury",
-      "id": "fury/core",
-      "links": ["harlequin/core", "xylophone/core", "profanity/core", "guillotine/core",
-          "acyclicity/core", "galilei/integration", "telekinesis/client", "euphemism/core", "honeycomb/core",
-          "exoskeleton/core", "anticipation/time", "imperial/core", "tarantula/core", "surveillance/core",
-          "escritoire/core", "oubliette/core", "cellulose/core", "temporaneous/core", "punctuation/core"],
-      "sources": ["src/core"],
+      "name": "Fury Model",
+      "id": "fury/model",
+      "links": ["xylophone/core", "acyclicity/core", "galilei/integration", "telekinesis/client", "jacinta/core",
+          "anticipation/time", "escritoire/core", "cellulose/core", "aviation/core", "punctuation/core",
+          "imperial/core"],
+      "sources": ["src/model"],
+      "version": "0.6.1",
+      "docs": []
+    },
+    {
+      "name": "Fury Tests",
+      "id": "fury/test",
+      "links": ["probably/cli", "fury/model"],
+      "sources": ["src/test"],
       "version": "0.6.1",
       "docs": ["doc"],
-      "artifact": {
-        "main": "fury.Fury",
-        "path": "fury",
-        "format": "daemon-app"
-      },
-      "webdev": {
-        "browsers": ["chromium"],
-        "url": "http://localhost:8080/"
+      "exec": {
+        "browsers": [],
+	      "start": "fury.Tests"
       }
     }
   ]
