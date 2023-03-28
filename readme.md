@@ -1,4 +1,3 @@
-[<img alt="GitHub Workflow" src="https://img.shields.io/github/workflow/status/propensive/fury/Build/main?style=for-the-badge" height="24">](https://github.com/propensive/fury/actions)
 [<img src="https://img.shields.io/discord/633198088311537684?color=8899f7&label=DISCORD&style=for-the-badge" height="24">](https://discord.gg/v7CjtbnwDq)
 
 ![Fury logo](doc/logo.svg)
@@ -33,5 +32,9 @@ To build Fury, run,
 ```sh
 make distribution
 ```
+<<<<<<< HEAD
 which will generate the files `dist/fury-0.2.0` and `dist/launcher-0.2.0`.
+=======
+which will generate the files `dist/fury-0.8.0` and `dist/launcher-0.2.0`.
+>>>>>>> 8ca6fd4b47c5319be7999051d6eee1aa817fe61b
 
