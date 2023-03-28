@@ -1,16 +1,23 @@
-# This is a Wrath buildfile. More information is available at: https://github.com/propensive/wrath/
-[fury]
-target = fury/model
+target fury/model
 
-[fury/model]
-refs = xylophone/core acyclicity/core galilei/core telekinesis/client jacinta/core anticipation/time escritoire/core cellulose/core aviation/core punctuation/core imperial/core
-src = src/model
+repo propensive/xylophone
+repo propensive/galilei
+repo propensive/jacinta
+repo propensive/cellulose
+repo propensive/aviation
+repo propensive/imperial
+repo propensive/punctuation
 
-[fury/core]
-src = src/core
-refs = xylophone/core acyclicity/core galilei/core telekinesis/client jacinta/core anticipation/time escritoire/core cellulose/core aviation/core punctuation/core imperial/core guillotine/core surveillance/core profanity/core oubliette/core harlequin/core diuretic/core exoskeleton/core tarantula/core hieronymus/core
+project fury
+  module model
+    include  xylophone/core acyclicity/core galilei/core telekinesis/client jacinta/core aviation/core escritoire/core cellulose/core punctuation/core imperial/core
+    sources  src/model
 
-[fury/test]
-src = src/test
-refs = fury/model probably/cli
-main = fury.Tests
+  module core
+    sources  src/core
+    include  fury/model
+
+  module test
+    include  fury/model
+    main     fury.Tests
+    sources  src/test
