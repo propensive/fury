@@ -4,12 +4,13 @@
 
 # Fury
 
-____
+__A build tool for Scala__
 
-
+TBC
 
 ## Features
 
+TBC
 
 
 ## Availability
@@ -19,11 +20,12 @@ final release of Scala 3.3.
 
 ## Getting Started
 
+TBC
 
 
 ## Status
 
-Fury is classified as ____. For reference, Scala One projects are
+Fury is classified as __embryonic__. For reference, Scala One projects are
 categorized into one of the following five stability levels:
 
 - _embryonic_: for experimental or demonstrative purposes only, without any guarantees of longevity
@@ -67,7 +69,7 @@ Fury was designed and developed by Jon Pretty, and commercial support and traini
 
 ## Name
 
-
+TBC
 
 In general, Scala One project names are always chosen with some rationale, however it is usually
 frivolous. Each name is chosen for more for its _uniqueness_ and _intrigue_ than its concision or
