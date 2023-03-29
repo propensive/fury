@@ -95,7 +95,6 @@ object Tests extends Suite(t"Fury Model Tests"):
             capture(Branch(t"git/branch${sym}name"))
           .assert(_ == InvalidRefError(t"git/branch${sym}name", Ids.Branch))
       
-      suite(t"Git refs"):
         test(t"Package names cannot contain hyphens"):
           capture(Package(t"com.package-name"))
         .assert(_ == InvalidRefError(t"com.package-name", Ids.Package))

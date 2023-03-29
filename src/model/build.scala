@@ -34,6 +34,7 @@ trait Compiler
 trait Packager
 trait Executor
 trait Cloner
+trait Fetcher
 
 object Installation:
   def apply(cacheDir: Directory): Installation throws AppError =

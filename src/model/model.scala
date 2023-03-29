@@ -88,9 +88,8 @@ case class Module(                      id:        ModuleId,
 object ModuleRef extends RefType(t"module ref"):
   given (using CanThrow[InvalidRefError]): Codec[ModuleRef] = FieldCodec(_.show, ModuleRef(_))
 
-  given Show[ModuleRef] =
-    case ModuleRef(Unset, module)              => module.show
-    case ModuleRef(project: ProjectId, module) => t"$project/$module"
+  given Show[ModuleRef] = ref =>
+    t"${ref.projectId.mm { projectId => t"$projectId/" }.or(t"")}${ref.moduleId}"
   
   def apply(value: Text): ModuleRef throws InvalidRefError = value match
     case r"${ProjectId(project)}@([^/])+\/${ModuleId(module)}@([^/]+)" =>

@@ -1,16 +1,20 @@
-target fury/model
+target fury/test
 
 repo propensive/xylophone
+repo propensive/probably
 repo propensive/galilei
 repo propensive/jacinta
 repo propensive/cellulose
 repo propensive/aviation
 repo propensive/imperial
+repo propensive/gastronomy
 repo propensive/punctuation
+repo propensive/scintillate
+repo propensive/acyclicity
 
 project fury
   module model
-    include  xylophone/core acyclicity/core galilei/core telekinesis/client jacinta/core aviation/core escritoire/core cellulose/core punctuation/core imperial/core
+    include  xylophone/core acyclicity/core galilei/core telekinesis/client jacinta/core aviation/core escritoire/core cellulose/core punctuation/core imperial/core gastronomy/core acyclicity/core
     sources  src/model
 
   module core
@@ -18,6 +22,6 @@ project fury
     include  fury/model
 
   module test
-    include  fury/model
+    include  fury/model probably/cli
     main     fury.Tests
     sources  src/test
