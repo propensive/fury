@@ -17,7 +17,7 @@
 package fury
 
 import rudiments.*
-import deviation.*
+import digression.*
 import gossamer.*
 import serpentine.*
 import galilei.*

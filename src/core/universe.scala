@@ -24,7 +24,7 @@ import parasitism.*
 import turbulence.*
 import cellulose.*
 import ambience.*
-import deviation.*
+import digression.*
 
 object Universe:
   def apply(name: Text)(using Environment, Stdio): Universe throws IoError | EnvError | GitError | AggregateError | CodlReadError | IncompatibleTypeError | InvalidPathError | StreamCutError =

@@ -23,7 +23,7 @@ import kaleidoscope.*
 import galilei.*
 import cellulose.*
 import serpentine.*
-import deviation.*
+import digression.*
 import xylophone.*
 import jacinta.*
 import gastronomy.*

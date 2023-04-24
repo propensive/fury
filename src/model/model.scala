@@ -18,7 +18,7 @@ package fury
 
 import rudiments.*
 import serpentine.*
-import deviation.*
+import digression.*
 import gossamer.*
 import kaleidoscope.*
 import aviation.*

@@ -18,7 +18,7 @@ package fury
 
 import gossamer.*, textWidthCalculation.eastAsianScripts
 import rudiments.*
-import deviation.*
+import digression.*
 import turbulence.*, lineSeparation.jvm
 import acyclicity.*
 import jacinta.*

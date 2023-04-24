@@ -36,7 +36,7 @@ import iridescence.*, solarized.*
 import eucalyptus.*
 import imperial.*
 import profanity.*
-import deviation.*
+import digression.*
 import xylophone.*
 import telekinesis.*
 import anticipation.*, timeApi.aviationApi

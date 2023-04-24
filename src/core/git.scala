@@ -22,7 +22,7 @@ import gossamer.*
 import parasitism.*
 import guillotine.*
 import serpentine.*
-import deviation.*
+import digression.*
 import turbulence.*, lineSeparation.jvm
 import ambience.*
 

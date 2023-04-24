@@ -17,7 +17,7 @@
 package fury
 
 import gossamer.*
-import deviation.*
+import digression.*
 import rudiments.*
 
 enum License(name: Text, id: LicenseId, category: Text):

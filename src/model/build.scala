@@ -21,7 +21,7 @@ import galilei.*, filesystems.unix
 import anticipation.*, fileApi.galileiApi
 import rudiments.*
 import ambience.*, environments.system
-import deviation.*
+import digression.*
 import gossamer.*
 import gastronomy.*
 import turbulence.*, characterEncodings.utf8, badEncodingHandlers.strict

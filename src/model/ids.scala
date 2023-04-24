@@ -18,7 +18,7 @@ package fury
 
 import rudiments.*
 import gossamer.*
-import deviation.*
+import digression.*
 import chiaroscuro.*
 import cellulose.*
 import kaleidoscope.*

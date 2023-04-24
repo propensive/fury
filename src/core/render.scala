@@ -17,7 +17,7 @@
 package fury
 
 import cellulose.*
-import deviation.*
+import digression.*
 import turbulence.*, lineSeparation.adaptiveLinefeed
 import gossamer.*, textWidthCalculation.eastAsianScripts
 import escapade.*, rendering.ansi

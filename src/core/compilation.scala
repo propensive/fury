@@ -25,7 +25,7 @@ import escapade.*
 import eucalyptus.*
 import ambience.*
 import turbulence.*, lineSeparation.jvm
-import deviation.*
+import digression.*
 
 import rendering.ansi
 
