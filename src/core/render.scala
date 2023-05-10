@@ -19,7 +19,8 @@ package fury
 import cellulose.*
 import digression.*
 import turbulence.*, lineSeparation.adaptiveLinefeed
-import gossamer.*, textWidthCalculation.eastAsianScripts
+import gossamer.*
+import lithography.*, textWidthCalculation.eastAsianScripts
 import escapade.*, rendering.ansi
 import iridescence.*
 import rudiments.*

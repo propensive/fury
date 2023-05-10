@@ -16,7 +16,8 @@
 
 package fury
 
-import gossamer.*, textWidthCalculation.eastAsianScripts
+import gossamer.*
+import lithography.*, textWidthCalculation.eastAsianScripts
 import rudiments.*
 import aviation.*
 import ambience.*
