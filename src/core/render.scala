@@ -20,7 +20,7 @@ import cellulose.*
 import digression.*
 import turbulence.*, lineSeparation.adaptiveLinefeed
 import gossamer.*
-import lithography.*, textWidthCalculation.eastAsianScripts
+import hieroglyph.*, textWidthCalculation.eastAsianScripts
 import escapade.*, rendering.ansi
 import iridescence.*
 import rudiments.*

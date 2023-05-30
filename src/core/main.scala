@@ -17,7 +17,7 @@
 package fury
 
 import gossamer.*
-import lithography.*, textWidthCalculation.eastAsianScripts
+import hieroglyph.*, textWidthCalculation.eastAsianScripts
 import rudiments.*
 import digression.*
 import turbulence.*, lineSeparation.jvm
