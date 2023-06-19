@@ -20,7 +20,7 @@ import rudiments.*
 import galilei.*
 import gossamer.*
 import serpentine.*
-import parasitism.*
+import parasite.*
 import turbulence.*
 import cellulose.*
 import ambience.*

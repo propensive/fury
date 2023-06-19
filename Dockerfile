@@ -99,7 +99,7 @@ RUN cd /fury && scala/bin/scalac \
   /one/mod/profanity/src/core/*.scala \
   /one/mod/profanity/src/java/**/*.java \
   /one/mod/serpentine/src/core/*.scala \
-  /one/mod/parasitism/src/core/*.scala \
+  /one/mod/parasite/src/core/*.scala \
   /one/mod/tetromino/src/core/*.scala \
   /one/mod/turbulence/src/core/*.scala \
   /one/mod/wisteria/src/core/*.scala \
@@ -227,7 +227,7 @@ RUN jar cmf /fury/manifest /fury/fury.jar  \
   -C /fury/bin cellulose \
   -C /fury/bin merino \
   -C /fury/bin org \
-  -C /fury/bin parasitism \
+  -C /fury/bin parasite \
   -C /fury/bin probably \
   -C /fury/bin profanity \
   -C /fury/bin punctuation \

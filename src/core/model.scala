@@ -17,7 +17,7 @@
 package fury
 
 import rudiments.*
-import parasitism.*
+import parasite.*
 import gossamer.*
 import kaleidoscope.*
 import galilei.*

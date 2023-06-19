@@ -19,7 +19,7 @@ package fury
 import galilei.*
 import rudiments.*
 import gossamer.*
-import parasitism.*
+import parasite.*
 import guillotine.*
 import serpentine.*
 import digression.*

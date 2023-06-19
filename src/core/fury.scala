@@ -21,7 +21,7 @@ import hieroglyph.*, textWidthCalculation.eastAsianScripts
 import rudiments.*
 import aviation.*
 import ambience.*
-import parasitism.*
+import parasite.*
 import turbulence.*, lineSeparation.jvm
 import acyclicity.*
 import merino.*

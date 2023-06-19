@@ -28,7 +28,7 @@ import anticipation.*, fileApi.galileiApi, timeApi.long
 import gossamer.*
 import eucalyptus.*
 import aviation.*
-import parasitism.*, monitors.global
+import parasite.*, monitors.global
 import gesticulate.*
 import xylophone.*
 import guillotine.*

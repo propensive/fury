@@ -27,7 +27,7 @@ import eucalyptus.Log
 import galilei.*, filesystems.unix
 import anticipation.*, fileApi.galileiApi, timeApi.aviationApi
 import guillotine.*
-import parasitism.*, monitors.global
+import parasite.*, monitors.global
 import kaleidoscope.*
 import escapade.*
 import gastronomy.*
