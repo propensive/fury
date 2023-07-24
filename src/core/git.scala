@@ -36,7 +36,7 @@ object GitError:
     case Subcommand.Checkout(ref)    => t"checking out $ref"
 
 case class GitError(dir: DiskPath, subcommand: GitError.Subcommand)
-extends Error(err"Git failed while ${subcommand.show} in $dir")
+extends Error(msg"Git failed while ${subcommand.show} in $dir")
 
 object GitCache:
   private var tasks: Map[Text, Task[Directory]] = Map()

@@ -43,7 +43,7 @@ case class CodeRange(module: Maybe[Ref], path: Maybe[Relative], startLine: Int, 
 case class Repo(base: Text, url: Text):
   def basePath(dir: DiskPath): DiskPath = unsafely(dir + Relative.parse(base))
 
-case class InvalidIdError(id: Text) extends Error(err"The value $id was not a valid ID")
+case class InvalidIdError(id: Text) extends Error(msg"The value $id was not a valid ID")
 
 object RepoPath:
   given Show[RepoPath] = rp => rp.repoId.fm(rp.path.show) { id => t"${id}:${rp.path.show}" }
@@ -131,10 +131,10 @@ case class Exec(browsers: List[Text], url: Option[Text], start: Text, stop: Opti
 case class PluginSpec(id: Text, params: Option[List[Text]])
 
 object Plugin:
-  def apply(spec: PluginSpec): Plugin throws BuildfileError = spec.id.only:
-    case Ref(ref) => Plugin(ref, spec.params.presume)
-  .getOrElse:
-    throw BuildfileError(t"The plugin name was not valid")
+  def apply(spec: PluginSpec): Plugin throws BuildfileError =
+    spec.id.only:
+      case Ref(ref) => Plugin(ref, spec.params.presume)
+    .or(throw BuildfileError(t"The plugin name was not valid"))
 
 case class Plugin(id: Ref, params: List[Text])
 
@@ -142,8 +142,10 @@ object Ref:
   def apply(text: Text): Ref throws BuildfileError = unapply(text).getOrElse:
     throw BuildfileError(t"Id '$text' does not have the format <project>/<module>")
 
-  def unapply(text: Text): Option[Ref] = text.only:
-    case r"$project@([a-z](-?[a-z0-9])*)\/$module@([a-z](-?[a-z0-9])*)" => Ref(project.show, module.show)
+  def unapply(text: Text): Option[Ref] =
+    text.only:
+      case r"$project@([a-z](-?[a-z0-9])*)\/$module@([a-z](-?[a-z0-9])*)" => Ref(project.show, module.show)
+    .option
   
   given Show[Ref] = ref => t"${ref.project}/${ref.module}"
 
@@ -155,10 +157,10 @@ object AppError:
     AppError(msg.ansi, originalCause)
 
 case class AppError(appMsg: AnsiText, originalCause: Maybe[Error[?]])
-extends Error(err"an application error occurred: $appMsg", originalCause)
+extends Error(msg"an application error occurred: $appMsg", originalCause)
 
-case class BuildfileError(bfMsg: Text) extends Error(err"the build file contained an error: $bfMsg")
-case class BrokenLinkError(link: Ref) extends Error(err"the reference to $link cannot be resolved")
+case class BuildfileError(bfMsg: Text) extends Error(msg"the build file contained an error: $bfMsg")
+case class BrokenLinkError(link: Ref) extends Error(msg"the reference to $link cannot be resolved")
 
 object Maven:
 

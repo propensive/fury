@@ -19,9 +19,12 @@ package fury
 import rudiments.*
 import serpentine.*
 import digression.*
+import anticipation.*
 import gossamer.*
 import kaleidoscope.*
+import galilei.*
 import aviation.*
+import spectacular.*
 import cellulose.*
 import punctuation.*
 import telekinesis.*
@@ -53,9 +56,9 @@ case class Vault(@codlLabel("release") releases: List[Release]):
     lazy val releases: Map[ProjectId, Release] = unsafely(vault.releases.indexBy(_.id))
 
 case class Local(@codlLabel("fork") forks: List[Fork])
-case class Fork(id: BuildId, path: Relative)
+case class Fork(id: BuildId, path: Unix.SafeLink)
 case class Overlay(id: BuildId, url: Url, commit: Commit, branch: Maybe[Branch]) extends GitRepo
-case class Mount(path: Relative, url: Url, commit: Commit, branch: Maybe[Branch]) extends GitRepo
+case class Mount(path: Unix.SafeLink, url: Url, commit: Commit, branch: Maybe[Branch]) extends GitRepo
 
 case class Build(@codlLabel(":<<")     prelude:  Maybe[Prelude],
                  @codlLabel("overlay") overlays: List[Overlay],
@@ -75,11 +78,11 @@ case class Project(id: ProjectId, @codlLabel("module") modules: List[Module]):
 case class Assist(ref: ModuleRef, module: ModuleId)
 
 enum Artifact:
-  case Jar(path: Relative, main: ClassName)
+  case Jar(path: Unix.SafeLink, main: ClassName)
 
 case class Module(                      id:        ModuleId,
                   @codlLabel("include") includes:  List[ModuleRef],
-                                        sources:   List[Relative],
+                                        sources:   List[Unix.SafeLink],
                   @codlLabel("provide") packages:  List[Package],
                   @codlLabel("use")     usages:    List[ModuleRef],
                   @codlLabel("omit")    omissions: List[ModuleRef],
@@ -92,7 +95,7 @@ object ModuleRef extends RefType(t"module ref"):
     t"${ref.projectId.mm { projectId => t"$projectId/" }.or(t"")}${ref.moduleId}"
   
   def apply(value: Text): ModuleRef throws InvalidRefError = value match
-    case r"${ProjectId(project)}@([^/])+\/${ModuleId(module)}@([^/]+)" =>
+    case r"${ProjectId(project)}([^/])+\/${ModuleId(module)}([^/]+)" =>
       ModuleRef(project, module)
     
     case ModuleId(module) =>

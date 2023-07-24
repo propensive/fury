@@ -18,6 +18,8 @@ package fury
 
 import gossamer.*
 import digression.*
+import anticipation.*
+import spectacular.*
 import rudiments.*
 
 enum License(name: Text, id: LicenseId, category: Text):

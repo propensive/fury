@@ -785,7 +785,7 @@ object Fury extends Daemon():
         else loop(true, Event.Changeset(Nil) #:: fileChanges, build, false, Nil)
 
 case class ExecError(err: Exception)
-extends Error(err"an exception was thrown while executing the task: ${err.getMessage.nn.show}")
+extends Error(msg"an exception was thrown while executing the task: ${err.getMessage.nn.show}")
 
 object Run:
   import java.net.*

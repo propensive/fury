@@ -17,17 +17,22 @@
 package fury
 
 import acyclicity.*
-import galilei.*, filesystems.unix
+
+import galilei.*, filesystemOptions.{createNonexistent, createNonexistentParents,
+    overwritePreexisting, dereferenceSymlinks}
+
 import anticipation.*, fileApi.galileiApi
 import rudiments.*
 import ambience.*, environments.system
 import digression.*
 import gossamer.*
 import gastronomy.*
-import turbulence.*, characterEncodings.utf8, badEncodingHandlers.strict
+import turbulence.*
+import hieroglyph.*, charEncoders.utf8, charDecoders.utf8, badEncodingHandlers.strict
 import imperial.*
-import serpentine.*
+import serpentine.*, hierarchies.unixOrWindows
 import cellulose.*
+import symbolism.*
 import telekinesis.*
 
 trait Compiler
@@ -39,34 +44,43 @@ trait Fetcher
 object Installation:
   def apply(cacheDir: Directory): Installation throws AppError =
     try
-      val configDir: Directory = (Home.Config() / p"fury").directory(Ensure)
-      val configPath: DiskPath = configDir / p"config.codl"
-      val vaultDir: Directory = (cacheDir / p"vault").directory(Ensure)
-      val libDir: Directory = (cacheDir / p"lib").directory(Ensure)
-      val tmpDir: Directory = (cacheDir / p"tmp").directory(Ensure)
+      val configDir: Path = Home.Config() / p"fury"
+      val configFile: File = (configDir / p"config.codl").as[File]
+      val vaultDir: Directory = (cacheDir / p"vault").as[Directory]
+      val libDir: Directory = (cacheDir / p"lib").as[Directory]
+      val tmpDir: Directory = (cacheDir / p"tmp").as[Directory]
     
-      Installation(configPath, cacheDir, vaultDir, libDir, tmpDir)
+      Installation(configFile, cacheDir, vaultDir, libDir, tmpDir)
+    
     catch
-      case err: StreamCutError =>
-        throw AppError(t"The stream was cut wwhile reading a file")
-      case err: IoError =>
-        throw AppError(t"Could not initialize the application due to an I/O error: ${err.message}")
+      case error: StreamCutError =>
+        throw AppError(t"The stream was cut while reading a file")
+      
+      case error: EnvironmentError =>
+        throw AppError(t"An expected JVM environment variable could not be accessed")
+      
+      case error: IoError =>
+        throw AppError(t"An I/O error occurred")
+      
+      case error: PathError => error match
+        case PathError(path) =>
+          throw AppError(t"the path $path was invalid")
     
 case class Installation
-    (configPath: DiskPath, cacheDir: Directory, vaultDir: Directory, libDir: Directory, tmpDir: Directory):
+    (config: File, cacheDir: Directory, vaultDir: Directory, libDir: Directory, tmpDir: Directory):
   def libJar(hash: Digest[Crc32]): File throws IoError =
-    unsafely(libDir / t"${hash.encode[Hex].lower}.jar").file(Expect)
+    unsafely(libDir / t"${hash.encodeAs[Hex].lower}.jar").as[File]
 
-case class Root(id: BuildId, path: DiskPath)
+case class Root(id: BuildId, path: Path)
 
 object BuildSpec:
-  def apply(path: DiskPath): BuildSpec throws IoError | InvalidRefError | InvalidUrlError | StreamCutError | BadEncodingError | CodlReadError | AggregateError[CodlError] =
-    val dir: Directory = path.directory(Expect)
-    val buildFile: File = (dir / p"fury").file(Expect)
+  def apply(path: Path): BuildSpec throws IoError | InvalidRefError | NotFoundError | UrlError | StreamCutError | UnencodableCharError | UndecodableCharError | CodlReadError | AggregateError[CodlError] =
+    val dir: Directory = path.as[Directory]
+    val buildFile: File = (dir / p"fury").as[File]
     val build: Build = Codl.read[Build](buildFile)
     
-    val localPath: DiskPath = dir / p".local"
-    val localFile: Maybe[File] = if localPath.exists() then localPath.file(Expect) else Unset
+    val localPath: Path = dir / p".local"
+    val localFile: Maybe[File] = if localPath.exists() then localPath.as[File] else Unset
     val local: Maybe[Local] = localFile.mm(Codl.read[Local](_))
 
     BuildSpec(dir, build, local)
@@ -74,13 +88,13 @@ object BuildSpec:
 case class BuildSpec(dir: Directory, build: Build, local: Maybe[Local]):
   lazy val commands: Map[CommandName, Command] = unsafely(build.commands.indexBy(_.name))
   lazy val projects: Map[ProjectId, Project] = unsafely(build.projects.indexBy(_.id))
-  lazy val mounts: Map[DiskPath, Mount] = unsafely(build.mounts.indexBy(dir.path + _.path))
+  lazy val mounts: Map[Path, Mount] = unsafely(build.mounts.indexBy(dir.path + _.path))
 
 enum Phase:
   case Clone(repo: GitRepo, cloner: Cloner)
-  case Compile(sources: Set[DiskPath], compiler: Compiler)
-  case Package(binary: DiskPath)
-  case Execute(classpath: Set[DiskPath], main: ClassName)
+  case Compile(sources: Set[Path], compiler: Compiler)
+  case Package(binary: Path)
+  case Execute(classpath: Set[Path], main: ClassName)
 
 case class Plan(phases: Dag[Phase])
 
