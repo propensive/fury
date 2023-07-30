@@ -22,6 +22,7 @@ project fury
     include  fury/model
 
   module test
-    include  fury/model probably/cli
-    main     fury.Tests
+    compiler scala
     sources  src/test
+    include  probably/cli fury/model
+    main     fury.Tests

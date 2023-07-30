@@ -112,30 +112,35 @@ object Ids:
   given Show[Branch] = identity(_)
   given Show[CommandName] = identity(_)
 
-  given buildId(using CanThrow[InvalidRefError]): Codec[BuildId] =
-    FieldCodec(identity(_), BuildId(_))
+  given buildIdEncoder: Encoder[BuildId] = identity(_)
+  given buildIdDecoder(using CanThrow[InvalidRefError]): Decoder[BuildId] = BuildId(_)
   
-  given moduleId(using CanThrow[InvalidRefError]): Codec[ModuleId] =
-    FieldCodec(identity(_), ModuleId(_))
+  given moduleIdEncoder: Encoder[ModuleId] = identity(_)
+  given moduleIdDecoder(using CanThrow[InvalidRefError]): Decoder[ModuleId] = ModuleId(_)
   
-  given projectId(using CanThrow[InvalidRefError]): Codec[ProjectId] =
-    FieldCodec(identity(_), ProjectId(_))
+  given projectIdEncoder: Encoder[ProjectId] = identity(_)
+  given projectIdDecoder(using CanThrow[InvalidRefError]): Decoder[ProjectId] = ProjectId(_)
   
-  given streamId(using CanThrow[InvalidRefError]): Codec[StreamId] =
-    FieldCodec(identity(_), StreamId(_))
+  given streamIdEncoder: Encoder[StreamId] = identity(_)
+  given streamIdDecoder(using CanThrow[InvalidRefError]): Decoder[StreamId] = StreamId(_)
   
-  given tag(using CanThrow[InvalidRefError]): Codec[Tag] = FieldCodec(identity(_), Tag(_))
+  given licenseIdEncoder: Encoder[LicenseId] = identity(_)
+  given licenseIdDecoder(using CanThrow[InvalidRefError]): Decoder[LicenseId] = LicenseId(_)
   
-  given licenseId(using CanThrow[InvalidRefError]): Codec[LicenseId] =
-    FieldCodec(identity(_), LicenseId(_))
+  given tagEncoder: Encoder[Tag] = identity(_)
+  given tagDecoder(using CanThrow[InvalidRefError]): Decoder[Tag] = Tag(_)
   
-  given pkg(using CanThrow[InvalidRefError]): Codec[Package] = FieldCodec(identity(_), Package(_))
+  given pkgEncoder: Encoder[Package] = identity(_)
+  given pkgDecoder(using CanThrow[InvalidRefError]): Decoder[Package] = Package(_)
   
-  given className(using CanThrow[InvalidRefError]): Codec[ClassName] =
-    FieldCodec(identity(_), ClassName(_))
+  given classNameEncoder: Encoder[ClassName] = identity(_)
+  given classNameDecoder(using CanThrow[InvalidRefError]): Decoder[ClassName] = ClassName(_)
   
-  given commit(using CanThrow[InvalidRefError]): Codec[Commit] = FieldCodec(identity(_), Commit(_))
-  given branch(using CanThrow[InvalidRefError]): Codec[Branch] = FieldCodec(identity(_), Branch(_))
+  given commitEncoder: Encoder[Commit] = identity(_)
+  given commitDecoder(using CanThrow[InvalidRefError]): Decoder[Commit] = Commit(_)
   
-  given commandName(using CanThrow[InvalidRefError]): Codec[CommandName] =
-    FieldCodec(identity(_), CommandName(_))
+  given branchEncoder: Encoder[Branch] = identity(_)
+  given branchDecoder(using CanThrow[InvalidRefError]): Decoder[Branch] = Branch(_)
+  
+  given commandNameEncoder: Encoder[CommandName] = identity(_)
+  given commandNameDecoder(using CanThrow[InvalidRefError]): Decoder[CommandName] = CommandName(_)

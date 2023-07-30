@@ -18,7 +18,10 @@ package fury
 
 import probably.*
 import gossamer.*
+import spectacular.*
 import rudiments.*
+import anticipation.*
+import galilei.*
 import serpentine.*
 import cellulose.*
 
@@ -115,78 +118,77 @@ object Tests extends Suite(t"Fury Model Tests"):
         test(t"Package name parts cannot start with a number"):
           capture(Package(t"com.123abc"))
         .assert(_ == InvalidRefError(t"com.123abc", Ids.Package))
-          
+    
     suite(t"CoDL parsing tests"):
       val buildFile = t"""
         :<< "##"
             This is a Fury source file
-        overlay  overlayid  https://example.com/  0000000000000000000000000000000000000000  main
-        command  build  myaction/foo
-        default  build
+        overlay overlayid https://example.com/ 0000000000000000000000000000000000000000 main
+        command build myaction/foo
+        default build
         
         project main-project
           module core
-            sources  src/core
-            provide  org.mainpkg
+            sources src/core
+            provide org.mainpkg
           
           module test
             sources  src/test
+        ##
       """
 
-
-      // val build = test(t"Parse a build file as a Build instance"):
-      //   Codl.parse(buildFile)
-      // .check()
-
-      // test(t"Check exactly one project"):
-      //   build.projects.length
-      // .assert(_ == 1)
-
-      // test(t"Check exactly two modules"):
-      //   build.projects.head.modules.length
-      // .assert(_ == 2)
 
       val vaultFile = t"""
         release myproject current
           
-          lifetime  365
-          license   apache-2
-          tags      active software clever scala
-          date      2021-11-11
+          lifetime     365
+          license      apache-2
+          tags         active  software  clever  scala
+          date         2021-11-11
+          description  A project to demonstrate Fury
           
-          description
-              A project to demonstrate Fury
-          
-          repo      https://github.com/   0000000000000000000000000000000000000000   main
+          repo      https://github.com/  0000000000000000000000000000000000000002  main
           website   https://example.com/
           provide   com.example
           
         release another current
-          description
-              _Another_ project to demonstrate Fury
+          description  _Another_ project to demonstrate Fury
           
-          tags      alternative scala project
+          tags      alternative  scala  project
           license   apache-2
           date      2022-12-20
           lifetime  30
-          repo      https://github.com/propensive/two/  0000000000000000000000000000000000000000  main
+          repo      https://github.com/propensive/two/  0000000000000000000000000000000000000001  main
       """
 
       val vault: Vault = test(t"Parse a Vault file"):
-        val readable: turbulence.Readable[Text, Text] = summon[turbulence.Readable[Text, Text]]
-        Codl.tokenize(readable.read(vaultFile))
-
         Codl.read[Vault](vaultFile)
       .check()
+      
 
       val localFile = t"""
-        fork  rudiments  /home/propensive/dev/one/mod/rudiments
-        fork  gossamer   /home/propensive/dev/one/mod/gossamer
+        fork  rudiments  /home/propensive/work/rudiments
+        fork  gossamer   C:\\Documents and Settings\\Files
       """
 
-      val forks = test(t"Parse forks"):
-        Codl.read[Local](localFile)
-      .assert(_ == Local(List(
-        Fork(BuildId(t"rudiments"), ? / p"home" / p"propensive" / p"dev" / p"one" / p"mod" / p"rudiments"),
-        Fork(BuildId(t"gossamer"), ? / p"home" / p"propensive" / p"dev" / p"one" / p"mod" / p"gossamer"),
-      )))
+      suite(t"Local file")
+        import hierarchies.unix
+        
+        test(t"Parse forks"):
+          Codl.read[Local](localFile)
+        .assert(_ == Local(List(
+          Fork(BuildId(t"rudiments"), % / p"home" / p"propensive" / p"work" / p"rudiments"),
+          Fork(BuildId(t"gossamer"), Windows.Drive('C') / p"Documents and Settings" / p"Files"),
+        )))
+
+      val build = test(t"Parse a build file as a Build instance"):
+        Codl.read[Build](buildFile)
+      .check()
+
+      test(t"Check exactly one project"):
+        build.projects.length
+      .assert(_ == 1)
+
+      test(t"Check exactly two modules"):
+        build.projects.head.modules.length
+      .assert(_ == 2)

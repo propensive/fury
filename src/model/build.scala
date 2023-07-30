@@ -32,8 +32,9 @@ import hieroglyph.*, charEncoders.utf8, charDecoders.utf8, badEncodingHandlers.s
 import imperial.*
 import serpentine.*, hierarchies.unixOrWindows
 import cellulose.*
+import spectacular.*
 import symbolism.*
-import telekinesis.*
+import telekinesis.{Link as _, *}
 
 trait Compiler
 trait Packager
@@ -73,12 +74,23 @@ case class Installation
 
 case class Root(id: BuildId, path: Path)
 
+given Operator["+", Path, Link] with
+  type Result = Path
+  def apply(left: Path, right: Link): Path = ???
+
 object BuildSpec:
-  def apply(path: Path): BuildSpec throws IoError | InvalidRefError | NotFoundError | UrlError | StreamCutError | UnencodableCharError | UndecodableCharError | CodlReadError | AggregateError[CodlError] =
+  def apply(path: Path): BuildSpec throws IoError | InvalidRefError | NotFoundError | UrlError | PathError | StreamCutError | UnencodableCharError | UndecodableCharError | CodlReadError | AggregateError[CodlError] =
     val dir: Directory = path.as[Directory]
     val buildFile: File = (dir / p"fury").as[File]
-    val build: Build = Codl.read[Build](buildFile)
+
+    summon[CodlDeserializer[Module]]
+    summon[CodlDeserializer[List[Module]]]
+    summon[CodlDeserializer[Project]]
+    summon[CodlDeserializer[List[Project]]]
+    summon[CodlDeserializer[Link]]
     
+    val build: Build = Codl.read[Build](buildFile)
+
     val localPath: Path = dir / p".local"
     val localFile: Maybe[File] = if localPath.exists() then localPath.as[File] else Unset
     val local: Maybe[Local] = localFile.mm(Codl.read[Local](_))

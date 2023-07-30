@@ -27,7 +27,7 @@ import aviation.*
 import spectacular.*
 import cellulose.*
 import punctuation.*
-import telekinesis.*
+import telekinesis.{Link as _, *}
 
 import Ids.*
 
@@ -36,39 +36,49 @@ trait GitRepo:
   def commit: Commit
   def branch: Maybe[Branch]
 
-case class Release(                      id: ProjectId,
-                                         stream: StreamId,
-                                         website: Maybe[Url],
-		                                     description: InlineMd,
-                                         tags: List[Tag],
-		                                     license: LicenseId,
-		                                     date: Date,
-		                                     lifetime: Int,
-		                                     repo: Repo,
-		               @codlLabel("provide") packages: List[Package])
+object Release:
+  given packages: CodlLabel[Release, "packages"] = CodlLabel("provide")
+
+case class Release
+    (id: ProjectId, stream: StreamId, website: Maybe[Url], description: InlineMd, tags: List[Tag],
+        license: LicenseId, date: Date, lifetime: Int, repo: Repo, packages: List[Package])
 
 case class Repo(url: Url, commit: Commit, branch: Maybe[Branch]) extends GitRepo
 
-case class Vault(@codlLabel("release") releases: List[Release]):
+object Vault:
+  given releases: CodlLabel[Vault, "releases"] = CodlLabel("release")
+
+case class Vault(releases: List[Release]):
   inline def vault: Vault = this
   
   object index:
     lazy val releases: Map[ProjectId, Release] = unsafely(vault.releases.indexBy(_.id))
 
-case class Local(@codlLabel("fork") forks: List[Fork])
-case class Fork(id: BuildId, path: Unix.SafeLink)
-case class Overlay(id: BuildId, url: Url, commit: Commit, branch: Maybe[Branch]) extends GitRepo
-case class Mount(path: Unix.SafeLink, url: Url, commit: Commit, branch: Maybe[Branch]) extends GitRepo
+object Local:
+  given forks: CodlLabel[Local, "forks"] = CodlLabel("fork")
 
-case class Build(@codlLabel(":<<")     prelude:  Maybe[Prelude],
-                 @codlLabel("overlay") overlays: List[Overlay],
-                 @codlLabel("command") commands: List[Command],
-		                                   default:  Maybe[CommandName],
-		             @codlLabel("project") projects: List[Project],
-                 @codlLabel("mount")   mounts:   List[Mount])
+case class Local(forks: List[Fork])
+
+case class Fork(id: BuildId, path: Path)
+case class Overlay(id: BuildId, url: Url, commit: Commit, branch: Maybe[Branch]) extends GitRepo
+case class Mount(path: Link, url: Url, commit: Commit, branch: Maybe[Branch]) extends GitRepo
+
+object Build:
+  given prelude: CodlLabel[Build, "prelude"] = CodlLabel(":<<")
+  given overlays: CodlLabel[Build, "overlays"] = CodlLabel("overlay")
+  given commands: CodlLabel[Build, "commands"] = CodlLabel("command")
+  given projects: CodlLabel[Build, "projects"] = CodlLabel("project")
+  given mounts: CodlLabel[Build, "mounts"] = CodlLabel("mount")
+case class Build
+    (prelude: Maybe[Prelude], overlays: List[Overlay], commands: List[Command],
+        default: Maybe[CommandName], projects: List[Project], mounts: List[Mount])
 
 case class Prelude(comment: List[Text])
-case class Project(id: ProjectId, @codlLabel("module") modules: List[Module]):
+
+object Project:
+  given modules: CodlLabel[Project, "modules"] = CodlLabel("module")
+
+case class Project(id: ProjectId, modules: List[Module]):
   inline def project: Project = this
   
   object index:
@@ -78,24 +88,28 @@ case class Project(id: ProjectId, @codlLabel("module") modules: List[Module]):
 case class Assist(ref: ModuleRef, module: ModuleId)
 
 enum Artifact:
-  case Jar(path: Unix.SafeLink, main: ClassName)
+  case Jar(path: Link, main: ClassName)
 
-case class Module(                      id:        ModuleId,
-                  @codlLabel("include") includes:  List[ModuleRef],
-                                        sources:   List[Unix.SafeLink],
-                  @codlLabel("provide") packages:  List[Package],
-                  @codlLabel("use")     usages:    List[ModuleRef],
-                  @codlLabel("omit")    omissions: List[ModuleRef],
-                  @codlLabel("assist")  assists:   List[Assist])
+object Module:
+  given includes: CodlLabel[Module, "includes"] = CodlLabel("include")
+  given packages: CodlLabel[Module, "packages"] = CodlLabel("provide")
+  given usages: CodlLabel[Module, "usages"] = CodlLabel("use")
+  given omissions: CodlLabel[Module, "omissions"] = CodlLabel("omit")
+  given assists: CodlLabel[Module, "assists"] = CodlLabel("assist")
+
+case class Module
+    (id: ModuleId, includes: List[ModuleRef], sources: List[Link], packages: List[Package],
+        usages: List[ModuleRef], omissions: List[ModuleRef], assists: List[Assist])
 
 object ModuleRef extends RefType(t"module ref"):
-  given (using CanThrow[InvalidRefError]): Codec[ModuleRef] = FieldCodec(_.show, ModuleRef(_))
-
+  given moduleRefEncoder: Encoder[ModuleRef] = _.show
+  given moduleRefDecoder(using CanThrow[InvalidRefError]): Decoder[ModuleRef] = ModuleRef(_)
+  
   given Show[ModuleRef] = ref =>
     t"${ref.projectId.mm { projectId => t"$projectId/" }.or(t"")}${ref.moduleId}"
   
   def apply(value: Text): ModuleRef throws InvalidRefError = value match
-    case r"${ProjectId(project)}([^/])+\/${ModuleId(module)}([^/]+)" =>
+    case r"${ProjectId(project)}([^/]+)\/${ModuleId(module)}([^/]+)" =>
       ModuleRef(project, module)
     
     case ModuleId(module) =>
@@ -104,5 +118,10 @@ object ModuleRef extends RefType(t"module ref"):
     case _ =>
       throw InvalidRefError(value, this)
 
+
 case class ModuleRef(projectId: Maybe[ProjectId], moduleId: ModuleId)
-case class Command(name: CommandName, @codlLabel("action") actions: List[ModuleRef])
+
+object Command:
+  given CodlLabel[Command, "actions"] = CodlLabel("action")
+
+case class Command(name: CommandName, actions: List[ModuleRef])
