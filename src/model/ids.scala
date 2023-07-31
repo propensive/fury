@@ -20,9 +20,7 @@ import rudiments.*
 import gossamer.*
 import anticipation.*
 import digression.*
-import chiaroscuro.*
 import spectacular.*
-import cellulose.*
 import kaleidoscope.*
 
 export Ids.*
@@ -64,6 +62,7 @@ object Ids:
   object CommandName extends Id[CommandName]()
   object Tag extends GitRefType[Tag](t"Git tag")
   object Branch extends GitRefType[Branch](t"Git branch")
+  object LicenseId extends Id[LicenseId]()
 
   extension (projectId: ProjectId) def apply()(using universe: Universe): Maybe[Project] =
     universe.resolve(projectId)
@@ -73,8 +72,8 @@ object Ids:
       case r"[a-f0-9]{40}" => value.asInstanceOf[Commit]
       case _               => throw InvalidRefError(value, this)
   
-  class GitRefType[T](name: Text) extends RefType(name):
-    def apply(value: Text): T throws InvalidRefError =
+  class GitRefType[Type](name: Text) extends RefType(name):
+    def apply(value: Text): Type throws InvalidRefError =
       value.cut(t"/").foreach: part =>
         if part.starts(t".") || part.ends(t".") then throw InvalidRefError(value, this)
         if part.ends(t".lock") then throw InvalidRefError(value, this)
@@ -85,7 +84,7 @@ object Ids:
         for ch <- List('*', '[', '\\', ' ', '^', '~', ':', '?')
         do if part.contains(ch) then throw InvalidRefError(value, this)
       
-      value.asInstanceOf[T]
+      value.asInstanceOf[Type]
   
   @targetName("Pkg")
   object Package extends RefType(t"package name"):
@@ -98,49 +97,47 @@ object Ids:
       case r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*" => value.asInstanceOf[ClassName]
       case _                                      => throw InvalidRefError(value, this)
 
-  object LicenseId extends Id[LicenseId]()
 
-  given Show[BuildId] = identity(_)
-  given Show[ModuleId] = identity(_)
-  given Show[ProjectId] = identity(_)
-  given Show[StreamId] = identity(_)
-  given Show[Tag] = identity(_)
-  given Show[LicenseId] = identity(_)
-  given Show[Package] = identity(_)
-  given Show[ClassName] = identity(_)
-  given Show[Commit] = identity(_)
-  given Show[Branch] = identity(_)
-  given Show[CommandName] = identity(_)
-
+  given buildIdShow: Show[BuildId] = identity(_)
   given buildIdEncoder: Encoder[BuildId] = identity(_)
   given buildIdDecoder(using CanThrow[InvalidRefError]): Decoder[BuildId] = BuildId(_)
   
+  given moduleIdShow: Show[ModuleId] = identity(_)
   given moduleIdEncoder: Encoder[ModuleId] = identity(_)
   given moduleIdDecoder(using CanThrow[InvalidRefError]): Decoder[ModuleId] = ModuleId(_)
   
+  given projectIdShow: Show[ProjectId] = identity(_)
   given projectIdEncoder: Encoder[ProjectId] = identity(_)
   given projectIdDecoder(using CanThrow[InvalidRefError]): Decoder[ProjectId] = ProjectId(_)
   
+  given streamIdShow: Show[StreamId] = identity(_)
   given streamIdEncoder: Encoder[StreamId] = identity(_)
   given streamIdDecoder(using CanThrow[InvalidRefError]): Decoder[StreamId] = StreamId(_)
   
+  given licenseIdShow: Show[LicenseId] = identity(_)
   given licenseIdEncoder: Encoder[LicenseId] = identity(_)
   given licenseIdDecoder(using CanThrow[InvalidRefError]): Decoder[LicenseId] = LicenseId(_)
   
+  given tagShow: Show[Tag] = identity(_)
   given tagEncoder: Encoder[Tag] = identity(_)
   given tagDecoder(using CanThrow[InvalidRefError]): Decoder[Tag] = Tag(_)
   
+  given pkgShow: Show[Package] = identity(_)
   given pkgEncoder: Encoder[Package] = identity(_)
   given pkgDecoder(using CanThrow[InvalidRefError]): Decoder[Package] = Package(_)
   
+  given classNameShow: Show[ClassName] = identity(_)
   given classNameEncoder: Encoder[ClassName] = identity(_)
   given classNameDecoder(using CanThrow[InvalidRefError]): Decoder[ClassName] = ClassName(_)
   
+  given commitShow: Show[Commit] = identity(_)
   given commitEncoder: Encoder[Commit] = identity(_)
   given commitDecoder(using CanThrow[InvalidRefError]): Decoder[Commit] = Commit(_)
   
+  given branchShow: Show[Branch] = identity(_)
   given branchEncoder: Encoder[Branch] = identity(_)
   given branchDecoder(using CanThrow[InvalidRefError]): Decoder[Branch] = Branch(_)
   
+  given commandNameShow: Show[CommandName] = identity(_)
   given commandNameEncoder: Encoder[CommandName] = identity(_)
   given commandNameDecoder(using CanThrow[InvalidRefError]): Decoder[CommandName] = CommandName(_)

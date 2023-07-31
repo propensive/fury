@@ -19,7 +19,7 @@ package fury
 import acyclicity.*
 
 import galilei.*, filesystemOptions.{createNonexistent, createNonexistentParents,
-    overwritePreexisting, dereferenceSymlinks}
+    dereferenceSymlinks}
 
 import anticipation.*, fileApi.galileiApi
 import rudiments.*
@@ -28,13 +28,13 @@ import digression.*
 import gossamer.*
 import gastronomy.*
 import turbulence.*
-import hieroglyph.*, charEncoders.utf8, charDecoders.utf8, badEncodingHandlers.strict
+import hieroglyph.*, charDecoders.utf8, badEncodingHandlers.strict
 import imperial.*
 import serpentine.*, hierarchies.unixOrWindows
 import cellulose.*
 import spectacular.*
 import symbolism.*
-import telekinesis.{Link as _, *}
+import nettlesome.*
 
 trait Compiler
 trait Packager
@@ -68,29 +68,20 @@ object Installation:
           throw AppError(t"the path $path was invalid")
     
 case class Installation
-    (config: File, cacheDir: Directory, vaultDir: Directory, libDir: Directory, tmpDir: Directory):
+    (configFile: File, cacheDir: Directory, vaultDir: Directory, libDir: Directory,
+        tmpDir: Directory):
+  
   def libJar(hash: Digest[Crc32]): File throws IoError =
     unsafely(libDir / t"${hash.encodeAs[Hex].lower}.jar").as[File]
 
-case class Root(id: BuildId, path: Path)
-
-given Operator["+", Path, Link] with
-  type Result = Path
-  def apply(left: Path, right: Link): Path = ???
+case class Workspace(id: BuildId, path: Path)
 
 object BuildSpec:
-  def apply(path: Path): BuildSpec throws IoError | InvalidRefError | NotFoundError | UrlError | PathError | StreamCutError | UnencodableCharError | UndecodableCharError | CodlReadError | AggregateError[CodlError] =
+  def apply(path: Path): BuildSpec throws IoError | InvalidRefError | NotFoundError | UrlError | PathError | StreamCutError | UnencodableCharError | UndecodableCharError | CodlReadError | NumberError | AggregateError[CodlError] =
     val dir: Directory = path.as[Directory]
     val buildFile: File = (dir / p"fury").as[File]
 
-    summon[CodlDeserializer[Module]]
-    summon[CodlDeserializer[List[Module]]]
-    summon[CodlDeserializer[Project]]
-    summon[CodlDeserializer[List[Project]]]
-    summon[CodlDeserializer[Link]]
-    
     val build: Build = Codl.read[Build](buildFile)
-
     val localPath: Path = dir / p".local"
     val localFile: Maybe[File] = if localPath.exists() then localPath.as[File] else Unset
     val local: Maybe[Local] = localFile.mm(Codl.read[Local](_))

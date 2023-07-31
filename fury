@@ -14,7 +14,7 @@ repo propensive/acyclicity
 
 project fury
   module model
-    include  xylophone/core acyclicity/core galilei/core telekinesis/client jacinta/core aviation/core escritoire/core cellulose/core punctuation/core imperial/core gastronomy/core acyclicity/core
+    include  xylophone/core acyclicity/core galilei/core telekinesis/client jacinta/core aviation/core escritoire/core cellulose/core punctuation/core imperial/core gastronomy/core acyclicity/core nettlesome/url
     sources  src/model
 
   module core

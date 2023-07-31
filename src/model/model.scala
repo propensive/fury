@@ -17,7 +17,6 @@
 package fury
 
 import rudiments.*
-import serpentine.*
 import digression.*
 import anticipation.*
 import gossamer.*
@@ -27,7 +26,7 @@ import aviation.*
 import spectacular.*
 import cellulose.*
 import punctuation.*
-import telekinesis.{Link as _, *}
+import nettlesome.*
 
 import Ids.*
 
@@ -36,17 +35,20 @@ trait GitRepo:
   def commit: Commit
   def branch: Maybe[Branch]
 
+
 object Release:
-  given packages: CodlLabel[Release, "packages"] = CodlLabel("provide")
+  given packagesLabel: CodlLabel[Release, "packages"] = CodlLabel("provide")
 
 case class Release
     (id: ProjectId, stream: StreamId, website: Maybe[Url], description: InlineMd, tags: List[Tag],
         license: LicenseId, date: Date, lifetime: Int, repo: Repo, packages: List[Package])
 
+
 case class Repo(url: Url, commit: Commit, branch: Maybe[Branch]) extends GitRepo
 
+
 object Vault:
-  given releases: CodlLabel[Vault, "releases"] = CodlLabel("release")
+  given releasesLabel: CodlLabel[Vault, "releases"] = CodlLabel("release")
 
 case class Vault(releases: List[Release]):
   inline def vault: Vault = this
@@ -54,29 +56,34 @@ case class Vault(releases: List[Release]):
   object index:
     lazy val releases: Map[ProjectId, Release] = unsafely(vault.releases.indexBy(_.id))
 
+
 object Local:
-  given forks: CodlLabel[Local, "forks"] = CodlLabel("fork")
+  given forksLabel: CodlLabel[Local, "forks"] = CodlLabel("fork")
 
 case class Local(forks: List[Fork])
 
 case class Fork(id: BuildId, path: Path)
 case class Overlay(id: BuildId, url: Url, commit: Commit, branch: Maybe[Branch]) extends GitRepo
-case class Mount(path: Link, url: Url, commit: Commit, branch: Maybe[Branch]) extends GitRepo
+case class Mount(path: SafeLink, url: Url, commit: Commit, branch: Maybe[Branch]) extends GitRepo
+
 
 object Build:
-  given prelude: CodlLabel[Build, "prelude"] = CodlLabel(":<<")
-  given overlays: CodlLabel[Build, "overlays"] = CodlLabel("overlay")
-  given commands: CodlLabel[Build, "commands"] = CodlLabel("command")
-  given projects: CodlLabel[Build, "projects"] = CodlLabel("project")
-  given mounts: CodlLabel[Build, "mounts"] = CodlLabel("mount")
+  given preludeLabel: CodlLabel[Build, "prelude"] = CodlLabel(":<<")
+  given overlaysLabel: CodlLabel[Build, "overlays"] = CodlLabel("overlay")
+  given commandsLabel: CodlLabel[Build, "commands"] = CodlLabel("command")
+  given projectsLabel: CodlLabel[Build, "projects"] = CodlLabel("project")
+  given mountsLabel: CodlLabel[Build, "mounts"] = CodlLabel("mount")
+
 case class Build
     (prelude: Maybe[Prelude], overlays: List[Overlay], commands: List[Command],
         default: Maybe[CommandName], projects: List[Project], mounts: List[Mount])
 
+
 case class Prelude(comment: List[Text])
 
+
 object Project:
-  given modules: CodlLabel[Project, "modules"] = CodlLabel("module")
+  given modulesLabel: CodlLabel[Project, "modules"] = CodlLabel("module")
 
 case class Project(id: ProjectId, modules: List[Module]):
   inline def project: Project = this
@@ -85,21 +92,25 @@ case class Project(id: ProjectId, modules: List[Module]):
     lazy val modules: Map[ModuleRef, Module] =
       unsafely(project.modules.indexBy { module => ModuleRef(project.id, module.id) })
 
+
 case class Assist(ref: ModuleRef, module: ModuleId)
 
+
 enum Artifact:
-  case Jar(path: Link, main: ClassName)
+  case Jar(path: SafeLink, main: ClassName)
+
 
 object Module:
-  given includes: CodlLabel[Module, "includes"] = CodlLabel("include")
-  given packages: CodlLabel[Module, "packages"] = CodlLabel("provide")
-  given usages: CodlLabel[Module, "usages"] = CodlLabel("use")
-  given omissions: CodlLabel[Module, "omissions"] = CodlLabel("omit")
-  given assists: CodlLabel[Module, "assists"] = CodlLabel("assist")
+  given includesLabel: CodlLabel[Module, "includes"] = CodlLabel("include")
+  given packagesLabel: CodlLabel[Module, "packages"] = CodlLabel("provide")
+  given usagesLabel: CodlLabel[Module, "usages"] = CodlLabel("use")
+  given omissionsLabel: CodlLabel[Module, "omissions"] = CodlLabel("omit")
+  given assistsLabel: CodlLabel[Module, "assists"] = CodlLabel("assist")
 
 case class Module
-    (id: ModuleId, includes: List[ModuleRef], sources: List[Link], packages: List[Package],
+    (id: ModuleId, includes: List[ModuleRef], sources: List[SafeLink], packages: List[Package],
         usages: List[ModuleRef], omissions: List[ModuleRef], assists: List[Assist])
+
 
 object ModuleRef extends RefType(t"module ref"):
   given moduleRefEncoder: Encoder[ModuleRef] = _.show
@@ -118,8 +129,8 @@ object ModuleRef extends RefType(t"module ref"):
     case _ =>
       throw InvalidRefError(value, this)
 
-
 case class ModuleRef(projectId: Maybe[ProjectId], moduleId: ModuleId)
+
 
 object Command:
   given CodlLabel[Command, "actions"] = CodlLabel("action")
