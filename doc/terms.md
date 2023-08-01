@@ -1,0 +1,6 @@
+- project:
+- module:
+- stream:
+- workspace:
+- package:
+- release:

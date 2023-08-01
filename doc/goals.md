@@ -1,3 +1,3 @@
 Fury has the following goals:
- - to provide a fast, interactive and easy-to-use experience for beginners writing Scala
+ - to provide a fast, interactive and intuitive build experience for beginners and advanced users of Scala
  - 
