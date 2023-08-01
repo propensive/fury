@@ -17,8 +17,21 @@
 package fury
 
 import anticipation.*
-import rudiments.*
+import turbulence.*, basicIo.jvm
+import ambience.*, environments.jvm, systemProperties.jvm
+import galilei.*, fileApi.galileiApi, filesystemOptions.{doNotCreateNonexistent, dereferenceSymlinks}
+import serpentine.*, hierarchies.unixOrWindows
+import spectacular.*
+import hieroglyph.*, charDecoders.utf8, badEncodingHandlers.strict
+import cellulose.*
 
-object Fury:
+object Main:
   def main(args: IArray[Text]): Unit =
-    println("Hello world")
+    import unsafeExceptions.canThrowAny
+    val workspace: Directory = Properties.user.dir[Path]().as[Directory]
+    val buildFile: File = (workspace / p"fury2").as[File]
+
+    val content = buildFile.read[Text]
+    
+    println(Codl.read[Build](content))
+

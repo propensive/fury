@@ -16,17 +16,17 @@
 
 package fury
 
-import rudiments.*
-import digression.*
 import anticipation.*
+import aviation.*
+import cellulose.*
+import digression.*
+import galilei.*
 import gossamer.*
 import kaleidoscope.*
-import galilei.*
-import aviation.*
-import spectacular.*
-import cellulose.*
-import punctuation.*
 import nettlesome.*
+import punctuation.*
+import rudiments.*
+import spectacular.*
 
 import Ids.*
 
@@ -73,10 +73,12 @@ object Build:
   given commandsLabel: CodlLabel[Build, "commands"] = CodlLabel("command")
   given projectsLabel: CodlLabel[Build, "projects"] = CodlLabel("project")
   given mountsLabel: CodlLabel[Build, "mounts"] = CodlLabel("mount")
+  given reposLabel: CodlLabel[Build, "repos"] = CodlLabel("repo")
 
 case class Build
     (prelude: Maybe[Prelude], overlays: List[Overlay], commands: List[Command],
-        default: Maybe[CommandName], projects: List[Project], mounts: List[Mount])
+        default: Maybe[CommandName], projects: List[Project], mounts: List[Mount],
+        repos: List[Repo], target: Maybe[Text])
 
 
 case class Prelude(comment: List[Text])
@@ -109,7 +111,8 @@ object Module:
 
 case class Module
     (id: ModuleId, includes: List[ModuleRef], sources: List[SafeLink], packages: List[Package],
-        usages: List[ModuleRef], omissions: List[ModuleRef], assists: List[Assist])
+        usages: List[ModuleRef], omissions: List[ModuleRef], assists: List[Assist],
+        compiler: Maybe[Text], main: Maybe[ClassName])
 
 
 object ModuleRef extends RefType(t"module ref"):

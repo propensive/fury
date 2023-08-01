@@ -94,8 +94,8 @@ object Ids:
 
   object ClassName extends RefType(t"class name"):
     def apply(value: Text): Package throws InvalidRefError = value match
-      case r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*" => value.asInstanceOf[ClassName]
-      case _                                      => throw InvalidRefError(value, this)
+      case r"[a-z][a-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)*" => value.asInstanceOf[ClassName]
+      case _                                            => throw InvalidRefError(value, this)
 
 
   given buildIdShow: Show[BuildId] = identity(_)

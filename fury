@@ -1,21 +1,22 @@
-target fury/test
+target fury/model
 
-repo propensive/xylophone
-repo propensive/probably
-repo propensive/galilei
-repo propensive/jacinta
-repo propensive/cellulose
-repo propensive/aviation
-repo propensive/imperial
-repo propensive/gastronomy
-repo propensive/punctuation
-repo propensive/scintillate
-repo propensive/acyclicity
+repo propensive/xylophone 0000000000000000000000000000000000000000
+repo propensive/probably 0000000000000000000000000000000000000000
+repo propensive/galilei 0000000000000000000000000000000000000000
+repo propensive/jacinta 0000000000000000000000000000000000000000
+repo propensive/cellulose 0000000000000000000000000000000000000000
+repo propensive/aviation 0000000000000000000000000000000000000000
+repo propensive/imperial 0000000000000000000000000000000000000000
+repo propensive/gastronomy 0000000000000000000000000000000000000000
+repo propensive/punctuation 0000000000000000000000000000000000000000
+repo propensive/scintillate 0000000000000000000000000000000000000000
+repo propensive/acyclicity 0000000000000000000000000000000000000000
 
 project fury
   module model
-    include  xylophone/core acyclicity/core galilei/core telekinesis/client jacinta/core aviation/core escritoire/core cellulose/core punctuation/core imperial/core gastronomy/core acyclicity/core nettlesome/url
+    include  xylophone/core  acyclicity/core  galilei/core  telekinesis/client  jacinta/core  aviation/core  escritoire/core  cellulose/core  punctuation/core  imperial/core  gastronomy/core  acyclicity/core  nettlesome/url
     sources  src/model
+    main     fury.Main
 
   module core
     sources  src/core
@@ -24,5 +25,4 @@ project fury
   module test
     compiler scala
     sources  src/test
-    include  probably/cli fury/model
-    main     fury.Tests
+    include  probably/cli  fury/model
