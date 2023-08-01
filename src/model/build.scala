@@ -23,7 +23,7 @@ import galilei.*, filesystemOptions.{createNonexistent, createNonexistentParents
 
 import anticipation.*, fileApi.galileiApi
 import rudiments.*
-import ambience.*, environments.system
+import ambience.*, environments.jvm, systemProperties.jvm
 import digression.*
 import gossamer.*
 import gastronomy.*
@@ -59,6 +59,9 @@ object Installation:
       
       case error: EnvironmentError =>
         throw AppError(t"An expected JVM environment variable could not be accessed")
+      
+      case error: SystemPropertyError =>
+        throw AppError(t"An expected JVM system property could not be accessed")
       
       case error: IoError =>
         throw AppError(t"An I/O error occurred")
