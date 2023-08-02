@@ -55,20 +55,23 @@ object Installation:
     
     catch
       case error: StreamCutError =>
-        throw AppError(t"The stream was cut while reading a file")
+        throw AppError(msg"The stream was cut while reading a file", error)
       
-      case error: EnvironmentError =>
-        throw AppError(t"An expected JVM environment variable could not be accessed")
+      case error: EnvironmentError => error match
+        case EnvironmentError(variable) =>
+          throw AppError(msg"The environment variable $variable could not be accessed", error)
       
-      case error: SystemPropertyError =>
-        throw AppError(t"An expected JVM system property could not be accessed")
+      case error: SystemPropertyError => error match
+        case SystemPropertyError(property) =>
+           throw AppError(msg"The JVM system property $property could not be accessed", error)
       
-      case error: IoError =>
-        throw AppError(t"An I/O error occurred")
+      case error: IoError => error match
+        case IoError(path) =>
+          throw AppError(msg"An I/O error occurred while trying to access $path", error)
       
       case error: PathError => error match
-        case PathError(path) =>
-          throw AppError(t"the path $path was invalid")
+        case PathError(reason) =>
+          throw AppError(msg"The path was not valid because $reason", error)
     
 case class Installation
     (configFile: File, cacheDir: Directory, vaultDir: Directory, libDir: Directory,
@@ -77,21 +80,19 @@ case class Installation
   def libJar(hash: Digest[Crc32]): File throws IoError =
     unsafely(libDir / t"${hash.encodeAs[Hex].lower}.jar").as[File]
 
-case class Workspace(id: BuildId, path: Path)
-
-object BuildSpec:
-  def apply(path: Path): BuildSpec throws IoError | InvalidRefError | NotFoundError | UrlError | PathError | StreamCutError | UnencodableCharError | UndecodableCharError | CodlReadError | NumberError | AggregateError[CodlError] =
+object Workspace:
+  def apply(path: Path): Workspace throws IoError | InvalidRefError | NotFoundError | UrlError | PathError | StreamCutError | UnencodableCharError | UndecodableCharError | CodlReadError | NumberError | AggregateError[CodlError] =
     val dir: Directory = path.as[Directory]
-    val buildFile: File = (dir / p"fury").as[File]
+    val buildFile: File = (dir / p"fury2").as[File]
 
     val build: Build = Codl.read[Build](buildFile)
     val localPath: Path = dir / p".local"
     val localFile: Maybe[File] = if localPath.exists() then localPath.as[File] else Unset
     val local: Maybe[Local] = localFile.mm(Codl.read[Local](_))
 
-    BuildSpec(dir, build, local)
+    Workspace(dir, build, local)
 
-case class BuildSpec(dir: Directory, build: Build, local: Maybe[Local]):
+case class Workspace(dir: Directory, build: Build, local: Maybe[Local]):
   lazy val commands: Map[CommandName, Command] = unsafely(build.commands.indexBy(_.name))
   lazy val projects: Map[ProjectId, Project] = unsafely(build.projects.indexBy(_.id))
   lazy val mounts: Map[Path, Mount] = unsafely(build.mounts.indexBy(dir.path + _.path))

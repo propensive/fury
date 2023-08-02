@@ -17,6 +17,7 @@
 package fury
 
 import anticipation.*
+import gossamer.*
 import turbulence.*, basicIo.jvm
 import ambience.*, environments.jvm, systemProperties.jvm
 import galilei.*, fileApi.galileiApi, filesystemOptions.{doNotCreateNonexistent, dereferenceSymlinks}
@@ -28,10 +29,14 @@ import cellulose.*
 object Main:
   def main(args: IArray[Text]): Unit =
     import unsafeExceptions.canThrowAny
-    val workspace: Directory = Properties.user.dir[Path]().as[Directory]
-    val buildFile: File = (workspace / p"fury2").as[File]
-
-    val content = buildFile.read[Text]
+    val workspace = Workspace(Properties.user.dir())
     
-    println(Codl.read[Build](content))
+    Io.println(workspace.debug)
+    Io.println(t"")
+    Io.println(workspace.commands.debug)
+    Io.println(workspace.mounts.debug)
+    
+    workspace.projects.foreach: (name, project) =>
+      Io.println(t"$name:")
+      Io.println(project.debug)
 

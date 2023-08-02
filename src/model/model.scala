@@ -73,12 +73,10 @@ object Build:
   given commandsLabel: CodlLabel[Build, "commands"] = CodlLabel("command")
   given projectsLabel: CodlLabel[Build, "projects"] = CodlLabel("project")
   given mountsLabel: CodlLabel[Build, "mounts"] = CodlLabel("mount")
-  given reposLabel: CodlLabel[Build, "repos"] = CodlLabel("repo")
 
 case class Build
     (prelude: Maybe[Prelude], overlays: List[Overlay], commands: List[Command],
-        default: Maybe[CommandName], projects: List[Project], mounts: List[Mount],
-        repos: List[Repo], target: Maybe[Text])
+        default: Maybe[CommandName], projects: List[Project], mounts: List[Mount])
 
 
 case class Prelude(comment: List[Text])
@@ -117,6 +115,7 @@ case class Module
 
 object ModuleRef extends RefType(t"module ref"):
   given moduleRefEncoder: Encoder[ModuleRef] = _.show
+  given moduleRefDebug: Debug[ModuleRef] = _.show
   given moduleRefDecoder(using CanThrow[InvalidRefError]): Decoder[ModuleRef] = ModuleRef(_)
   
   given Show[ModuleRef] = ref =>
