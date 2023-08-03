@@ -17,6 +17,7 @@
 package fury
 
 import rudiments.*
+import fulminate.*
 import gossamer.*
 import anticipation.*
 import digression.*

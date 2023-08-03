@@ -23,6 +23,7 @@ import galilei.*, filesystemOptions.{createNonexistent, createNonexistentParents
 
 import anticipation.*, fileApi.galileiApi
 import rudiments.*
+import fulminate.*
 import ambience.*, environments.jvm, systemProperties.jvm
 import digression.*
 import gossamer.*
