@@ -39,15 +39,13 @@ object Ids:
   opaque type StreamId = Text
   opaque type ProjectId = Text
   opaque type ModuleId = Text
-  opaque type Tag = Text
   
   @targetName("Pkg")
   opaque type Package = Text
   
   opaque type ClassName = Text
-  opaque type Branch = Text
-  opaque type Commit = Text
   opaque type CommandName = Text
+  opaque type Keyword = Text
   opaque type LicenseId = Text
 
   class Id[T]() extends RefType(t"ID"):
@@ -61,19 +59,13 @@ object Ids:
   object StreamId extends Id[StreamId]()
   object ProjectId extends Id[ProjectId]()
   object ModuleId extends Id[ModuleId]()
+  object Keyword extends Id[Keyword]()
   object CommandName extends Id[CommandName]()
-  object Tag extends GitRefType[Tag](t"Git tag")
-  object Branch extends GitRefType[Branch](t"Git branch")
   object LicenseId extends Id[LicenseId]()
 
   extension (projectId: ProjectId) def apply()(using universe: Universe): Maybe[Project] =
     universe.resolve(projectId)
 
-  object Commit extends RefType(t"Git commit"):
-    def apply(value: Text): Commit throws InvalidRefError = value match
-      case r"[a-f0-9]{40}" => value.asInstanceOf[Commit]
-      case _               => throw InvalidRefError(value, this)
-  
   class GitRefType[Type](name: Text) extends RefType(name):
     def apply(value: Text): Type throws InvalidRefError =
       value.cut(t"/").foreach: part =>
@@ -120,10 +112,6 @@ object Ids:
   given licenseIdEncoder: Encoder[LicenseId] = identity(_)
   given licenseIdDecoder(using CanThrow[InvalidRefError]): Decoder[LicenseId] = LicenseId(_)
   
-  given tagShow: Show[Tag] = identity(_)
-  given tagEncoder: Encoder[Tag] = identity(_)
-  given tagDecoder(using CanThrow[InvalidRefError]): Decoder[Tag] = Tag(_)
-  
   given pkgShow: Show[Package] = identity(_)
   given pkgEncoder: Encoder[Package] = identity(_)
   given pkgDecoder(using CanThrow[InvalidRefError]): Decoder[Package] = Package(_)
@@ -132,14 +120,10 @@ object Ids:
   given classNameEncoder: Encoder[ClassName] = identity(_)
   given classNameDecoder(using CanThrow[InvalidRefError]): Decoder[ClassName] = ClassName(_)
   
-  given commitShow: Show[Commit] = identity(_)
-  given commitEncoder: Encoder[Commit] = identity(_)
-  given commitDecoder(using CanThrow[InvalidRefError]): Decoder[Commit] = Commit(_)
-  
-  given branchShow: Show[Branch] = identity(_)
-  given branchEncoder: Encoder[Branch] = identity(_)
-  given branchDecoder(using CanThrow[InvalidRefError]): Decoder[Branch] = Branch(_)
-  
   given commandNameShow: Show[CommandName] = identity(_)
   given commandNameEncoder: Encoder[CommandName] = identity(_)
   given commandNameDecoder(using CanThrow[InvalidRefError]): Decoder[CommandName] = CommandName(_)
+
+  given keywordShow: Show[Keyword] = identity(_)
+  given keywordEncoder: Encoder[Keyword] = identity(_)
+  given keywordDecoder(using CanThrow[InvalidRefError]): Decoder[Keyword] = Keyword(_)

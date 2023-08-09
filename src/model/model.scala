@@ -19,20 +19,23 @@ package fury
 import anticipation.*
 import aviation.*
 import cellulose.*
+import symbolism.*
 import digression.*
 import galilei.*
 import gossamer.*
+import serpentine.*
 import kaleidoscope.*
 import nettlesome.*
 import punctuation.*
 import rudiments.*
 import spectacular.*
+import nonagenarian.*
 
 import Ids.*
 
-trait GitRepo:
+trait GitSnapshot:
   def url: Url
-  def commit: Commit
+  def commit: CommitHash
   def branch: Maybe[Branch]
 
 
@@ -40,11 +43,11 @@ object Release:
   given packagesLabel: CodlLabel[Release, "packages"] = CodlLabel("provide")
 
 case class Release
-    (id: ProjectId, stream: StreamId, website: Maybe[Url], description: InlineMd, tags: List[Tag],
-        license: LicenseId, date: Date, lifetime: Int, repo: Repo, packages: List[Package])
+    (id: ProjectId, stream: StreamId, website: Maybe[Url], description: InlineMd,
+        license: LicenseId, date: Date, lifetime: Int, repo: Snapshot, packages: List[Package])
 
 
-case class Repo(url: Url, commit: Commit, branch: Maybe[Branch]) extends GitRepo
+case class Snapshot(url: Url, commit: CommitHash, branch: Maybe[Branch]) extends GitSnapshot
 
 
 object Vault:
@@ -63,8 +66,9 @@ object Local:
 case class Local(forks: List[Fork])
 
 case class Fork(id: BuildId, path: Path)
-case class Overlay(id: BuildId, url: Url, commit: Commit, branch: Maybe[Branch]) extends GitRepo
-case class Mount(path: SafeLink, url: Url, commit: Commit, branch: Maybe[Branch]) extends GitRepo
+case class Overlay(id: BuildId, url: Url, commit: CommitHash, branch: Maybe[Branch]) extends GitSnapshot
+
+case class Mount(path: WorkPath, repo: Snapshot)
 
 
 object Build:
@@ -79,13 +83,13 @@ case class Build
         default: Maybe[CommandName], projects: List[Project], mounts: List[Mount])
 
 
-case class Prelude(comment: List[Text])
+case class Prelude(terminator: Text, comment: List[Text])
 
 
 object Project:
   given modulesLabel: CodlLabel[Project, "modules"] = CodlLabel("module")
 
-case class Project(id: ProjectId, modules: List[Module]):
+case class Project(id: ProjectId, name: Text, description: Text, modules: List[Module], website: Url, keywords: List[Keyword]):
   inline def project: Project = this
   
   object index:
@@ -97,7 +101,7 @@ case class Assist(ref: ModuleRef, module: ModuleId)
 
 
 enum Artifact:
-  case Jar(path: SafeLink, main: ClassName)
+  case Jar(path: WorkPath, main: ClassName)
 
 
 object Module:
@@ -108,7 +112,7 @@ object Module:
   given assistsLabel: CodlLabel[Module, "assists"] = CodlLabel("assist")
 
 case class Module
-    (id: ModuleId, includes: List[ModuleRef], sources: List[SafeLink], packages: List[Package],
+    (id: ModuleId, includes: List[ModuleRef], sources: List[WorkPath], packages: List[Package],
         usages: List[ModuleRef], omissions: List[ModuleRef], assists: List[Assist],
         compiler: Maybe[Text], main: Maybe[ClassName])
 
@@ -133,8 +137,31 @@ object ModuleRef extends RefType(t"module ref"):
 
 case class ModuleRef(projectId: Maybe[ProjectId], moduleId: ModuleId)
 
-
 object Command:
   given CodlLabel[Command, "actions"] = CodlLabel("action")
 
 case class Command(name: CommandName, actions: List[ModuleRef])
+
+object WorkPath:
+  given reachable: Reachable[WorkPath, GeneralForbidden, Unit] with
+    def root(path: WorkPath): Unit = ()
+    def prefix(root: Unit): Text = t""
+    def descent(path: WorkPath): List[PathName[GeneralForbidden]] = path.descent
+    def separator(path: WorkPath): Text = t"/"
+  
+  given rootParser: RootParser[WorkPath, Unit] = text => ((), text)
+
+  given creator: PathCreator[WorkPath, GeneralForbidden, Unit] = (unit, descent) => WorkPath(descent)
+
+  given show: Show[WorkPath] = _.render
+  given encoder: Encoder[WorkPath] = _.render
+  given debug: Debug[WorkPath] = _.render
+  
+  given decoder(using path: CanThrow[PathError]): Decoder[WorkPath] = new Decoder[WorkPath]:
+    def decode(text: Text): WorkPath = Reachable.decode(text)
+  
+  inline given add: Operator["+", Path, WorkPath] with
+    type Result = Path
+    def apply(left: Path, right: WorkPath): Path = right.descent.foldLeft(left)(_ / _)
+
+case class WorkPath(descent: List[PathName[GeneralForbidden]])

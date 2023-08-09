@@ -26,6 +26,8 @@ import digression.*
 import turbulence.*, lineSeparation.jvm
 import ambience.*
 
+given GitCommand = gitCommands.environment
+
 object GitError:
   enum Subcommand:
     case Clone(url: Text, name: Text)

@@ -27,6 +27,7 @@ import fulminate.*
 import ambience.*, environments.jvm, systemProperties.jvm
 import digression.*
 import gossamer.*
+import eucalyptus.*
 import gastronomy.*
 import turbulence.*
 import hieroglyph.*, charDecoders.utf8, badEncodingHandlers.strict
@@ -36,6 +37,7 @@ import cellulose.*
 import spectacular.*
 import symbolism.*
 import nettlesome.*
+import nonagenarian.*
 
 trait Compiler
 trait Packager
@@ -81,25 +83,37 @@ case class Installation
   def libJar(hash: Digest[Crc32]): File throws IoError =
     unsafely(libDir / t"${hash.encodeAs[Hex].lower}.jar").as[File]
 
+inline def installation(using Installation): Installation = summon[Installation]
+
 object Workspace:
-  def apply(path: Path): Workspace throws IoError | InvalidRefError | NotFoundError | UrlError | PathError | StreamCutError | UnencodableCharError | UndecodableCharError | CodlReadError | NumberError | AggregateError[CodlError] =
+  def apply(path: Path)(using Stdio): Workspace throws IoError | InvalidRefError | NotFoundError | UrlError | PathError | StreamCutError | UnencodableCharError | UndecodableCharError | CodlReadError | NumberError | AggregateError[CodlError] =
     val dir: Directory = path.as[Directory]
     val buildFile: File = (dir / p"fury2").as[File]
 
+    val buildDoc: CodlDoc = Codl.parse(buildFile)
     val build: Build = Codl.read[Build](buildFile)
     val localPath: Path = dir / p".local"
     val localFile: Maybe[File] = if localPath.exists() then localPath.as[File] else Unset
     val local: Maybe[Local] = localFile.mm(Codl.read[Local](_))
 
-    Workspace(dir, build, local)
+    Workspace(dir, buildDoc, build, local)
 
-case class Workspace(dir: Directory, build: Build, local: Maybe[Local]):
+case class Workspace(dir: Directory, buildDoc: CodlDoc, build: Build, local: Maybe[Local]):
   lazy val commands: Map[CommandName, Command] = unsafely(build.commands.indexBy(_.name))
   lazy val projects: Map[ProjectId, Project] = unsafely(build.projects.indexBy(_.id))
-  lazy val mounts: Map[Path, Mount] = unsafely(build.mounts.indexBy(dir.path + _.path))
+  lazy val mounts: Map[WorkPath, Mount] = unsafely(build.mounts.indexBy(_.path))
+
+  def apply
+      (path: WorkPath)
+      (using Installation, Internet, WorkingDirectory, Log)
+      : Directory throws IoError | PathError | GitError =
+    mounts.keys.find(_.precedes(path)) match
+      case None        => (dir.path + path).as[Directory]
+      case Some(mount) => Cache(mounts(mount).repo)
+    
 
 enum Phase:
-  case Clone(repo: GitRepo, cloner: Cloner)
+  case Clone(repo: GitSnapshot, cloner: Cloner)
   case Compile(sources: Set[Path], compiler: Compiler)
   case Package(binary: Path)
   case Execute(classpath: Set[Path], main: ClassName)
