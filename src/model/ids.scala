@@ -35,7 +35,7 @@ extends Error(userMessage)
 trait RefType(val name: Text)
 
 object Ids:
-  opaque type BuildId = Text
+  opaque type OverlayId = Text
   opaque type StreamId = Text
   opaque type ProjectId = Text
   opaque type ModuleId = Text
@@ -55,7 +55,7 @@ object Ids:
     
     def unapply(value: Text): Option[T] = safely(Some(apply(value))).or(None)
 
-  object BuildId extends Id[BuildId]()
+  object OverlayId extends Id[OverlayId]()
   object StreamId extends Id[StreamId]()
   object ProjectId extends Id[ProjectId]()
   object ModuleId extends Id[ModuleId]()
@@ -92,9 +92,9 @@ object Ids:
       case _                                            => throw InvalidRefError(value, this)
 
 
-  given buildIdShow: Show[BuildId] = identity(_)
-  given buildIdEncoder: Encoder[BuildId] = identity(_)
-  given buildIdDecoder(using CanThrow[InvalidRefError]): Decoder[BuildId] = BuildId(_)
+  given overlayIdShow: Show[OverlayId] = identity(_)
+  given overlayIdEncoder: Encoder[OverlayId] = identity(_)
+  given overlayIdDecoder(using CanThrow[InvalidRefError]): Decoder[OverlayId] = OverlayId(_)
   
   given moduleIdShow: Show[ModuleId] = identity(_)
   given moduleIdEncoder: Encoder[ModuleId] = identity(_)

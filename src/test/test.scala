@@ -177,8 +177,8 @@ object Tests extends Suite(t"Fury Model Tests"):
         test(t"Parse forks"):
           Codl.read[Local](localFile)
         .assert(_ == Local(List(
-          Fork(BuildId(t"rudiments"), % / p"home" / p"propensive" / p"work" / p"rudiments"),
-          Fork(BuildId(t"gossamer"), Windows.Drive('C') / p"Documents and Settings" / p"Files"),
+          Fork(ProjectId(t"rudiments"), % / p"home" / p"propensive" / p"work" / p"rudiments"),
+          Fork(ProjectId(t"gossamer"), Windows.Drive('C') / p"Documents and Settings" / p"Files"),
         )))
 
       val build = test(t"Parse a build file as a Build instance"):

@@ -65,8 +65,11 @@ object Local:
 
 case class Local(forks: List[Fork])
 
-case class Fork(id: BuildId, path: Path)
-case class Overlay(id: BuildId, url: Url, commit: CommitHash, branch: Maybe[Branch]) extends GitSnapshot
+case class Fork(id: ProjectId, path: Path)
+
+case class Overlay(id: OverlayId, version: Int, url: Url, commit: CommitHash)
+extends GitSnapshot:
+  def branch: Maybe[Branch] = Unset
 
 case class Mount(path: WorkPath, repo: Snapshot)
 
