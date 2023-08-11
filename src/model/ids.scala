@@ -21,6 +21,7 @@ import fulminate.*
 import gossamer.*
 import anticipation.*
 import digression.*
+import perforate.*
 import spectacular.*
 import kaleidoscope.*
 
@@ -29,13 +30,13 @@ export Ids.*
 case class InvalidRefError(id: Text, refType: RefType)
 extends Error(msg"The value $id is not a valid ${refType.name}")
 
-case class AppError(userMessage: Message, underlyingCause: Maybe[Error])
+case class AppError(userMessage: Message, underlyingCause: Maybe[Error] = Unset)
 extends Error(userMessage)
 
 trait RefType(val name: Text)
 
 object Ids:
-  opaque type OverlayId = Text
+  opaque type EcosystemId = Text
   opaque type StreamId = Text
   opaque type ProjectId = Text
   opaque type ModuleId = Text
@@ -48,82 +49,86 @@ object Ids:
   opaque type Keyword = Text
   opaque type LicenseId = Text
 
-  class Id[T]() extends RefType(t"ID"):
-    def apply(value: Text): T throws InvalidRefError = value match
-      case r"[a-z]([-]?[a-z0-9])*" => value.asInstanceOf[T]
-      case _                       => throw InvalidRefError(value, this)
+  class Id[IdType]() extends RefType(t"ID"):
+    def apply(value: Text)(using Raises[InvalidRefError]): IdType = value match
+      case r"[a-z]([-]?[a-z0-9])*" => value.asInstanceOf[IdType]
+      case _                       => raise(InvalidRefError(value, this))(value.asInstanceOf[IdType])
     
-    def unapply(value: Text): Option[T] = safely(Some(apply(value))).or(None)
+    def unapply(value: Text): Option[IdType] = safely(Some(apply(value))).or(None)
 
-  object OverlayId extends Id[OverlayId]()
+  object EcosystemId extends Id[EcosystemId]()
   object StreamId extends Id[StreamId]()
   object ProjectId extends Id[ProjectId]()
   object ModuleId extends Id[ModuleId]()
   object Keyword extends Id[Keyword]()
   object CommandName extends Id[CommandName]()
-  object LicenseId extends Id[LicenseId]()
 
   extension (projectId: ProjectId) def apply()(using universe: Universe): Maybe[Project] =
     universe.resolve(projectId)
 
   class GitRefType[Type](name: Text) extends RefType(name):
-    def apply(value: Text): Type throws InvalidRefError =
+    def apply(value: Text)(using Raises[InvalidRefError]): Type =
       value.cut(t"/").foreach: part =>
-        if part.starts(t".") || part.ends(t".") then throw InvalidRefError(value, this)
-        if part.ends(t".lock") then throw InvalidRefError(value, this)
-        if part.contains(t"@{") then throw InvalidRefError(value, this)
-        if part.contains(t"..") then throw InvalidRefError(value, this)
-        if part.length == 0 then throw InvalidRefError(value, this)
+        if part.starts(t".") || part.ends(t".") then raise(InvalidRefError(value, this))(GitRefType[Type](value))
+        if part.ends(t".lock") then raise(InvalidRefError(value, this))(GitRefType[Type](value))
+        if part.contains(t"@{") then raise(InvalidRefError(value, this))(GitRefType[Type](value))
+        if part.contains(t"..") then raise(InvalidRefError(value, this))(GitRefType[Type](value))
+        if part.length == 0 then raise(InvalidRefError(value, this))(GitRefType[Type](value))
         
         for ch <- List('*', '[', '\\', ' ', '^', '~', ':', '?')
-        do if part.contains(ch) then throw InvalidRefError(value, this)
+        do if part.contains(ch) then raise(InvalidRefError(value, this))(GitRefType[Type](value))
       
       value.asInstanceOf[Type]
   
   @targetName("Pkg")
   object Package extends RefType(t"package name"):
-    def apply(value: Text): Package throws InvalidRefError = value match
+    def apply(value: Text)(using Raises[InvalidRefError]): Package = value match
       case r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*" => value.asInstanceOf[Package]
-      case _                                      => throw InvalidRefError(value, this)
+      case _                                      => raise(InvalidRefError(value, this))(value.asInstanceOf[Package])
 
+  object LicenseId extends RefType(t"license ID"):
+    def apply(value: Text)(using Raises[InvalidRefError]): LicenseId = value match
+      case r"[a-z]([-.]?[a-z0-9])*" => value.asInstanceOf[LicenseId]
+      case _                        => raise(InvalidRefError(value, this))(value.asInstanceOf[LicenseId])
+  
   object ClassName extends RefType(t"class name"):
-    def apply(value: Text): Package throws InvalidRefError = value match
+    def apply(value: Text)(using Raises[InvalidRefError]): Package = value match
       case r"[a-z][a-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)*" => value.asInstanceOf[ClassName]
-      case _                                            => throw InvalidRefError(value, this)
+      case _                                            => raise(InvalidRefError(value, this))(value.asInstanceOf[ClassName])
 
 
-  given overlayIdShow: Show[OverlayId] = identity(_)
-  given overlayIdEncoder: Encoder[OverlayId] = identity(_)
-  given overlayIdDecoder(using CanThrow[InvalidRefError]): Decoder[OverlayId] = OverlayId(_)
+  given ecosystemIdShow: Show[EcosystemId] = identity(_)
+  given ecosystemIdEncoder: Encoder[EcosystemId] = identity(_)
+  given ecosystemIdDecoder(using Raises[InvalidRefError]): Decoder[EcosystemId] = EcosystemId(_)
   
   given moduleIdShow: Show[ModuleId] = identity(_)
   given moduleIdEncoder: Encoder[ModuleId] = identity(_)
-  given moduleIdDecoder(using CanThrow[InvalidRefError]): Decoder[ModuleId] = ModuleId(_)
+  given moduleIdDecoder(using Raises[InvalidRefError]): Decoder[ModuleId] = ModuleId(_)
   
   given projectIdShow: Show[ProjectId] = identity(_)
   given projectIdEncoder: Encoder[ProjectId] = identity(_)
-  given projectIdDecoder(using CanThrow[InvalidRefError]): Decoder[ProjectId] = ProjectId(_)
+  given projectIdDecoder(using Raises[InvalidRefError]): Decoder[ProjectId] = ProjectId(_)
   
   given streamIdShow: Show[StreamId] = identity(_)
   given streamIdEncoder: Encoder[StreamId] = identity(_)
-  given streamIdDecoder(using CanThrow[InvalidRefError]): Decoder[StreamId] = StreamId(_)
+  given streamIdDecoder(using Raises[InvalidRefError]): Decoder[StreamId] = StreamId(_)
   
   given licenseIdShow: Show[LicenseId] = identity(_)
   given licenseIdEncoder: Encoder[LicenseId] = identity(_)
-  given licenseIdDecoder(using CanThrow[InvalidRefError]): Decoder[LicenseId] = LicenseId(_)
+  given licenseIdDecoder(using Raises[InvalidRefError]): Decoder[LicenseId] = LicenseId(_)
   
   given pkgShow: Show[Package] = identity(_)
   given pkgEncoder: Encoder[Package] = identity(_)
-  given pkgDecoder(using CanThrow[InvalidRefError]): Decoder[Package] = Package(_)
+  given pkgDecoder(using Raises[InvalidRefError]): Decoder[Package] = Package(_)
   
   given classNameShow: Show[ClassName] = identity(_)
   given classNameEncoder: Encoder[ClassName] = identity(_)
-  given classNameDecoder(using CanThrow[InvalidRefError]): Decoder[ClassName] = ClassName(_)
+  given classNameDecoder(using Raises[InvalidRefError]): Decoder[ClassName] = ClassName(_)
   
   given commandNameShow: Show[CommandName] = identity(_)
   given commandNameEncoder: Encoder[CommandName] = identity(_)
-  given commandNameDecoder(using CanThrow[InvalidRefError]): Decoder[CommandName] = CommandName(_)
+  given commandNameDecoder(using Raises[InvalidRefError]): Decoder[CommandName] = CommandName(_)
 
   given keywordShow: Show[Keyword] = identity(_)
   given keywordEncoder: Encoder[Keyword] = identity(_)
-  given keywordDecoder(using CanThrow[InvalidRefError]): Decoder[Keyword] = Keyword(_)
+  given keywordDecoder(using Raises[InvalidRefError]): Decoder[Keyword] = Keyword(_)

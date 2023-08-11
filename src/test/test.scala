@@ -123,7 +123,7 @@ object Tests extends Suite(t"Fury Model Tests"):
       val buildFile = t"""
         :<< "##"
             This is a Fury source file
-        overlay overlayid https://example.com/ 0000000000000000000000000000000000000000 main
+        ecosystem ecosystemId https://example.com/ 0000000000000000000000000000000000000000 main
         command build myaction/foo
         default build
         

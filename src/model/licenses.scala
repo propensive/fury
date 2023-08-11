@@ -21,6 +21,7 @@ import digression.*
 import anticipation.*
 import spectacular.*
 import rudiments.*
+import perforate.*
 import punctuation.*
 
 enum License(name: InlineMd, id: LicenseId, category: Text):
@@ -66,6 +67,3 @@ enum License(name: InlineMd, id: LicenseId, category: Text):
   case Ncsa extends License(md"University of Illinois/NCSA Open Source License", lid"ncsa", t"ncsa")
   case Unlicense extends License(md"The Unlicense", lid"unlicense", t"unlicense")
   case Zlib extends License(md"zLib License", lid"zlib", t"zlib")
-
-extension (sc: StringContext)
-  def lid(): LicenseId = unsafely(LicenseId(sc.parts(0).show))

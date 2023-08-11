@@ -23,12 +23,15 @@ import galilei.*, filesystemOptions.{createNonexistent, createNonexistentParents
 
 import anticipation.*, fileApi.galileiApi
 import rudiments.*
+import parasite.*
+import aviation.*
 import fulminate.*
 import ambience.*, environments.jvm, systemProperties.jvm
-import digression.*
 import gossamer.*
+import perforate.*
 import eucalyptus.*
 import gastronomy.*
+import punctuation.*
 import turbulence.*
 import hieroglyph.*, charDecoders.utf8, badEncodingHandlers.strict
 import imperial.*
@@ -46,15 +49,16 @@ trait Cloner
 trait Fetcher
 
 object Installation:
-  def apply(cacheDir: Directory): Installation throws AppError =
+  def apply(cache: Directory): Installation throws AppError =
     try
-      val configDir: Path = Home.Config() / p"fury"
-      val configFile: File = (configDir / p"config.codl").as[File]
-      val vaultDir: Directory = (cacheDir / p"vault").as[Directory]
-      val libDir: Directory = (cacheDir / p"lib").as[Directory]
-      val tmpDir: Directory = (cacheDir / p"tmp").as[Directory]
-    
-      Installation(configFile, cacheDir, vaultDir, libDir, tmpDir)
+      throwErrors:
+        val configPath: Path = Home.Config() / p"fury"
+        val config: File = (configPath / p"config.codl").as[File]
+        val vault: Directory = (cache / p"vault").as[Directory]
+        val lib: Directory = (cache / p"lib").as[Directory]
+        val tmp: Directory = (cache / p"tmp").as[Directory]
+      
+        Installation(config, cache, vault, lib, tmp)
     
     catch
       case error: StreamCutError =>
@@ -77,16 +81,18 @@ object Installation:
           throw AppError(msg"The path was not valid because $reason", error)
     
 case class Installation
-    (configFile: File, cacheDir: Directory, vaultDir: Directory, libDir: Directory,
-        tmpDir: Directory):
+    (config: File, cache: Directory, vault: Directory, lib: Directory, tmp: Directory):
   
-  def libJar(hash: Digest[Crc32]): File throws IoError =
-    unsafely(libDir / t"${hash.encodeAs[Hex].lower}.jar").as[File]
-
+  def libJar(hash: Digest[Crc32])(using Raises[IoError], Raises[PathError]): File =
+    unsafely(lib / t"${hash.encodeAs[Hex].lower}.jar").as[File]
+  
 inline def installation(using Installation): Installation = summon[Installation]
 
 object Workspace:
-  def apply(path: Path)(using Stdio): Workspace throws IoError | InvalidRefError | NotFoundError | UrlError | PathError | StreamCutError | UnencodableCharError | UndecodableCharError | CodlReadError | NumberError | AggregateError[CodlError] =
+  def apply
+      (path: Path)
+      (using Stdio, Raises[CodlReadError], Raises[AggregateError[CodlError]], Raises[StreamCutError], Raises[IoError], Raises[InvalidRefError], Raises[NumberError], Raises[NotFoundError], Raises[UrlError], Raises[PathError], Raises[UndecodableCharError], Raises[UnencodableCharError])
+      : Workspace =
     val dir: Directory = path.as[Directory]
     val buildFile: File = (dir / p"fury2").as[File]
 
@@ -99,14 +105,19 @@ object Workspace:
     Workspace(dir, buildDoc, build, local)
 
 case class Workspace(dir: Directory, buildDoc: CodlDoc, build: Build, local: Maybe[Local]):
+  lazy val ecosystems: Map[EcosystemId, Ecosystem] = unsafely(build.ecosystems.indexBy(_.id))
   lazy val commands: Map[CommandName, Command] = unsafely(build.commands.indexBy(_.name))
   lazy val projects: Map[ProjectId, Project] = unsafely(build.projects.indexBy(_.id))
   lazy val mounts: Map[WorkPath, Mount] = unsafely(build.mounts.indexBy(_.path))
 
+  def readEcosystems()(using Monitor, Log, WorkingDirectory, Internet, Installation, GitCommand, Raises[NumberError], Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError], Raises[CodlReadError], Raises[GitError], Raises[PathError], Raises[IoError], Raises[StreamCutError]): Unit =
+    ecosystems.foreach: (id, ecosystem) =>
+      println(Cache.ecosystem(ecosystem))
+
   def apply
       (path: WorkPath)
-      (using Installation, Internet, WorkingDirectory, Log)
-      : Directory throws IoError | PathError | GitError =
+      (using Installation, Internet, WorkingDirectory, Log, Raises[IoError], Raises[PathError], Raises[GitError])
+      : Directory =
     mounts.keys.find(_.precedes(path)) match
       case None        => (dir.path + path).as[Directory]
       case Some(mount) => Cache(mounts(mount).repo)

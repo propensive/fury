@@ -20,8 +20,8 @@ import anticipation.*
 import aviation.*
 import cellulose.*
 import symbolism.*
-import digression.*
 import galilei.*
+import perforate.*
 import gossamer.*
 import serpentine.*
 import kaleidoscope.*
@@ -53,7 +53,7 @@ case class Snapshot(url: Url, commit: CommitHash, branch: Maybe[Branch]) extends
 object Vault:
   given releasesLabel: CodlLabel[Vault, "releases"] = CodlLabel("release")
 
-case class Vault(releases: List[Release]):
+case class Vault(version: Int, releases: List[Release]):
   inline def vault: Vault = this
   
   object index:
@@ -67,7 +67,7 @@ case class Local(forks: List[Fork])
 
 case class Fork(id: ProjectId, path: Path)
 
-case class Overlay(id: OverlayId, version: Int, url: Url, commit: CommitHash)
+case class Ecosystem(id: EcosystemId, version: Int, url: Url, commit: CommitHash)
 extends GitSnapshot:
   def branch: Maybe[Branch] = Unset
 
@@ -76,13 +76,13 @@ case class Mount(path: WorkPath, repo: Snapshot)
 
 object Build:
   given preludeLabel: CodlLabel[Build, "prelude"] = CodlLabel(":<<")
-  given overlaysLabel: CodlLabel[Build, "overlays"] = CodlLabel("overlay")
+  given ecosystemssLabel: CodlLabel[Build, "ecosystems"] = CodlLabel("ecosystem")
   given commandsLabel: CodlLabel[Build, "commands"] = CodlLabel("command")
   given projectsLabel: CodlLabel[Build, "projects"] = CodlLabel("project")
   given mountsLabel: CodlLabel[Build, "mounts"] = CodlLabel("mount")
 
 case class Build
-    (prelude: Maybe[Prelude], overlays: List[Overlay], commands: List[Command],
+    (prelude: Maybe[Prelude], ecosystems: List[Ecosystem], commands: List[Command],
         default: Maybe[CommandName], projects: List[Project], mounts: List[Mount])
 
 
@@ -123,12 +123,12 @@ case class Module
 object ModuleRef extends RefType(t"module ref"):
   given moduleRefEncoder: Encoder[ModuleRef] = _.show
   given moduleRefDebug: Debug[ModuleRef] = _.show
-  given moduleRefDecoder(using CanThrow[InvalidRefError]): Decoder[ModuleRef] = ModuleRef(_)
+  given moduleRefDecoder(using Raises[InvalidRefError]): Decoder[ModuleRef] = ModuleRef(_)
   
   given Show[ModuleRef] = ref =>
     t"${ref.projectId.mm { projectId => t"$projectId/" }.or(t"")}${ref.moduleId}"
   
-  def apply(value: Text): ModuleRef throws InvalidRefError = value match
+  def apply(value: Text)(using Raises[InvalidRefError]): ModuleRef = value match
     case r"${ProjectId(project)}([^/]+)\/${ModuleId(module)}([^/]+)" =>
       ModuleRef(project, module)
     
@@ -136,7 +136,7 @@ object ModuleRef extends RefType(t"module ref"):
       ModuleRef(Unset, module)
     
     case _ =>
-      throw InvalidRefError(value, this)
+      raise(InvalidRefError(value, this))(ModuleRef(Unset, ModuleId(t"unknown")))
 
 case class ModuleRef(projectId: Maybe[ProjectId], moduleId: ModuleId)
 
@@ -160,7 +160,7 @@ object WorkPath:
   given encoder: Encoder[WorkPath] = _.render
   given debug: Debug[WorkPath] = _.render
   
-  given decoder(using path: CanThrow[PathError]): Decoder[WorkPath] = new Decoder[WorkPath]:
+  given decoder(using path: Raises[PathError]): Decoder[WorkPath] = new Decoder[WorkPath]:
     def decode(text: Text): WorkPath = Reachable.decode(text)
   
   inline given add: Operator["+", Path, WorkPath] with
