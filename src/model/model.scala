@@ -31,6 +31,8 @@ import rudiments.*
 import spectacular.*
 import nonagenarian.*
 
+import calendars.gregorian
+
 import Ids.*
 
 trait GitSnapshot:
@@ -38,13 +40,14 @@ trait GitSnapshot:
   def commit: CommitHash
   def branch: Maybe[Branch]
 
-
 object Release:
   given packagesLabel: CodlLabel[Release, "packages"] = CodlLabel("provide")
 
 case class Release
     (id: ProjectId, stream: StreamId, website: Maybe[Url], description: InlineMd,
-        license: LicenseId, date: Date, lifetime: Int, repo: Snapshot, packages: List[Package])
+        license: LicenseId, date: Date, lifetime: Int, repo: Snapshot, packages: List[Package],
+        keywords: List[Keyword]):
+    def expiry: Date = date + lifetime.days
 
 
 case class Snapshot(url: Url, commit: CommitHash, branch: Maybe[Branch]) extends GitSnapshot
@@ -70,6 +73,7 @@ case class Fork(id: ProjectId, path: Path)
 case class Ecosystem(id: EcosystemId, version: Int, url: Url, commit: CommitHash)
 extends GitSnapshot:
   def branch: Maybe[Branch] = Unset
+  def snapshot: Snapshot = Snapshot(url, commit, branch)
 
 case class Mount(path: WorkPath, repo: Snapshot)
 

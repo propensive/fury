@@ -26,6 +26,7 @@ import nettlesome.*
 import nonagenarian.*
 import parasite.*
 import perforate.*
+import fulminate.*
 import punctuation.*
 import rudiments.*
 import serpentine.*, hierarchies.unixOrWindows
@@ -52,14 +53,17 @@ object Cache:
   def apply
       (ecosystem: Ecosystem)
       (using installation: Installation)
-      (using Internet, Log, Monitor, WorkingDirectory, Raises[GitRefError], Raises[NumberError], Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[CodlReadError], Raises[MarkdownError], Raises[PathError], Raises[IoError], Raises[StreamCutError], Raises[GitError], GitCommand)
+      (using Internet, Log, Monitor, FrontEnd, WorkingDirectory, Raises[GitRefError], Raises[NumberError], Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[CodlReadError], Raises[MarkdownError], Raises[PathError], Raises[IoError], Raises[StreamCutError], Raises[GitError], GitCommand)
       : Vault =
     if ecosystems.contains(ecosystem) then ecosystems(ecosystem) else
       val destination = unsafely(installation.vault.path / PathName(ecosystem.id.show) / PathName(ecosystem.commit.show))
       
       val file = if !destination.exists() then
         val process = Git.cloneCommit(ecosystem.url.encode, destination, ecosystem.commit)
-        val progress = Async(process.progress.map(println).length)
+        val progress = Async:
+          log(msg"Starting")
+          process.progress.map(_.debug).foreach { text => log(msg"$text") }
+          log(msg"Done")
         val repo = process.complete()
         safely(progress.await())
       

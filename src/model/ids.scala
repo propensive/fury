@@ -33,6 +33,8 @@ extends Error(msg"The value $id is not a valid ${refType.name}")
 case class AppError(userMessage: Message, underlyingCause: Maybe[Error] = Unset)
 extends Error(userMessage)
 
+case class UnknownRefError() extends Error(msg"the reference could not be resolved")
+
 trait RefType(val name: Text)
 
 object Ids:
@@ -62,9 +64,6 @@ object Ids:
   object ModuleId extends Id[ModuleId]()
   object Keyword extends Id[Keyword]()
   object CommandName extends Id[CommandName]()
-
-  extension (projectId: ProjectId) def apply()(using universe: Universe): Maybe[Project] =
-    universe.resolve(projectId)
 
   class GitRefType[Type](name: Text) extends RefType(name):
     def apply(value: Text)(using Raises[InvalidRefError]): Type =

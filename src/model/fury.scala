@@ -59,16 +59,17 @@ object Main:
       
       internet:
         supervise:
-          given Log = Log()
-          val workspace = Workspace(Properties.user.dir())
-          Io.println(installation.debug)
-          
-          Io.println(workspace.debug)
-          Io.println(t"")
-          Io.println(logo)
-          Io.println(workspace.commands.debug)
-          Io.println(workspace.mounts.debug)
+          frontEnd:
+            given Log = Log()
+            val workspace = Workspace(Properties.user.dir())
+            log(msg"Starting build in ${workspace.dir.path}")
+            // Io.println(installation.debug)
+            
+            // Io.println(workspace.debug)
+            // Io.println(t"")
+            // Io.println(logo)
+            // Io.println(workspace.commands.debug)
+            // Io.println(workspace.mounts.debug)
 
-          workspace.readEcosystems()
-          workspace.readLocals()
-  
+            workspace.readEcosystems()
+            workspace.readLocals()

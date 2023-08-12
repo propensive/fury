@@ -18,9 +18,7 @@ package fury
 
 import acyclicity.*
 
-import galilei.*, filesystemOptions.{createNonexistent, createNonexistentParents,
-    dereferenceSymlinks}
-
+import galilei.*, filesystemOptions.{createNonexistent, createNonexistentParents, dereferenceSymlinks}
 import anticipation.*, fileApi.galileiApi
 import rudiments.*
 import parasite.*
@@ -41,6 +39,8 @@ import spectacular.*
 import symbolism.*
 import nettlesome.*
 import nonagenarian.*
+
+import calendars.gregorian
 
 trait Compiler
 trait Packager
@@ -111,7 +111,7 @@ case class Workspace(dir: Directory, buildDoc: CodlDoc, build: Build, local: May
   lazy val mounts: Map[WorkPath, Mount] = unsafely(build.mounts.indexBy(_.path))
 
   def readEcosystems
-      ()(using Monitor, Log, WorkingDirectory, Internet, Installation, GitCommand, Raises[NumberError],
+      ()(using Monitor, FrontEnd, Log, WorkingDirectory, Internet, Installation, GitCommand, Raises[NumberError],
           Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
           Raises[CodlReadError], Raises[GitError], Raises[PathError], Raises[IoError], Raises[StreamCutError],
           Raises[GitRefError])
@@ -147,10 +147,15 @@ enum Phase:
 
 case class Plan(phases: Dag[Phase])
 
-case class Universe(projects: Map[Ids.ProjectId, Project]):
-  def resolve(project: ProjectId): Maybe[Project] = projects.getOrElse(project, Unset)
+case class Universe(projects: Map[Ids.ProjectId, Workspace | Vault]):
+  def apply(id: ProjectId)(using Raises[UnknownRefError]): Workspace | Vault =
+    projects.getOrElse(id, abort(UnknownRefError()))
 
 object Universe:
-  def read(vault: Vault, build: Build): Universe =
-    Universe(Map())
+  def apply(vault: Vault): Universe = Universe:
+    given Timezone = tz"ETc/UTC"
+    
+    vault.releases.filter(_.expiry <= today()).map: release =>
+      (release.id, vault)
+    .to(Map)
     
