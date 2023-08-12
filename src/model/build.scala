@@ -94,7 +94,7 @@ object Workspace:
       (using Stdio, Raises[CodlReadError], Raises[GitRefError], Raises[AggregateError[CodlError]], Raises[StreamCutError], Raises[IoError], Raises[InvalidRefError], Raises[NumberError], Raises[NotFoundError], Raises[UrlError], Raises[PathError], Raises[UndecodableCharError], Raises[UnencodableCharError])
       : Workspace =
     val dir: Directory = path.as[Directory]
-    val buildFile: File = (dir / p"fury2").as[File]
+    val buildFile: File = (dir / p".fury").as[File]
 
     val buildDoc: CodlDoc = Codl.parse(buildFile)
     val build: Build = Codl.read[Build](buildFile)
