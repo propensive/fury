@@ -30,13 +30,14 @@ import scala.collection.mutable as scm
 import language.experimental.captureChecking
 
 enum FrontEndEvent:
-  case Redraw(columns: Int, rows: Int)
   case LogMessage(message: Message)
-  case TrackTask(id: Text)
-  case UpdateTask(id: Text, progress: Double)
-  case RemoveTask(id: Text)
+  case TaskUpdate(taskId: FrontEnd.TaskId, event: TaskEvent)
 
-export FrontEndEvent.*
+enum TaskEvent:
+  case Progress(stage: Text, progress: Double)
+  case Complete()
+
+export FrontEndEvent.*, TaskEvent.*
 
 def frontEnd
     [ResultType]
@@ -44,28 +45,39 @@ def frontEnd
     (block: FrontEnd ?=> ResultType)
     : ResultType^ =
   
+  val tasks: scm.HashMap[FrontEnd.TaskId, Double] = scm.HashMap()
   val funnel: Funnel[FrontEndEvent] = Funnel()
-  val tasks: scm.HashMap[Text, Double] = scm.HashMap()
 
   val async = Async[Unit]:
     funnel.stream.foreach:
-      case LogMessage(message)      => Io.println(message.out)
-      case TrackTask(id)            => Io.println(msg"Started tracking $id".out)
-      case UpdateTask(id, progress) => Io.println(msg"Progress for $id = ${(progress*100).toInt}".out)
-      case RemoveTask(id)           => tasks -= id
-      case Redraw(columns, rows)    =>
-        acquiesce()
-        Io.println(t"Redrawing...")
+      case LogMessage(message)                           => Io.println(message.out)
+      case TaskUpdate(taskId, Complete())                => tasks.remove(taskId)
+      case TaskUpdate(taskId, Progress(stage, progress)) => tasks(taskId) = progress
 
   block(using FrontEnd(funnel, async, tasks)).tap: _ =>
     funnel.stop()
     async.await()
 
+object FrontEnd:
+  class TaskId()
+
 @capability
 case class FrontEnd
     (private val funnel: Funnel[FrontEndEvent], private val async: Async[Unit],
-        private val tasks: scm.HashMap[Text, Double]):
+        private val tasks: scm.HashMap[FrontEnd.TaskId, Double]):
 
   def log(message: Message): Unit = funnel.put(LogMessage(message))
 
+  def follow(stream: LazyList[TaskEvent])(using Monitor): Unit =
+    val taskId = FrontEnd.TaskId()
+    
+    Async:
+      stream.map:
+        case Progress(stage, progress) => TaskUpdate(taskId, Progress(stage, progress))
+        case Complete()                => TaskUpdate(taskId, Complete())
+      .foreach(funnel.put(_))
+    
 def log(message: Message)(using frontEnd: FrontEnd): Unit = frontEnd.log(message)
+
+def follow(stream: LazyList[TaskEvent])(using frontEnd: FrontEnd, monitor: Monitor): Unit =
+  frontEnd.follow(stream)

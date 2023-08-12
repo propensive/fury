@@ -55,10 +55,11 @@ object Installation:
         val configPath: Path = Home.Config() / p"fury"
         val config: File = (configPath / p"config.codl").as[File]
         val vault: Directory = (cache / p"vault").as[Directory]
+        val snapshots: Directory = (cache / p"repos").as[Directory]
         val lib: Directory = (cache / p"lib").as[Directory]
         val tmp: Directory = (cache / p"tmp").as[Directory]
       
-        Installation(config, cache, vault, lib, tmp)
+        Installation(config, cache, vault, lib, tmp, snapshots)
     
     catch
       case error: StreamCutError =>
@@ -81,12 +82,12 @@ object Installation:
           throw AppError(msg"The path was not valid because $reason", error)
     
 case class Installation
-    (config: File, cache: Directory, vault: Directory, lib: Directory, tmp: Directory):
+    (config: File, cache: Directory, vault: Directory, lib: Directory, tmp: Directory, snapshots: Directory):
   
   def libJar(hash: Digest[Crc32])(using Raises[IoError], Raises[PathError]): File =
     unsafely(lib / t"${hash.encodeAs[Hex].lower}.jar").as[File]
   
-inline def installation(using Installation): Installation = summon[Installation]
+inline def installation(using inline installation: Installation): Installation = installation
 
 object Workspace:
   def apply
@@ -132,11 +133,12 @@ case class Workspace(dir: Directory, buildDoc: CodlDoc, build: Build, local: May
 
   def apply
       (path: WorkPath)
-      (using Installation, Internet, WorkingDirectory, Log)
-      : Directory raises GitRefError | GitError | PathError | IoError =
-    mounts.keys.find(_.precedes(path)) match
-      case None        => (dir.path + path).as[Directory]
-      case Some(mount) => Cache(mounts(mount).repo)
+      (using Installation, Internet, Stdio, Monitor, FrontEnd, WorkingDirectory, Log)
+      : Directory raises GitRefError | GitError | PathError | IoError | UndecodableCharError | UnencodableCharError | StreamCutError | NotFoundError | NumberError | InvalidRefError | MarkdownError | CodlReadError | DateError | UrlError =
+    mounts.keys.find(_.precedes(path)).match
+      case None        => dir.path + path
+      case Some(mount) => Cache(mounts(mount).repo).dir.path + path
+    .as[Directory]
     
 
 enum Phase:

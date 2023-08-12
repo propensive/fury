@@ -28,6 +28,7 @@ import parasite.*
 import perforate.*
 import fulminate.*
 import punctuation.*
+import gossamer.*
 import rudiments.*
 import serpentine.*, hierarchies.unixOrWindows
 import spectacular.*
@@ -36,19 +37,30 @@ import turbulence.*
 import scala.collection.mutable as scm
 
 object Cache:
+  private val ecosystems: scm.HashMap[Ecosystem, Vault] = scm.HashMap()
+  private val snapshots: scm.HashMap[Snapshot, Workspace] = scm.HashMap()
+
   def apply
       (snapshot: Snapshot)
-      (using installation: Installation, internet: Internet, workDir: WorkingDirectory, log: Log)
-      (using Raises[IoError], Raises[GitError], Raises[GitRefError], Raises[PathError])
-      : Directory =
-    val path = installation.cache / PathName(snapshot.commit.show)
-    if path.exists() && path.is[Directory] && (path / p".git").exists() then path.as[Directory]
-    else
-      val process = Git.cloneCommit(snapshot.url.encode, path, CommitHash(snapshot.commit.show))
-      process.complete()
-      path.as[Directory]
+      (using installation: Installation)
+      (using Internet, Log, Stdio, Monitor, FrontEnd, WorkingDirectory, Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NotFoundError], Raises[GitRefError], Raises[NumberError], Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[CodlReadError], Raises[MarkdownError], Raises[PathError], Raises[IoError], Raises[StreamCutError], Raises[GitError], GitCommand)
+      : Workspace =
+    snapshots.get(snapshot).getOrElse:
+      val destination = unsafely(installation.snapshots.path / PathName(snapshot.commit.show))
+      
+      val directory = if !destination.exists() then
+        val process = Git.cloneCommit(snapshot.url.encode, destination, snapshot.commit)
+        
+        follow:
+          process.progress.collect:
+            case Progress.Receiving(percent) => TaskEvent.Progress(t"receiving", percent)
+            case Progress.Unpacking(percent) => TaskEvent.Progress(t"unpacking", percent)
+            case Progress.Resolving(percent) => TaskEvent.Progress(t"resolving", percent)
 
-  private val ecosystems: scm.HashMap[Ecosystem, Vault] = scm.HashMap()
+        process.complete().workTree.avow(using Unsafe).path
+      else destination
+
+      Workspace(destination)
 
   def apply
       (ecosystem: Ecosystem)
