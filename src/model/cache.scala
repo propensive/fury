@@ -38,24 +38,24 @@ object Cache:
   def apply
       (snapshot: Snapshot)
       (using installation: Installation, internet: Internet, workDir: WorkingDirectory, log: Log)
-      (using Raises[IoError], Raises[GitError], Raises[PathError])
+      (using Raises[IoError], Raises[GitError], Raises[GitRefError], Raises[PathError])
       : Directory =
-    val path = installation.cache / PathName(snapshot.commit.name)
+    val path = installation.cache / PathName(snapshot.commit.show)
     if path.exists() && path.is[Directory] && (path / p".git").exists() then path.as[Directory]
     else
-      val process = Git.cloneCommit(snapshot.url.encode, path, CommitHash(snapshot.commit.name))
+      val process = Git.cloneCommit(snapshot.url.encode, path, CommitHash(snapshot.commit.show))
       process.complete()
       path.as[Directory]
 
   private val ecosystems: scm.HashMap[Ecosystem, Vault] = scm.HashMap()
 
-  def ecosystem
+  def apply
       (ecosystem: Ecosystem)
       (using installation: Installation)
-      (using Internet, Log, Monitor, WorkingDirectory, Raises[NumberError], Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[CodlReadError], Raises[MarkdownError], Raises[PathError], Raises[IoError], Raises[StreamCutError], Raises[GitError], GitCommand)
+      (using Internet, Log, Monitor, WorkingDirectory, Raises[GitRefError], Raises[NumberError], Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[CodlReadError], Raises[MarkdownError], Raises[PathError], Raises[IoError], Raises[StreamCutError], Raises[GitError], GitCommand)
       : Vault =
     if ecosystems.contains(ecosystem) then ecosystems(ecosystem) else
-      val destination = unsafely(installation.vault.path / PathName(ecosystem.id.show) / PathName(ecosystem.commit.name))
+      val destination = unsafely(installation.vault.path / PathName(ecosystem.id.show) / PathName(ecosystem.commit.show))
       
       val file = if !destination.exists() then
         val process = Git.cloneCommit(ecosystem.url.encode, destination, ecosystem.commit)

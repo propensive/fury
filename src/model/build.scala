@@ -91,7 +91,7 @@ inline def installation(using Installation): Installation = summon[Installation]
 object Workspace:
   def apply
       (path: Path)
-      (using Stdio, Raises[CodlReadError], Raises[AggregateError[CodlError]], Raises[StreamCutError], Raises[IoError], Raises[InvalidRefError], Raises[NumberError], Raises[NotFoundError], Raises[UrlError], Raises[PathError], Raises[UndecodableCharError], Raises[UnencodableCharError])
+      (using Stdio, Raises[CodlReadError], Raises[GitRefError], Raises[AggregateError[CodlError]], Raises[StreamCutError], Raises[IoError], Raises[InvalidRefError], Raises[NumberError], Raises[NotFoundError], Raises[UrlError], Raises[PathError], Raises[UndecodableCharError], Raises[UnencodableCharError])
       : Workspace =
     val dir: Directory = path.as[Directory]
     val buildFile: File = (dir / p"fury2").as[File]
@@ -110,14 +110,30 @@ case class Workspace(dir: Directory, buildDoc: CodlDoc, build: Build, local: May
   lazy val projects: Map[ProjectId, Project] = unsafely(build.projects.indexBy(_.id))
   lazy val mounts: Map[WorkPath, Mount] = unsafely(build.mounts.indexBy(_.path))
 
-  def readEcosystems()(using Monitor, Log, WorkingDirectory, Internet, Installation, GitCommand, Raises[NumberError], Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError], Raises[CodlReadError], Raises[GitError], Raises[PathError], Raises[IoError], Raises[StreamCutError]): Unit =
+  def readEcosystems
+      ()(using Monitor, Log, WorkingDirectory, Internet, Installation, GitCommand, Raises[NumberError],
+          Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
+          Raises[CodlReadError], Raises[GitError], Raises[PathError], Raises[IoError], Raises[StreamCutError],
+          Raises[GitRefError])
+      : Unit =
     ecosystems.foreach: (id, ecosystem) =>
-      println(Cache.ecosystem(ecosystem))
+      println(Cache(ecosystem))
+
+  def readLocals
+      ()(using Monitor, Log, Stdio, WorkingDirectory, Internet, Installation, GitCommand, Raises[NotFoundError],
+          Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NumberError],
+          Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
+          Raises[CodlReadError], Raises[GitError], Raises[PathError], Raises[IoError], Raises[StreamCutError],
+          Raises[GitRefError])
+      : Unit =
+    local.mm: local =>
+      local.forks.foreach: fork =>
+        println(Workspace(fork.path))
 
   def apply
       (path: WorkPath)
-      (using Installation, Internet, WorkingDirectory, Log, Raises[IoError], Raises[PathError], Raises[GitError])
-      : Directory =
+      (using Installation, Internet, WorkingDirectory, Log)
+      : Directory raises GitRefError | GitError | PathError | IoError =
     mounts.keys.find(_.precedes(path)) match
       case None        => (dir.path + path).as[Directory]
       case Some(mount) => Cache(mounts(mount).repo)

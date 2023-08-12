@@ -117,7 +117,7 @@ object Module:
 case class Module
     (id: ModuleId, includes: List[ModuleRef], sources: List[WorkPath], packages: List[Package],
         usages: List[ModuleRef], omissions: List[ModuleRef], assists: List[Assist],
-        compiler: Maybe[Text], main: Maybe[ClassName])
+        compiler: Maybe[Text], main: Maybe[ClassName], coverage: Maybe[ModuleRef])
 
 
 object ModuleRef extends RefType(t"module ref"):

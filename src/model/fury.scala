@@ -53,7 +53,7 @@ object Main:
   def main(args: IArray[Text]): Unit throws StreamCutError | AggregateError[Error] =
 
     validate[InvalidRefError | StreamCutError | CodlReadError | DateError | MarkdownError | NumberError | IoError | PathError | GitError |
-        NotFoundError | UrlError | SystemPropertyError | UndecodableCharError | UnencodableCharError | CancelError]:
+        NotFoundError | UrlError | SystemPropertyError | UndecodableCharError | UnencodableCharError | CancelError | GitRefError]:
       given installation: Installation = Installation((Xdg().cacheHome[Path] / p"fury").as[Directory])
       import workingDirectory.jvm
       
@@ -70,4 +70,5 @@ object Main:
           Io.println(workspace.mounts.debug)
 
           workspace.readEcosystems()
+          workspace.readLocals()
   

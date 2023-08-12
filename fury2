@@ -22,8 +22,7 @@
 # repo  https://github.com/propensive/scintillate  0000000000000000000000000000000000000000  main
 # repo  https://github.com/propensive/acyclicity   0000000000000000000000000000000000000000  main
 
-ecosystem vent 2 https://github.com/propensive/vent
-  commit 191d64e599f246813910978251e1d7f5cb52b95d
+ecosystem vent 2 https://github.com/propensive/vent 191d64e599f246813910978251e1d7f5cb52b95d
 
 command test fury/test
 command build fury/core
