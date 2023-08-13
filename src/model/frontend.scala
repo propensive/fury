@@ -39,15 +39,12 @@ enum TaskEvent:
 
 export FrontEndEvent.*, TaskEvent.*
 
-def frontEnd
-    [ResultType]
-    (using monitor: Monitor, stdio: Stdio, cancel: Raises[CancelError])
-    (block: FrontEnd ?=> ResultType)
-    : ResultType^ =
+def frontEnd[ResultType](using Monitor, Stdio)(block: FrontEnd ?=> ResultType): ResultType raises CancelError =
   
   val tasks: scm.HashMap[FrontEnd.TaskId, Double] = scm.HashMap()
-  val funnel: Funnel[FrontEndEvent] = Funnel()
 
+  val funnel: Funnel[FrontEndEvent] = Funnel()
+  
   val async = Async[Unit]:
     funnel.stream.foreach:
       case LogMessage(message)                           => Io.println(message.out)
@@ -59,7 +56,7 @@ def frontEnd
     async.await()
 
 object FrontEnd:
-  class TaskId()
+  class TaskId(name: Message)
 
 @capability
 case class FrontEnd
@@ -68,8 +65,8 @@ case class FrontEnd
 
   def log(message: Message): Unit = funnel.put(LogMessage(message))
 
-  def follow(stream: LazyList[TaskEvent])(using Monitor): Unit =
-    val taskId = FrontEnd.TaskId()
+  def follow(name: Message)(stream: LazyList[TaskEvent])(using Monitor): Unit =
+    val taskId = FrontEnd.TaskId(name)
     
     Async:
       stream.map:
@@ -79,5 +76,5 @@ case class FrontEnd
     
 def log(message: Message)(using frontEnd: FrontEnd): Unit = frontEnd.log(message)
 
-def follow(stream: LazyList[TaskEvent])(using frontEnd: FrontEnd, monitor: Monitor): Unit =
-  frontEnd.follow(stream)
+def follow(name: Message)(stream: LazyList[TaskEvent])(using frontEnd: FrontEnd, monitor: Monitor): Unit =
+  frontEnd.follow(name)(stream)

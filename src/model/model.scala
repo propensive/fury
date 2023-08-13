@@ -35,11 +35,6 @@ import calendars.gregorian
 
 import Ids.*
 
-trait GitSnapshot:
-  def url: Url
-  def commit: CommitHash
-  def branch: Maybe[Branch]
-
 object Release:
   given packagesLabel: CodlLabel[Release, "packages"] = CodlLabel("provide")
 
@@ -50,7 +45,7 @@ case class Release
     def expiry: Date = date + lifetime.days
 
 
-case class Snapshot(url: Url, commit: CommitHash, branch: Maybe[Branch]) extends GitSnapshot
+case class Snapshot(url: Url, commit: CommitHash, branch: Maybe[Branch])
 
 
 object Vault:
@@ -70,24 +65,20 @@ case class Local(forks: List[Fork])
 
 case class Fork(id: ProjectId, path: Path)
 
-case class Ecosystem(id: EcosystemId, version: Int, url: Url, commit: CommitHash)
-extends GitSnapshot:
-  def branch: Maybe[Branch] = Unset
-  def snapshot: Snapshot = Snapshot(url, commit, branch)
+case class Ecosystem(id: EcosystemId, version: Int, url: Url, branch: Branch)
 
 case class Mount(path: WorkPath, repo: Snapshot)
 
 
 object Build:
   given preludeLabel: CodlLabel[Build, "prelude"] = CodlLabel(":<<")
-  given ecosystemssLabel: CodlLabel[Build, "ecosystems"] = CodlLabel("ecosystem")
-  given commandsLabel: CodlLabel[Build, "commands"] = CodlLabel("command")
+  given actionsLabel: CodlLabel[Build, "actions"] = CodlLabel("command")
   given projectsLabel: CodlLabel[Build, "projects"] = CodlLabel("project")
   given mountsLabel: CodlLabel[Build, "mounts"] = CodlLabel("mount")
 
 case class Build
-    (prelude: Maybe[Prelude], ecosystems: List[Ecosystem], commands: List[Command],
-        default: Maybe[CommandName], projects: List[Project], mounts: List[Mount])
+    (prelude: Maybe[Prelude], ecosystem: Ecosystem, actions: List[Action],
+        default: Maybe[ActionName], projects: List[Project], mounts: List[Mount])
 
 
 case class Prelude(terminator: Text, comment: List[Text])
@@ -144,10 +135,10 @@ object ModuleRef extends RefType(t"module ref"):
 
 case class ModuleRef(projectId: Maybe[ProjectId], moduleId: ModuleId)
 
-object Command:
-  given CodlLabel[Command, "actions"] = CodlLabel("action")
+object Action:
+  given CodlLabel[Action, "actions"] = CodlLabel("action")
 
-case class Command(name: CommandName, actions: List[ModuleRef])
+case class Action(name: ActionName, actions: List[ModuleRef])
 
 object WorkPath:
   given reachable: Reachable[WorkPath, GeneralForbidden, Unit] with

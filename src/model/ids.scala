@@ -20,6 +20,7 @@ import rudiments.*
 import fulminate.*
 import gossamer.*
 import anticipation.*
+import galilei.*
 import digression.*
 import perforate.*
 import spectacular.*
@@ -35,6 +36,9 @@ extends Error(userMessage)
 
 case class UnknownRefError() extends Error(msg"the reference could not be resolved")
 
+case class BuildfileError(path: Path, issues: List[Error])
+extends Error(msg"There were problems with the build file $path")
+
 trait RefType(val name: Text)
 
 object Ids:
@@ -47,7 +51,7 @@ object Ids:
   opaque type Package = Text
   
   opaque type ClassName = Text
-  opaque type CommandName = Text
+  opaque type ActionName = Text
   opaque type Keyword = Text
   opaque type LicenseId = Text
 
@@ -63,7 +67,7 @@ object Ids:
   object ProjectId extends Id[ProjectId]()
   object ModuleId extends Id[ModuleId]()
   object Keyword extends Id[Keyword]()
-  object CommandName extends Id[CommandName]()
+  object ActionName extends Id[ActionName]()
 
   class GitRefType[Type](name: Text) extends RefType(name):
     def apply(value: Text)(using Raises[InvalidRefError]): Type =
@@ -124,9 +128,9 @@ object Ids:
   given classNameEncoder: Encoder[ClassName] = identity(_)
   given classNameDecoder(using Raises[InvalidRefError]): Decoder[ClassName] = ClassName(_)
   
-  given commandNameShow: Show[CommandName] = identity(_)
-  given commandNameEncoder: Encoder[CommandName] = identity(_)
-  given commandNameDecoder(using Raises[InvalidRefError]): Decoder[CommandName] = CommandName(_)
+  given actionNameShow: Show[ActionName] = identity(_)
+  given actionNameEncoder: Encoder[ActionName] = identity(_)
+  given actionNameDecoder(using Raises[InvalidRefError]): Decoder[ActionName] = ActionName(_)
 
   given keywordShow: Show[Keyword] = identity(_)
   given keywordEncoder: Encoder[Keyword] = identity(_)

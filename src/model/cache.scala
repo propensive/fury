@@ -26,6 +26,7 @@ import nettlesome.*
 import nonagenarian.*
 import parasite.*
 import perforate.*
+import guillotine.*
 import fulminate.*
 import punctuation.*
 import gossamer.*
@@ -37,48 +38,55 @@ import turbulence.*
 import scala.collection.mutable as scm
 
 object Cache:
-  private val ecosystems: scm.HashMap[Ecosystem, Vault] = scm.HashMap()
-  private val snapshots: scm.HashMap[Snapshot, Workspace] = scm.HashMap()
+  private val ecosystems: scm.HashMap[Ecosystem, Async[Vault]] = scm.HashMap()
+  private val snapshots: scm.HashMap[Snapshot, Async[Directory]] = scm.HashMap()
+  private val workspaces: scm.HashMap[Path, Async[Workspace]] = scm.HashMap()
+
+  def gitProgress(stream: LazyList[Progress]): LazyList[TaskEvent] = stream.collect:
+    case Progress.Receiving(percent)         => TaskEvent.Progress(t"receiving", percent)
+    case Progress.Unpacking(percent)         => TaskEvent.Progress(t"unpacking", percent)
+    case Progress.Resolving(percent)         => TaskEvent.Progress(t"resolving", percent)
+    case Progress.RemoteCounting(percent)    => TaskEvent.Progress(t"counting", percent)
+    case Progress.RemoteCompressing(percent) => TaskEvent.Progress(t"compressing", percent)
 
   def apply
       (snapshot: Snapshot)
       (using installation: Installation)
-      (using Internet, Log, Stdio, Monitor, FrontEnd, WorkingDirectory, Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NotFoundError], Raises[GitRefError], Raises[NumberError], Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[CodlReadError], Raises[MarkdownError], Raises[PathError], Raises[IoError], Raises[StreamCutError], Raises[GitError], GitCommand)
-      : Workspace =
-    snapshots.get(snapshot).getOrElse:
-      val destination = unsafely(installation.snapshots.path / PathName(snapshot.commit.show))
-      
-      val directory = if !destination.exists() then
-        val process = Git.cloneCommit(snapshot.url.encode, destination, snapshot.commit)
+      (using Internet, Log, Monitor, FrontEnd, WorkingDirectory, Raises[ExecError], Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NotFoundError], Raises[GitRefError], Raises[NumberError], Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[CodlReadError], Raises[MarkdownError], Raises[PathError], Raises[IoError], Raises[StreamCutError], Raises[GitError], GitCommand)
+      : Async[Directory] =
+    snapshots.synchronized:
+      snapshots.getOrElseUpdate(snapshot, Async:
+        val destination = unsafely(installation.snapshots.path / PathName(snapshot.commit.show))
         
-        follow:
-          process.progress.collect:
-            case Progress.Receiving(percent) => TaskEvent.Progress(t"receiving", percent)
-            case Progress.Unpacking(percent) => TaskEvent.Progress(t"unpacking", percent)
-            case Progress.Resolving(percent) => TaskEvent.Progress(t"resolving", percent)
-
-        process.complete().workTree.avow(using Unsafe).path
-      else destination
-
-      Workspace(destination)
+        if !destination.exists() then
+          val process = Git.cloneCommit(snapshot.url.encode, destination, snapshot.commit)
+          follow(msg"Cloning ${snapshot.url}")(gitProgress(process.progress))
+          process.complete().workTree.avow(using Unsafe)
+        else destination.as[Directory]
+      )
+        
+      
 
   def apply
       (ecosystem: Ecosystem)
       (using installation: Installation)
-      (using Internet, Log, Monitor, FrontEnd, WorkingDirectory, Raises[GitRefError], Raises[NumberError], Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[CodlReadError], Raises[MarkdownError], Raises[PathError], Raises[IoError], Raises[StreamCutError], Raises[GitError], GitCommand)
-      : Vault =
-    if ecosystems.contains(ecosystem) then ecosystems(ecosystem) else
-      val destination = unsafely(installation.vault.path / PathName(ecosystem.id.show) / PathName(ecosystem.commit.show))
-      
-      val file = if !destination.exists() then
-        val process = Git.cloneCommit(ecosystem.url.encode, destination, ecosystem.commit)
-        val progress = Async:
-          log(msg"Starting")
-          process.progress.map(_.debug).foreach { text => log(msg"$text") }
-          log(msg"Done")
-        val repo = process.complete()
-        safely(progress.await())
-      
-      val vault = Codl.read[Vault]((destination / p"vault.codl").as[File])
-      ecosystems(ecosystem) = vault
-      vault
+      (using Internet, Log, Monitor, FrontEnd, WorkingDirectory, Raises[ExecError], Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NotFoundError], Raises[GitRefError], Raises[NumberError], Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[CodlReadError], Raises[MarkdownError], Raises[PathError], Raises[IoError], Raises[StreamCutError], Raises[GitError], GitCommand)
+      : Async[Vault] =
+    ecosystems.synchronized:
+      ecosystems.getOrElseUpdate(ecosystem, Async:
+        val destination = unsafely(installation.vault.path / PathName(ecosystem.id.show) / PathName(ecosystem.branch.show))
+        
+        if !destination.exists() then
+          val process = Git.clone(ecosystem.url.encode, destination, branch = ecosystem.branch)
+          follow(msg"Cloning ${ecosystem.url}")(gitProgress(process.progress))
+          process.complete()
+        
+        Codl.read[Vault]((destination / p"vault.codl").as[File])
+      )
+
+  def workspace(path: Path)
+      (using installation: Installation)
+      (using Internet, Log, Stdio, Monitor, FrontEnd, WorkingDirectory, Raises[ExecError], Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NotFoundError], Raises[GitRefError], Raises[NumberError], Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[CodlReadError], Raises[MarkdownError], Raises[PathError], Raises[IoError], Raises[StreamCutError], Raises[GitError], GitCommand)
+      : Async[Workspace] =
+    workspaces.synchronized:
+      workspaces.getOrElseUpdate(path, Async(Workspace(path)))

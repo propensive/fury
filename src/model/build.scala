@@ -23,6 +23,7 @@ import anticipation.*, fileApi.galileiApi
 import rudiments.*
 import parasite.*
 import aviation.*
+import guillotine.*
 import fulminate.*
 import ambience.*, environments.jvm, systemProperties.jvm
 import gossamer.*
@@ -106,48 +107,45 @@ object Workspace:
     Workspace(dir, buildDoc, build, local)
 
 case class Workspace(dir: Directory, buildDoc: CodlDoc, build: Build, local: Maybe[Local]):
-  lazy val ecosystems: Map[EcosystemId, Ecosystem] = unsafely(build.ecosystems.indexBy(_.id))
-  lazy val commands: Map[CommandName, Command] = unsafely(build.commands.indexBy(_.name))
+  val ecosystem = build.ecosystem
+  lazy val actions: Map[ActionName, Action] = unsafely(build.actions.indexBy(_.name))
   lazy val projects: Map[ProjectId, Project] = unsafely(build.projects.indexBy(_.id))
   lazy val mounts: Map[WorkPath, Mount] = unsafely(build.mounts.indexBy(_.path))
 
-  def readEcosystems
+  def vault
       ()(using Monitor, FrontEnd, Log, WorkingDirectory, Internet, Installation, GitCommand, Raises[NumberError],
           Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
           Raises[CodlReadError], Raises[GitError], Raises[PathError], Raises[IoError], Raises[StreamCutError],
-          Raises[GitRefError])
-      : Unit =
-    ecosystems.foreach: (id, ecosystem) =>
-      println(Cache(ecosystem))
+          Raises[GitRefError], Raises[UndecodableCharError], Raises[ExecError], Raises[UnencodableCharError], Raises[NotFoundError], Raises[CancelError])
+      : Vault =
+    Cache(ecosystem).await()
 
-  def readLocals
-      ()(using Monitor, Log, Stdio, WorkingDirectory, Internet, Installation, GitCommand, Raises[NotFoundError],
+  def locals
+      (ancestors: Set[Path] = Set())
+      (using Monitor, Log, FrontEnd, Stdio, WorkingDirectory, Internet, Installation, GitCommand, Raises[NotFoundError],
           Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NumberError],
           Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
-          Raises[CodlReadError], Raises[GitError], Raises[PathError], Raises[IoError], Raises[StreamCutError],
+          Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamCutError],
           Raises[GitRefError])
-      : Unit =
+      : Map[ProjectId, Project] =
     local.mm: local =>
-      local.forks.foreach: fork =>
-        println(Workspace(fork.path))
+      local.forks.map: fork =>
+        log(msg"Reading ${fork.path}")
+        val workspace = Workspace(fork.path)
+        val projects = workspace.projects
+        workspace.locals(ancestors + fork.path)
+        
+    .or(Nil).foldRight(projects)(_ ++ _)
+        
 
   def apply
       (path: WorkPath)
       (using Installation, Internet, Stdio, Monitor, FrontEnd, WorkingDirectory, Log)
-      : Directory raises GitRefError | GitError | PathError | IoError | UndecodableCharError | UnencodableCharError | StreamCutError | NotFoundError | NumberError | InvalidRefError | MarkdownError | CodlReadError | DateError | UrlError =
+      : Directory raises CancelError | GitRefError | GitError | PathError | ExecError | IoError | UndecodableCharError | UnencodableCharError | StreamCutError | NotFoundError | NumberError | InvalidRefError | MarkdownError | CodlReadError | DateError | UrlError =
     mounts.keys.find(_.precedes(path)).match
       case None        => dir.path + path
-      case Some(mount) => Cache(mounts(mount).repo).dir.path + path
+      case Some(mount) => Cache(mounts(mount).repo).await().path + path
     .as[Directory]
-    
-
-enum Phase:
-  case Clone(repo: GitSnapshot, cloner: Cloner)
-  case Compile(sources: Set[Path], compiler: Compiler)
-  case Package(binary: Path)
-  case Execute(classpath: Set[Path], main: ClassName)
-
-case class Plan(phases: Dag[Phase])
 
 case class Universe(projects: Map[Ids.ProjectId, Workspace | Vault]):
   def apply(id: ProjectId)(using Raises[UnknownRefError]): Workspace | Vault =
@@ -155,7 +153,7 @@ case class Universe(projects: Map[Ids.ProjectId, Workspace | Vault]):
 
 object Universe:
   def apply(vault: Vault): Universe = Universe:
-    given Timezone = tz"ETc/UTC"
+    given Timezone = tz"Etc/UTC"
     
     vault.releases.filter(_.expiry <= today()).map: release =>
       (release.id, vault)
