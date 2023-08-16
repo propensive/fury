@@ -22,7 +22,7 @@ import galilei.*, filesystemOptions.{createNonexistent, createNonexistentParents
 import anticipation.*, fileApi.galileiApi
 import rudiments.*
 import parasite.*
-import aviation.*
+import aviation.*, calendars.gregorian
 import guillotine.*
 import fulminate.*
 import ambience.*, environments.jvm, systemProperties.jvm
@@ -41,13 +41,7 @@ import symbolism.*
 import nettlesome.*
 import nonagenarian.*
 
-import calendars.gregorian
-
-trait Compiler
-trait Packager
-trait Executor
-trait Cloner
-trait Fetcher
+import scala.collection.mutable as scm
 
 object Installation:
   def apply(cache: Directory): Installation throws AppError =
@@ -93,7 +87,7 @@ inline def installation(using inline installation: Installation): Installation =
 object Workspace:
   def apply
       (path: Path)
-      (using Stdio, Raises[CodlReadError], Raises[GitRefError], Raises[AggregateError[CodlError]], Raises[StreamCutError], Raises[IoError], Raises[InvalidRefError], Raises[NumberError], Raises[NotFoundError], Raises[UrlError], Raises[PathError], Raises[UndecodableCharError], Raises[UnencodableCharError])
+      (using Stdio, Raises[CodlReadError], Raises[GitRefError], Raises[AggregateError[CodlError]], Raises[StreamCutError], Raises[IoError], Raises[InvalidRefError], Raises[NumberError], Raises[NotFoundError], Raises[UrlError], Raises[PathError], Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[MarkdownError])
       : Workspace =
     val dir: Directory = path.as[Directory]
     val buildFile: File = (dir / p".fury").as[File]
@@ -106,19 +100,44 @@ object Workspace:
 
     Workspace(dir, buildDoc, build, local)
 
-case class Workspace(dir: Directory, buildDoc: CodlDoc, build: Build, local: Maybe[Local]):
+
+object Engine:
+  private val builds: scm.HashMap[ModuleRef, Async[Unit]] = scm.HashMap()
+  
+  def build(moduleRef: ModuleRef)(using universe: Universe)
+      (using Monitor, Clock, Log, FrontEnd, Stdio, WorkingDirectory, Internet, Installation, GitCommand, Raises[NotFoundError],
+          Raises[UnknownRefError], Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NumberError],
+          Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
+          Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamCutError],
+          Raises[GitRefError], Raises[CancelError])
+      : Async[Unit] =
+    builds.synchronized:
+      builds.getOrElseUpdate(moduleRef, Async:
+        val workspace = universe(moduleRef.projectId).source match
+          case vault: Vault         => Workspace(Cache(vault.index.releases(moduleRef.projectId).repo).await().path)
+          case workspace: Workspace => workspace
+        
+        val project: Project = workspace(moduleRef.projectId)
+        val module = project(moduleRef.moduleId)
+    
+        module.includes.map(Engine.build(_)).foreach(_.await())
+        log(msg"Starting to build ${moduleRef}")
+        
+        val part = (math.random*100).toLong
+        val progress = LazyList.range(0, 100).map: pc =>
+          Thread.sleep(part)
+          TaskEvent.Progress(t"typer", pc/100.0)
+        
+        follow(msg"Building $moduleRef")(progress #::: LazyList(TaskEvent.Complete()))
+        progress.length
+      )
+
+
+case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, local: Maybe[Local]):
   val ecosystem = build.ecosystem
   lazy val actions: Map[ActionName, Action] = unsafely(build.actions.indexBy(_.name))
   lazy val projects: Map[ProjectId, Project] = unsafely(build.projects.indexBy(_.id))
   lazy val mounts: Map[WorkPath, Mount] = unsafely(build.mounts.indexBy(_.path))
-
-  def vault
-      ()(using Monitor, FrontEnd, Log, WorkingDirectory, Internet, Installation, GitCommand, Raises[NumberError],
-          Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
-          Raises[CodlReadError], Raises[GitError], Raises[PathError], Raises[IoError], Raises[StreamCutError],
-          Raises[GitRefError], Raises[UndecodableCharError], Raises[ExecError], Raises[UnencodableCharError], Raises[NotFoundError], Raises[CancelError])
-      : Vault =
-    Cache(ecosystem).await()
 
   def locals
       (ancestors: Set[Path] = Set())
@@ -126,36 +145,54 @@ case class Workspace(dir: Directory, buildDoc: CodlDoc, build: Build, local: May
           Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NumberError],
           Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
           Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamCutError],
-          Raises[GitRefError])
-      : Map[ProjectId, Project] =
+          Raises[GitRefError], Raises[CancelError])
+      : Map[ProjectId, Definition] =
     local.mm: local =>
       local.forks.map: fork =>
-        log(msg"Reading ${fork.path}")
-        val workspace = Workspace(fork.path)
+        val workspace = Cache.workspace(fork.path).await()
         val projects = workspace.projects
         workspace.locals(ancestors + fork.path)
         
-    .or(Nil).foldRight(projects)(_ ++ _)
-        
+    .or(Nil).foldRight(projects.mapValues(_.definition(this)).to(Map))(_ ++ _)
+  
+  def universe
+      ()
+      (using Monitor, Clock, Log, FrontEnd, Stdio, WorkingDirectory, Internet, Installation, GitCommand, Raises[NotFoundError],
+          Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NumberError],
+          Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
+          Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamCutError],
+          Raises[GitRefError], Raises[CancelError])
+      : Universe =
+    given Timezone = tz"Etc/UTC"
+    val vaultProjects = Cache(ecosystem).await()
+    val localProjects = locals()
+    
+    val projects: Map[ProjectId, Definition] =
+      vaultProjects.releases.filter(_.expiry <= today()).map: release =>
+        (release.id, release.definition(vaultProjects))
+      .to(Map)
+    
+    Universe(projects -- localProjects.keySet ++ localProjects)
+
+  def apply(projectId: ProjectId): Project = projects(projectId)
 
   def apply
       (path: WorkPath)
       (using Installation, Internet, Stdio, Monitor, FrontEnd, WorkingDirectory, Log)
       : Directory raises CancelError | GitRefError | GitError | PathError | ExecError | IoError | UndecodableCharError | UnencodableCharError | StreamCutError | NotFoundError | NumberError | InvalidRefError | MarkdownError | CodlReadError | DateError | UrlError =
     mounts.keys.find(_.precedes(path)).match
-      case None        => dir.path + path
+      case None        => directory.path + path
       case Some(mount) => Cache(mounts(mount).repo).await().path + path
     .as[Directory]
 
-case class Universe(projects: Map[Ids.ProjectId, Workspace | Vault]):
-  def apply(id: ProjectId)(using Raises[UnknownRefError]): Workspace | Vault =
-    projects.getOrElse(id, abort(UnknownRefError()))
+case class Universe(projects: Map[ProjectId, Definition]):
+  def apply(id: ProjectId)(using Raises[UnknownRefError]): Definition =
+    projects.getOrElse(id, abort(UnknownRefError(id)))
 
-object Universe:
-  def apply(vault: Vault): Universe = Universe:
-    given Timezone = tz"Etc/UTC"
-    
-    vault.releases.filter(_.expiry <= today()).map: release =>
-      (release.id, vault)
-    .to(Map)
-    
+enum Compiler:
+  case Java(version: Int)
+  case Scala
+
+case class Stage(sources: List[File], dependencies: List[Digest[Sha2[224]]], binaries: List[Digest[Sha2[224]]]):
+  def digest: Digest[Sha2[224]] raises StreamCutError | IoError =
+    (sources.map(_.read[Bytes]), dependencies, binaries).digest

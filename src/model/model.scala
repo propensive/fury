@@ -20,13 +20,21 @@ import anticipation.*
 import aviation.*
 import cellulose.*
 import symbolism.*
+import escapade.*
+import guillotine.*
 import galilei.*
+import diuretic.*
+import eucalyptus.*
+import fulminate.*
 import perforate.*
 import gossamer.*
 import serpentine.*
 import kaleidoscope.*
 import nettlesome.*
 import punctuation.*
+import turbulence.*
+import hieroglyph.*
+import parasite.*
 import rudiments.*
 import spectacular.*
 import nonagenarian.*
@@ -39,10 +47,13 @@ object Release:
   given packagesLabel: CodlLabel[Release, "packages"] = CodlLabel("provide")
 
 case class Release
-    (id: ProjectId, stream: StreamId, website: Maybe[Url], description: InlineMd,
+    (id: ProjectId, name: Text, stream: StreamId, website: Maybe[Url], description: InlineMd,
         license: LicenseId, date: Date, lifetime: Int, repo: Snapshot, packages: List[Package],
         keywords: List[Keyword]):
-    def expiry: Date = date + lifetime.days
+  def expiry: Date = date + lifetime.days
+  
+  def definition(vault: Vault): Definition =
+    Definition(name, description, website, license, keywords, vault)
 
 
 case class Snapshot(url: Url, commit: CommitHash, branch: Maybe[Branch])
@@ -51,7 +62,7 @@ case class Snapshot(url: Url, commit: CommitHash, branch: Maybe[Branch])
 object Vault:
   given releasesLabel: CodlLabel[Vault, "releases"] = CodlLabel("release")
 
-case class Vault(version: Int, releases: List[Release]):
+case class Vault(name: Text, version: Int, releases: List[Release]):
   inline def vault: Vault = this
   
   object index:
@@ -77,8 +88,8 @@ object Build:
   given mountsLabel: CodlLabel[Build, "mounts"] = CodlLabel("mount")
 
 case class Build
-    (prelude: Maybe[Prelude], ecosystem: Ecosystem, actions: List[Action],
-        default: Maybe[ActionName], projects: List[Project], mounts: List[Mount])
+    (prelude: Maybe[Prelude], ecosystem: Ecosystem, actions: List[Action], default: Maybe[ActionName],
+        projects: List[Project], mounts: List[Mount])
 
 
 case class Prelude(terminator: Text, comment: List[Text])
@@ -87,13 +98,15 @@ case class Prelude(terminator: Text, comment: List[Text])
 object Project:
   given modulesLabel: CodlLabel[Project, "modules"] = CodlLabel("module")
 
-case class Project(id: ProjectId, name: Text, description: Text, modules: List[Module], website: Url, keywords: List[Keyword]):
-  inline def project: Project = this
+case class Project
+    (id: ProjectId, name: Text, description: InlineMd, modules: List[Module], website: Url, license: Maybe[LicenseId],
+        keywords: List[Keyword]):
   
-  object index:
-    lazy val modules: Map[ModuleRef, Module] =
-      unsafely(project.modules.indexBy { module => ModuleRef(project.id, module.id) })
-
+  // FIXME: Handle not-found
+  def apply(module: ModuleId): Module = modules.find(_.id == module).get
+  
+  def definition(workspace: Workspace): Definition =
+    Definition(name, description, website, license, keywords, workspace)
 
 case class Assist(ref: ModuleRef, module: ModuleId)
 
@@ -118,8 +131,10 @@ case class Module
 object ModuleRef extends RefType(t"module ref"):
   given moduleRefEncoder: Encoder[ModuleRef] = _.show
   given moduleRefDebug: Debug[ModuleRef] = _.show
+  given moduleRefMessage: AsMessage[ModuleRef] = ref => Message(ref.show)
   given moduleRefDecoder(using Raises[InvalidRefError]): Decoder[ModuleRef] = ModuleRef(_)
-  
+
+
   given Show[ModuleRef] = ref =>
     t"${ref.projectId.mm { projectId => t"$projectId/" }.or(t"")}${ref.moduleId}"
   
@@ -127,18 +142,18 @@ object ModuleRef extends RefType(t"module ref"):
     case r"${ProjectId(project)}([^/]+)\/${ModuleId(module)}([^/]+)" =>
       ModuleRef(project, module)
     
-    case ModuleId(module) =>
-      ModuleRef(Unset, module)
+    // case ModuleId(module) =>
+    //   ModuleRef(Unset, module)
     
     case _ =>
-      raise(InvalidRefError(value, this))(ModuleRef(Unset, ModuleId(t"unknown")))
+      raise(InvalidRefError(value, this))(ModuleRef(ProjectId(t"unknown"), ModuleId(t"unknown")))
 
-case class ModuleRef(projectId: Maybe[ProjectId], moduleId: ModuleId)
+case class ModuleRef(projectId: ProjectId, moduleId: ModuleId)
 
 object Action:
   given CodlLabel[Action, "actions"] = CodlLabel("action")
 
-case class Action(name: ActionName, actions: List[ModuleRef])
+case class Action(name: ActionName, modules: List[ModuleRef])
 
 object WorkPath:
   given reachable: Reachable[WorkPath, GeneralForbidden, Unit] with
@@ -163,3 +178,7 @@ object WorkPath:
     def apply(left: Path, right: WorkPath): Path = right.descent.foldLeft(left)(_ / _)
 
 case class WorkPath(descent: List[PathName[GeneralForbidden]])
+
+case class Definition
+    (name: Text, description: InlineMd, website: Maybe[Url], license: Maybe[LicenseId], keywords: List[Keyword],
+        source: Vault | Workspace)

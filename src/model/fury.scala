@@ -23,9 +23,11 @@ import galilei.*, fileApi.galileiApi, filesystemOptions.{doNotCreateNonexistent,
 import gastronomy.*
 import parasite.*
 import gossamer.*
+import escapade.*
 import guillotine.*
 import eucalyptus.*
 import aviation.*
+import iridescence.*, colors.*
 import fulminate.*
 import rudiments.*, homeDirectory.jvm, workingDirectory.jvm
 import hieroglyph.*, charEncoders.utf8, charDecoders.utf8
@@ -34,6 +36,7 @@ import nettlesome.*
 import serpentine.*, hierarchies.unixOrWindows
 import spectacular.*
 import punctuation.*
+import escritoire.*
 import perforate.*
 import turbulence.*, basicIo.jvm
 
@@ -54,17 +57,30 @@ object Main:
   def main(args: IArray[Text]): Unit throws StreamCutError | AggregateError[Error] =
     import unsafeExceptions.canThrowAny
     throwErrors[InvalidRefError | ExecError | StreamCutError | CodlReadError | DateError | MarkdownError | NumberError | IoError | PathError | GitError |
-        NotFoundError | UrlError | SystemPropertyError | UndecodableCharError | UnencodableCharError | CancelError | GitRefError]:
+        NotFoundError | UrlError | UnknownRefError | EnvironmentError | SystemPropertyError | UndecodableCharError | UnencodableCharError | CancelError | GitRefError]:
       given installation: Installation = Installation((Xdg().cacheHome[Path] / p"fury").as[Directory])
       import workingDirectory.jvm
       
-      internet: inet ?=>
-        supervise: mon ?=>
-          frontEnd: fe ?=>
+      internet:
+        supervise:
+          frontEnd:
             given Log = Log()
-            val workspace = Workspace(Properties.user.dir())
-            log(msg"Starting build in ${workspace.dir.path}")
+            val rootWorkspace = Workspace(Properties.user.dir())
+            log(msg"Starting build in ${rootWorkspace.directory.path}")
 
-            workspace.vault().releases.map { release => Async(Cache(release.repo)) }.foreach(_.await())
-            
-            workspace.locals()
+            given universe: Universe = rootWorkspace.universe()
+
+            val projects = universe.projects.to(List)
+            import tableStyles.horizontal, textWidthCalculation.eastAsianScripts
+            Table[(ProjectId, Definition)](
+              Column(out"$Bold(Project ID)")(_(0)),
+              Column(out"$Bold(Name)")(_(1).name),
+              Column(out"$Bold(Description)")(_(1).description),
+              Column(out"$Bold(Website)")(_(1).website.mm(_.show).or(t"—")),
+              Column(out"$Bold(Source)"): (_, definition) =>
+                definition.source match
+                  case workspace: Workspace => out"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
+                  case vault: Vault         => out"$SeaGreen(${vault.name})"
+            ).tabulate(projects, Environment.columns).map(_.render).foreach(log(_))
+
+            Engine.build(ModuleRef(ProjectId(t"fury"), ModuleId(t"start"))).await()

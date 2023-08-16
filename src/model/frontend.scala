@@ -21,6 +21,8 @@ import fulminate.*
 import gossamer.*
 import parasite.*
 import perforate.*
+import quantitative.*
+import diuretic.*, timeApi.aviationApi
 import rudiments.*
 import turbulence.*
 import escapade.*
@@ -30,8 +32,9 @@ import scala.collection.mutable as scm
 import language.experimental.captureChecking
 
 enum FrontEndEvent:
-  case LogMessage(message: Message)
+  case LogMessage(message: Text)
   case TaskUpdate(taskId: FrontEnd.TaskId, event: TaskEvent)
+  case Render
 
 enum TaskEvent:
   case Progress(stage: Text, progress: Double)
@@ -40,32 +43,63 @@ enum TaskEvent:
 export FrontEndEvent.*, TaskEvent.*
 
 def frontEnd[ResultType](using Monitor, Stdio)(block: FrontEnd ?=> ResultType): ResultType raises CancelError =
+  val frontEnd = FrontEnd()
+  block(using frontEnd).tap: _ =>
+    frontEnd.stop()
+
   
-  val tasks: scm.HashMap[FrontEnd.TaskId, Double] = scm.HashMap()
-
-  val funnel: Funnel[FrontEndEvent] = Funnel()
-  
-  val async = Async[Unit]:
-    funnel.stream.foreach:
-      case LogMessage(message)                           => Io.println(message.out)
-      case TaskUpdate(taskId, Complete())                => tasks.remove(taskId)
-      case TaskUpdate(taskId, Progress(stage, progress)) => tasks(taskId) = progress
-
-  block(using FrontEnd(funnel, async, tasks)).tap: _ =>
-    funnel.stop()
-    async.await()
-
 object FrontEnd:
-  class TaskId(name: Message)
+  class TaskId(val name: Message)
 
 @capability
-case class FrontEnd
-    (private val funnel: Funnel[FrontEndEvent], private val async: Async[Unit],
-        private val tasks: scm.HashMap[FrontEnd.TaskId, Double]):
+case class FrontEnd()(using Monitor, Stdio):
+  var tasks: ListMap[FrontEnd.TaskId, Double] = ListMap()
+  var pending: List[Text] = Nil
+  var lastTasks: Int = 0
 
-  def log(message: Message): Unit = funnel.put(LogMessage(message))
+  val funnel: Funnel[FrontEndEvent] = Funnel()
+  val pulsar = Pulsar(0.1*Second)
+  
+  val pulse: Async[Unit] = Async[Unit]:
+    pulsar.stream.foreach: pulse =>
+      funnel.put(Render)
+      acquiesce()
 
-  def follow(name: Message)(stream: LazyList[TaskEvent])(using Monitor): Unit =
+  val async: Async[Unit] = Async[Unit]:
+    funnel.stream.foreach:
+      case Render                                        => render()
+      case LogMessage(message)                           => pending ::= message.out.render
+      case TaskUpdate(taskId, Complete())                => tasks = tasks - taskId
+      case TaskUpdate(taskId, Progress(stage, progress)) =>
+        tasks = tasks.updated(taskId, progress)
+  
+  def stop(): Unit raises CancelError =
+    Io.print(t"\e[?25h")
+    funnel.stop()
+    pulsar.stop()
+    async.await()
+
+
+  def render(): Unit =
+    Io.print(t"\e[?25l")
+    
+    pending.reverse.foreach: line =>
+      Io.print(line)
+      Io.println(t"\e[K")
+    
+    pending = Nil
+
+    tasks.foreach: (taskId, progress) =>
+      Io.println(t"${taskId.name} (${(progress*100).toInt}%)\e[K")
+    
+    Io.print(t"\e[J")
+    if tasks.size > 0 then Io.print(t"\e[${tasks.size}A")
+    
+  def log(message: Message | Text): Unit = message match
+    case message: Message => funnel.put(LogMessage(message.richText))
+    case text: Text       => funnel.put(LogMessage(text))
+  
+  def follow(name: Message)(stream: LazyList[TaskEvent]): Unit =
     val taskId = FrontEnd.TaskId(name)
     
     Async:
@@ -74,7 +108,7 @@ case class FrontEnd
         case Complete()                => TaskUpdate(taskId, Complete())
       .foreach(funnel.put(_))
     
-def log(message: Message)(using frontEnd: FrontEnd): Unit = frontEnd.log(message)
+def log(message: Text | Message)(using frontEnd: FrontEnd): Unit = frontEnd.log(message)
 
-def follow(name: Message)(stream: LazyList[TaskEvent])(using frontEnd: FrontEnd, monitor: Monitor): Unit =
+def follow(name: Message)(stream: LazyList[TaskEvent])(using frontEnd: FrontEnd): Unit =
   frontEnd.follow(name)(stream)

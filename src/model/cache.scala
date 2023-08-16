@@ -58,15 +58,14 @@ object Cache:
       snapshots.getOrElseUpdate(snapshot, Async:
         val destination = unsafely(installation.snapshots.path / PathName(snapshot.commit.show))
         
-        if !destination.exists() then
+        if destination.exists() then destination.as[Directory] else
+          log(msg"Cloning ${snapshot.url}")
           val process = Git.cloneCommit(snapshot.url.encode, destination, snapshot.commit)
           follow(msg"Cloning ${snapshot.url}")(gitProgress(process.progress))
-          process.complete().workTree.avow(using Unsafe)
-        else destination.as[Directory]
+          process.complete().workTree.avow(using Unsafe).tap: _ =>
+            log(msg"Finished cloning ${snapshot.url}")
       )
         
-      
-
   def apply
       (ecosystem: Ecosystem)
       (using installation: Installation)
@@ -77,9 +76,11 @@ object Cache:
         val destination = unsafely(installation.vault.path / PathName(ecosystem.id.show) / PathName(ecosystem.branch.show))
         
         if !destination.exists() then
+          log(msg"Cloning ${ecosystem.url}")
           val process = Git.clone(ecosystem.url.encode, destination, branch = ecosystem.branch)
           follow(msg"Cloning ${ecosystem.url}")(gitProgress(process.progress))
-          process.complete()
+          process.complete().tap: _ =>
+            log(msg"Finished cloning ${ecosystem.url}")
         
         Codl.read[Vault]((destination / p"vault.codl").as[File])
       )

@@ -22,7 +22,7 @@
 # repo  https://github.com/propensive/scintillate  0000000000000000000000000000000000000000  main
 # repo  https://github.com/propensive/acyclicity   0000000000000000000000000000000000000000  main
 
-ecosystem vent 2 https://github.com/propensive/vent 191d64e599f246813910978251e1d7f5cb52b95d
+ecosystem vent 4 https://github.com/propensive/vent main
 
 command test fury/test
 command build fury/core
@@ -51,6 +51,10 @@ project fury
     
     sources  src/model
     main     fury.Main
+
+  module start
+    compiler  scala
+    include   fulminate/core  rudiments/core  kaleidoscope/core
 
   module core
     compiler  scala
