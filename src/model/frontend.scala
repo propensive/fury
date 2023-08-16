@@ -20,11 +20,13 @@ import anticipation.*
 import fulminate.*
 import gossamer.*
 import parasite.*
+import iridescence.*
 import perforate.*
 import quantitative.*
 import diuretic.*, timeApi.aviationApi
 import rudiments.*
 import turbulence.*
+import hieroglyph.*, textWidthCalculation.uniform
 import escapade.*
 
 import scala.collection.mutable as scm
@@ -74,26 +76,29 @@ case class FrontEnd()(using Monitor, Stdio):
         tasks = tasks.updated(taskId, progress)
   
   def stop(): Unit raises CancelError =
-    Io.print(t"\e[?25h")
+    Io.print(csi.dectcem(true))
     funnel.stop()
     pulsar.stop()
     async.await()
 
 
   def render(): Unit =
-    Io.print(t"\e[?25l")
+    Io.print(csi.dectcem(false))
     
     pending.reverse.foreach: line =>
       Io.print(line)
-      Io.println(t"\e[K")
+      Io.println(csi.el())
     
     pending = Nil
 
     tasks.foreach: (taskId, progress) =>
-      Io.println(t"${taskId.name} (${(progress*100).toInt}%)\e[K")
+      val bar = t"━"
+      val size = (progress*20).toInt
+      Io.print(out"${taskId.name.text.fit(60)} [${colors.LimeGreen}(${bar.s*size}${t" ".s*(19 - size)})]")
+      Io.println(csi.el())
     
-    Io.print(t"\e[J")
-    if tasks.size > 0 then Io.print(t"\e[${tasks.size}A")
+    Io.print(csi.ed())
+    if tasks.size > 0 then Io.print(csi.cuu(tasks.size))
     
   def log(message: Message | Text): Unit = message match
     case message: Message => funnel.put(LogMessage(message.richText))
@@ -107,6 +112,7 @@ case class FrontEnd()(using Monitor, Stdio):
         case Progress(stage, progress) => TaskUpdate(taskId, Progress(stage, progress))
         case Complete()                => TaskUpdate(taskId, Complete())
       .foreach(funnel.put(_))
+      funnel.put(TaskUpdate(taskId, Complete()))
     
 def log(message: Text | Message)(using frontEnd: FrontEnd): Unit = frontEnd.log(message)
 

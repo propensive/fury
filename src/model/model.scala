@@ -23,6 +23,7 @@ import symbolism.*
 import escapade.*
 import guillotine.*
 import galilei.*
+import gastronomy.*
 import diuretic.*
 import eucalyptus.*
 import fulminate.*
@@ -33,7 +34,7 @@ import kaleidoscope.*
 import nettlesome.*
 import punctuation.*
 import turbulence.*
-import hieroglyph.*
+import hieroglyph.*, charEncoders.utf8, charDecoders.utf8
 import parasite.*
 import rudiments.*
 import spectacular.*
@@ -169,13 +170,14 @@ object WorkPath:
   given show: Show[WorkPath] = _.render
   given encoder: Encoder[WorkPath] = _.render
   given debug: Debug[WorkPath] = _.render
+  given digestible: Digestible[WorkPath] = (acc, path) => acc.append(path.show.bytes)
   
   given decoder(using path: Raises[PathError]): Decoder[WorkPath] = new Decoder[WorkPath]:
     def decode(text: Text): WorkPath = Reachable.decode(text)
   
   inline given add: Operator["+", Path, WorkPath] with
     type Result = Path
-    def apply(left: Path, right: WorkPath): Path = right.descent.foldLeft(left)(_ / _)
+    def apply(left: Path, right: WorkPath): Path = right.descent.reverse.foldLeft(left)(_ / _)
 
 case class WorkPath(descent: List[PathName[GeneralForbidden]])
 

@@ -29,7 +29,7 @@ import ambience.*, environments.jvm, systemProperties.jvm
 import gossamer.*
 import perforate.*
 import eucalyptus.*
-import gastronomy.*
+import gastronomy.*, alphabets.base32.zBase32
 import punctuation.*
 import turbulence.*
 import hieroglyph.*, charDecoders.utf8, badEncodingHandlers.strict
@@ -77,10 +77,7 @@ object Installation:
           throw AppError(msg"The path was not valid because $reason", error)
     
 case class Installation
-    (config: File, cache: Directory, vault: Directory, lib: Directory, tmp: Directory, snapshots: Directory):
-  
-  def libJar(hash: Digest[Crc32])(using Raises[IoError], Raises[PathError]): File =
-    unsafely(lib / t"${hash.encodeAs[Hex].lower}.jar").as[File]
+    (config: File, cache: Directory, vault: Directory, lib: Directory, tmp: Directory, snapshots: Directory)
   
 inline def installation(using inline installation: Installation): Installation = installation
 
@@ -102,7 +99,7 @@ object Workspace:
 
 
 object Engine:
-  private val builds: scm.HashMap[ModuleRef, Async[Unit]] = scm.HashMap()
+  private val builds: scm.HashMap[ModuleRef, Async[Digest[Sha2[256]]]] = scm.HashMap()
   
   def build(moduleRef: ModuleRef)(using universe: Universe)
       (using Monitor, Clock, Log, FrontEnd, Stdio, WorkingDirectory, Internet, Installation, GitCommand, Raises[NotFoundError],
@@ -110,7 +107,7 @@ object Engine:
           Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
           Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamCutError],
           Raises[GitRefError], Raises[CancelError])
-      : Async[Unit] =
+      : Async[Digest[Sha2[256]]] =
     builds.synchronized:
       builds.getOrElseUpdate(moduleRef, Async:
         val workspace = universe(moduleRef.projectId).source match
@@ -119,17 +116,25 @@ object Engine:
         
         val project: Project = workspace(moduleRef.projectId)
         val module = project(moduleRef.moduleId)
-    
-        module.includes.map(Engine.build(_)).foreach(_.await())
-        log(msg"Starting to build ${moduleRef}")
+
+        val sourceFiles: List[File] = module.sources.flatMap: directory =>
+          workspace(directory).descendants.filter(_.is[File]).filter(_.name.ends(t".scala")).map(_.as[File])
+
+
+        val includes = module.includes.map(Engine.build(_)).map(_.await())
         
-        val part = (math.random*100).toLong
+        val step = Step(sourceFiles, includes, Nil)
+        log(msg"Digest = ${step.digest.encodeAs[Base32]}")
+        
+        val part = (math.random*36).toLong
+        
         val progress = LazyList.range(0, 100).map: pc =>
           Thread.sleep(part)
           TaskEvent.Progress(t"typer", pc/100.0)
         
-        follow(msg"Building $moduleRef")(progress #::: LazyList(TaskEvent.Complete()))
+        follow(msg"Building $moduleRef")(progress)
         progress.length
+        module.digest[Sha2[256]]
       )
 
 
@@ -178,8 +183,12 @@ case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, loca
 
   def apply
       (path: WorkPath)
-      (using Installation, Internet, Stdio, Monitor, FrontEnd, WorkingDirectory, Log)
-      : Directory raises CancelError | GitRefError | GitError | PathError | ExecError | IoError | UndecodableCharError | UnencodableCharError | StreamCutError | NotFoundError | NumberError | InvalidRefError | MarkdownError | CodlReadError | DateError | UrlError =
+      (using Installation, Internet, Stdio, Monitor, FrontEnd, WorkingDirectory, Log, Raises[CancelError],
+          Raises[GitRefError], Raises[GitError], Raises[PathError], Raises[ExecError], Raises[IoError],
+          Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[StreamCutError], Raises[NotFoundError],
+          Raises[NumberError], Raises[InvalidRefError], Raises[MarkdownError], Raises[CodlReadError],
+          Raises[DateError], Raises[UrlError])
+      : Directory =
     mounts.keys.find(_.precedes(path)).match
       case None        => directory.path + path
       case Some(mount) => Cache(mounts(mount).repo).await().path + path
@@ -193,6 +202,6 @@ enum Compiler:
   case Java(version: Int)
   case Scala
 
-case class Stage(sources: List[File], dependencies: List[Digest[Sha2[224]]], binaries: List[Digest[Sha2[224]]]):
-  def digest: Digest[Sha2[224]] raises StreamCutError | IoError =
+case class Step(sources: List[File], dependencies: List[Digest[Sha2[256]]], binaries: List[Digest[Sha2[256]]]):
+  def digest(using Raises[StreamCutError], Raises[IoError]): Digest[Sha2[256]] =
     (sources.map(_.read[Bytes]), dependencies, binaries).digest

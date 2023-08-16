@@ -36,7 +36,8 @@ import nettlesome.*
 import serpentine.*, hierarchies.unixOrWindows
 import spectacular.*
 import punctuation.*
-import escritoire.*
+import escritoire.*, tableStyles.horizontal, textWidthCalculation.eastAsianScripts
+import spectacular.*
 import perforate.*
 import turbulence.*, basicIo.jvm
 
@@ -67,11 +68,11 @@ object Main:
             given Log = Log()
             val rootWorkspace = Workspace(Properties.user.dir())
             log(msg"Starting build in ${rootWorkspace.directory.path}")
+            log(msg"args = ${args.to(List).show}")
 
             given universe: Universe = rootWorkspace.universe()
 
             val projects = universe.projects.to(List)
-            import tableStyles.horizontal, textWidthCalculation.eastAsianScripts
             Table[(ProjectId, Definition)](
               Column(out"$Bold(Project ID)")(_(0)),
               Column(out"$Bold(Name)")(_(1).name),
@@ -83,4 +84,4 @@ object Main:
                   case vault: Vault         => out"$SeaGreen(${vault.name})"
             ).tabulate(projects, Environment.columns).map(_.render).foreach(log(_))
 
-            Engine.build(ModuleRef(ProjectId(t"fury"), ModuleId(t"start"))).await()
+            Engine.build(ModuleRef(args(0))).await()

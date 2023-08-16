@@ -20,11 +20,13 @@ import rudiments.*
 import fulminate.*
 import gossamer.*
 import anticipation.*
+import gastronomy.*
 import galilei.*
 import digression.*
 import perforate.*
 import spectacular.*
 import kaleidoscope.*
+import hieroglyph.*, charEncoders.utf8, charDecoders.utf8
 
 export Ids.*
 
@@ -103,35 +105,44 @@ object Ids:
   given ecosystemIdShow: Show[EcosystemId] = identity(_)
   given ecosystemIdEncoder: Encoder[EcosystemId] = identity(_)
   given ecosystemIdDecoder(using Raises[InvalidRefError]): Decoder[EcosystemId] = EcosystemId(_)
+  given ecosystemIdDigestible: Digestible[EcosystemId] = (acc, ecosystemId) => acc.append(ecosystemId.bytes)
   
   given moduleIdShow: Show[ModuleId] = identity(_)
   given moduleIdEncoder: Encoder[ModuleId] = identity(_)
   given moduleIdDecoder(using Raises[InvalidRefError]): Decoder[ModuleId] = ModuleId(_)
+  given moduleIdDigestible: Digestible[ModuleId] = (acc, moduleId) => acc.append(moduleId.bytes)
   
   given projectIdShow: Show[ProjectId] = identity(_)
   given projectIdEncoder: Encoder[ProjectId] = identity(_)
   given projectIdDecoder(using Raises[InvalidRefError]): Decoder[ProjectId] = ProjectId(_)
+  given projectIdDigestible: Digestible[ProjectId] = (acc, projectId) => acc.append(projectId.bytes)
   
   given streamIdShow: Show[StreamId] = identity(_)
   given streamIdEncoder: Encoder[StreamId] = identity(_)
   given streamIdDecoder(using Raises[InvalidRefError]): Decoder[StreamId] = StreamId(_)
+  given streamIdDigestible: Digestible[StreamId] = (acc, streamId) => acc.append(streamId.bytes)
   
   given licenseIdShow: Show[LicenseId] = identity(_)
   given licenseIdEncoder: Encoder[LicenseId] = identity(_)
   given licenseIdDecoder(using Raises[InvalidRefError]): Decoder[LicenseId] = LicenseId(_)
+  given licenseIdDigestible: Digestible[LicenseId] = (acc, licenseId) => acc.append(licenseId.bytes)
   
   given pkgShow: Show[Package] = identity(_)
   given pkgEncoder: Encoder[Package] = identity(_)
   given pkgDecoder(using Raises[InvalidRefError]): Decoder[Package] = Package(_)
+  given pkgDigestible: Digestible[Package] = (acc, pkg) => acc.append(pkg.bytes)
   
   given classNameShow: Show[ClassName] = identity(_)
   given classNameEncoder: Encoder[ClassName] = identity(_)
   given classNameDecoder(using Raises[InvalidRefError]): Decoder[ClassName] = ClassName(_)
+  given classNameDigestible: Digestible[ClassName] = (acc, className) => acc.append(className.bytes)
   
   given actionNameShow: Show[ActionName] = identity(_)
   given actionNameEncoder: Encoder[ActionName] = identity(_)
   given actionNameDecoder(using Raises[InvalidRefError]): Decoder[ActionName] = ActionName(_)
+  given actionNameDigestible: Digestible[ActionName] = (acc, actionName) => acc.append(actionName.bytes)
 
   given keywordShow: Show[Keyword] = identity(_)
   given keywordEncoder: Encoder[Keyword] = identity(_)
   given keywordDecoder(using Raises[InvalidRefError]): Decoder[Keyword] = Keyword(_)
+  given keywordDigestible: Digestible[Keyword] = (acc, keyword) => acc.append(keyword.bytes)

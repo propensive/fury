@@ -8,20 +8,6 @@
 
     To get started, run this file.
     
-# target fury/model
-
-# repo  https://github.com/propensive/xylophone    0000000000000000000000000000000000000000  main
-# repo  https://github.com/propensive/probably     0000000000000000000000000000000000000000  main
-# repo  https://github.com/propensive/galilei      0000000000000000000000000000000000000000  main
-# repo  https://github.com/propensive/jacinta      0000000000000000000000000000000000000000  main
-# repo  https://github.com/propensive/cellulose    0000000000000000000000000000000000000000  main
-# repo  https://github.com/propensive/aviation     0000000000000000000000000000000000000000  main
-# repo  https://github.com/propensive/imperial     0000000000000000000000000000000000000000  main
-# repo  https://github.com/propensive/gastronomy   0000000000000000000000000000000000000000  main
-# repo  https://github.com/propensive/punctuation  0000000000000000000000000000000000000000  main
-# repo  https://github.com/propensive/scintillate  0000000000000000000000000000000000000000  main
-# repo  https://github.com/propensive/acyclicity   0000000000000000000000000000000000000000  main
-
 ecosystem vent 4 https://github.com/propensive/vent main
 
 command test fury/test
