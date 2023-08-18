@@ -11,11 +11,12 @@ repo propensive/gastronomy 0000000000000000000000000000000000000000
 repo propensive/punctuation 0000000000000000000000000000000000000000
 repo propensive/scintillate 0000000000000000000000000000000000000000
 repo propensive/nonagenarian 0000000000000000000000000000000000000000
+repo propensive/exoskeleton 0000000000000000000000000000000000000000
 repo propensive/acyclicity 0000000000000000000000000000000000000000
 
 project fury
   module model
-    include  xylophone/core  acyclicity/core  galilei/core  telekinesis/client  jacinta/core  aviation/core  escritoire/core  cellulose/core  punctuation/core  imperial/core  gastronomy/core  acyclicity/core  nettlesome/url  nonagenarian/core  surveillance/core
+    include  xylophone/core  acyclicity/core  galilei/core  telekinesis/client  jacinta/core  aviation/core  escritoire/core  cellulose/core  punctuation/core  imperial/core  gastronomy/core  acyclicity/core  nettlesome/url  nonagenarian/core  surveillance/core  exoskeleton/core
     sources  src/model
     main     fury.Main
 
