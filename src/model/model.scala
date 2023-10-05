@@ -132,7 +132,7 @@ case class Module
 object ModuleRef extends RefType(t"module ref"):
   given moduleRefEncoder: Encoder[ModuleRef] = _.show
   given moduleRefDebug: Debug[ModuleRef] = _.show
-  given moduleRefMessage: AsMessage[ModuleRef] = ref => Message(ref.show)
+  given moduleRefMessage: Communicable[ModuleRef] = ref => Message(ref.show)
   given moduleRefDecoder(using Raises[InvalidRefError]): Decoder[ModuleRef] = ModuleRef(_)
 
 
