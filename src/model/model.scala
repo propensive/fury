@@ -48,7 +48,7 @@ object Release:
   given packagesLabel: CodlLabel[Release, "packages"] = CodlLabel("provide")
 
 case class Release
-    (id: ProjectId, name: Text, stream: StreamId, website: Maybe[Url], description: InlineMd,
+    (id: ProjectId, name: Text, stream: StreamId, website: Maybe[HttpUrl], description: InlineMd,
         license: LicenseId, date: Date, lifetime: Int, repo: Snapshot, packages: List[Package],
         keywords: List[Keyword]):
   def expiry: Date = date + lifetime.days
@@ -57,7 +57,7 @@ case class Release
     Definition(name, description, website, license, keywords, vault)
 
 
-case class Snapshot(url: Url, commit: CommitHash, branch: Maybe[Branch])
+case class Snapshot(url: HttpUrl, commit: CommitHash, branch: Maybe[Branch])
 
 
 object Vault:
@@ -77,7 +77,7 @@ case class Local(forks: List[Fork])
 
 case class Fork(id: ProjectId, path: Path)
 
-case class Ecosystem(id: EcosystemId, version: Int, url: Url, branch: Branch)
+case class Ecosystem(id: EcosystemId, version: Int, url: HttpUrl, branch: Branch)
 
 case class Mount(path: WorkPath, repo: Snapshot)
 
@@ -100,7 +100,7 @@ object Project:
   given modulesLabel: CodlLabel[Project, "modules"] = CodlLabel("module")
 
 case class Project
-    (id: ProjectId, name: Text, description: InlineMd, modules: List[Module], website: Url, license: Maybe[LicenseId],
+    (id: ProjectId, name: Text, description: InlineMd, modules: List[Module], website: HttpUrl, license: Maybe[LicenseId],
         keywords: List[Keyword]):
   
   // FIXME: Handle not-found
@@ -182,5 +182,5 @@ object WorkPath:
 case class WorkPath(descent: List[PathName[GeneralForbidden]])
 
 case class Definition
-    (name: Text, description: InlineMd, website: Maybe[Url], license: Maybe[LicenseId], keywords: List[Keyword],
+    (name: Text, description: InlineMd, website: Maybe[HttpUrl], license: Maybe[LicenseId], keywords: List[Keyword],
         source: Vault | Workspace)
