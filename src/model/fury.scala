@@ -63,17 +63,17 @@ object Main extends Application:
       supervise:
         Async:
           summon[Invocation].signals(Signal.Int, Signal.Winch).foreach:
-            case Signal.Winch => Io.print(t"\e[s\e[4095C\e[4095B\e[6n\e[u")
-            case signal       => Io.println(signal.debug)
+            case Signal.Winch => Out.print(t"\e[s\e[4095C\e[4095B\e[6n\e[u")
+            case signal       => Out.println(signal.debug)
         
         Async:
           summon[Invocation].stdin().match
             case Stdin.Pipe(stream)     => stream
             case Stdin.Terminal(stream) => stream
           .foreach: bytes =>
-            Io.println(bytes.debug)
+            Out.println(bytes.debug)
 
-      Io.println(logo)
+      Out.println(logo)
       Thread.sleep(24000)
       ExitStatus.Ok
 

@@ -76,29 +76,29 @@ case class FrontEnd()(using Monitor, Stdio):
         tasks = tasks.updated(taskId, progress)
   
   def stop(): Unit raises CancelError =
-    Io.print(csi.dectcem(true))
+    Out.print(csi.dectcem(true))
     funnel.stop()
     pulsar.stop()
     async.await()
 
 
   def render(): Unit =
-    Io.print(csi.dectcem(false))
+    Out.print(csi.dectcem(false))
     
     pending.reverse.foreach: line =>
-      Io.print(line)
-      Io.println(csi.el())
+      Out.print(line)
+      Out.println(csi.el())
     
     pending = Nil
 
     tasks.foreach: (taskId, progress) =>
       val bar = t"━"
       val size = (progress*20).toInt
-      Io.print(out"${taskId.name.text.fit(60)} [${colors.LimeGreen}(${bar.s*size}${t" ".s*(19 - size)})]")
-      Io.println(csi.el())
+      Out.print(out"${taskId.name.text.fit(60)} [${colors.LimeGreen}(${bar.s*size}${t" ".s*(19 - size)})]")
+      Out.println(csi.el())
     
-    Io.print(csi.ed())
-    if tasks.size > 0 then Io.print(csi.cuu(tasks.size))
+    Out.print(csi.ed())
+    if tasks.size > 0 then Out.print(csi.cuu(tasks.size))
     
   def log(message: Message | Text): Unit = message match
     case message: Message => funnel.put(LogMessage(message.richText))
