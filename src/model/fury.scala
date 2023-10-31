@@ -96,14 +96,14 @@ object Main extends Application:
 
             val projects = universe.projects.to(List)
             Table[(ProjectId, Definition)](
-              Column(out"$Bold(Project ID)")(_(0)),
-              Column(out"$Bold(Name)")(_(1).name),
-              Column(out"$Bold(Description)")(_(1).description),
-              Column(out"$Bold(Website)")(_(1).website.mm(_.show).or(t"—")),
-              Column(out"$Bold(Source)"): (_, definition) =>
+              Column(e"$Bold(Project ID)")(_(0)),
+              Column(e"$Bold(Name)")(_(1).name),
+              Column(e"$Bold(Description)")(_(1).description),
+              Column(e"$Bold(Website)")(_(1).website.mm(_.show).or(t"—")),
+              Column(e"$Bold(Source)"): (_, definition) =>
                 definition.source match
-                  case workspace: Workspace => out"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
-                  case vault: Vault         => out"$SeaGreen(${vault.name})"
+                  case workspace: Workspace => e"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
+                  case vault: Vault         => e"$SeaGreen(${vault.name})"
             ).tabulate(projects, Environment.columns).map(_.render).foreach(log(_))
 
             Engine.build(ModuleRef(args(0))).await()

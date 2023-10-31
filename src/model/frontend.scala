@@ -94,7 +94,7 @@ case class FrontEnd()(using Monitor, Stdio):
     tasks.foreach: (taskId, progress) =>
       val bar = t"━"
       val size = (progress*20).toInt
-      Out.print(out"${taskId.name.text.fit(60)} [${colors.LimeGreen}(${bar.s*size}${t" ".s*(19 - size)})]")
+      Out.print(e"${taskId.name.text.fit(60)} [${colors.LimeGreen}(${bar.s*size}${t" ".s*(19 - size)})]")
       Out.println(csi.el())
     
     Out.print(csi.ed())
