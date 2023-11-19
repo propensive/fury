@@ -1,4 +1,0 @@
-#!/bin/sh
-jps | grep irk | cut -d' ' -f1 | xargs -r kill -9
-killall -9 irk
-rm /run/user/1000/irk*

@@ -1,2 +1,0 @@
-#!/bin/sh
-sudo cp dist/irk-0.2.0 /usr/local/bin/irk
