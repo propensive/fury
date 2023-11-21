@@ -62,7 +62,7 @@ object Cache:
           log(msg"Cloning ${snapshot.url}")
           val process = Git.cloneCommit(snapshot.url.encode, destination, snapshot.commit)
           follow(msg"Cloning ${snapshot.url}")(gitProgress(process.progress))
-          process.complete().workTree.avow(using Unsafe).tap: _ =>
+          process.complete().workTree.vouch(using Unsafe).tap: _ =>
             log(msg"Finished cloning ${snapshot.url}")
       )
         
