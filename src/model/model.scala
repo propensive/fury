@@ -164,9 +164,7 @@ object WorkPath:
     def separator(path: WorkPath): Text = t"/"
   
   given rootParser: RootParser[WorkPath, Unit] = text => ((), text)
-
   given creator: PathCreator[WorkPath, GeneralForbidden, Unit] = (unit, descent) => WorkPath(descent)
-
   given show: Show[WorkPath] = _.render
   given encoder: Encoder[WorkPath] = _.render
   given debug: Debug[WorkPath] = _.render
@@ -179,7 +177,8 @@ object WorkPath:
     type Result = Path
     def apply(left: Path, right: WorkPath): Path = right.descent.reverse.foldLeft(left)(_ / _)
 
-case class WorkPath(descent: List[PathName[GeneralForbidden]])
+case class WorkPath(descent: List[PathName[GeneralForbidden]]):
+  def link: SafeLink = SafeLink(0, descent)
 
 case class Definition
     (name: Text, description: InlineMd, website: Maybe[HttpUrl], license: Maybe[LicenseId], keywords: List[Keyword],

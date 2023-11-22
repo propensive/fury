@@ -190,8 +190,8 @@ case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, loca
           Raises[DateError], Raises[UrlError])
       : Directory =
     mounts.keys.find(_.precedes(path)).match
-      case None        => directory.path + path
-      case Some(mount) => Cache(mounts(mount).repo).await().path + path
+      case None        => directory.path + path.link
+      case Some(mount) => Cache(mounts(mount).repo).await().path + path.link
     .as[Directory]
 
 case class Universe(projects: Map[ProjectId, Definition]):
@@ -204,4 +204,4 @@ enum Compiler:
 
 case class Step(sources: List[File], dependencies: List[Digest[Sha2[256]]], binaries: List[Digest[Sha2[256]]]):
   def digest(using Raises[StreamCutError], Raises[IoError]): Digest[Sha2[256]] =
-    (sources.map(_.read[Bytes]), dependencies, binaries).digest
+    (sources.map(_.readAs[Bytes]), dependencies, binaries).digest

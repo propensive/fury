@@ -54,11 +54,6 @@ erased given CanThrow[AppError] = compiletime.erasedValue
 given LogFormat[File] = LogFormat.standardAnsi
 given Encoding = characterEncodings.utf8
 
-//val LogFile = unsafely(Unix.parse(t"/var/log/fury.log").file(Ensure).sink)
-//given log: Log = Log(
-  //{ case _ => LogFile }
-//)(using monitors.global)
-
 given log: Log = logging.silent
 
 object palette:

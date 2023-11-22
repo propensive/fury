@@ -28,6 +28,7 @@ import rudiments.*
 import turbulence.*
 import hieroglyph.*, textWidthCalculation.uniform
 import escapade.*
+import spectacular.*
 
 import scala.collection.mutable as scm
 
@@ -70,7 +71,7 @@ case class FrontEnd()(using Monitor, Stdio):
   val async: Async[Unit] = Async[Unit]:
     funnel.stream.foreach:
       case Render                                        => render()
-      case LogMessage(message)                           => pending ::= message.out.render
+      case LogMessage(message)                           => pending = message :: pending
       case TaskUpdate(taskId, Complete())                => tasks = tasks - taskId
       case TaskUpdate(taskId, Progress(stage, progress)) =>
         tasks = tasks.updated(taskId, progress)
@@ -101,7 +102,7 @@ case class FrontEnd()(using Monitor, Stdio):
     if tasks.size > 0 then Out.print(csi.cuu(tasks.size))
     
   def log(message: Message | Text): Unit = message match
-    case message: Message => funnel.put(LogMessage(message.richText))
+    case message: Message => funnel.put(LogMessage(message.show))
     case text: Text       => funnel.put(LogMessage(text))
   
   def follow(name: Message)(stream: LazyList[TaskEvent]): Unit =
