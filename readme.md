@@ -38,7 +38,7 @@ be used, but caution should be taken if there is a mismatch between the
 project's stability level and the importance of your own project.
 
 Fury is designed to be _small_. Its entire source code currently consists
-of 2310 lines of code.
+of 2320 lines of code.
 
 ## Building
 
