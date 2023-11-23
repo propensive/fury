@@ -21,6 +21,7 @@ import acyclicity.*
 import galilei.*, filesystemOptions.{createNonexistent, createNonexistentParents, dereferenceSymlinks}
 import anticipation.*, fileApi.galileiApi
 import rudiments.*
+import escapade.*
 import parasite.*
 import aviation.*, calendars.gregorian
 import guillotine.*
@@ -101,7 +102,7 @@ object Engine:
   private val builds: scm.HashMap[ModuleRef, Async[Digest[Sha2[256]]]] = scm.HashMap()
   
   def build(moduleRef: ModuleRef)(using universe: Universe)
-      (using Monitor, Clock, Log, FrontEnd, Stdio, WorkingDirectory, Internet, Installation, GitCommand, Raises[NotFoundError],
+      (using Monitor, Clock, Log[Output], FrontEnd, Stdio, WorkingDirectory, Internet, Installation, GitCommand, Raises[NotFoundError],
           Raises[UnknownRefError], Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NumberError],
           Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
           Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamCutError],
@@ -145,7 +146,7 @@ case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, loca
 
   def locals
       (ancestors: Set[Path] = Set())
-      (using Monitor, Log, FrontEnd, Stdio, WorkingDirectory, Internet, Installation, GitCommand, Raises[NotFoundError],
+      (using Monitor, Log[Output], FrontEnd, Stdio, WorkingDirectory, Internet, Installation, GitCommand, Raises[NotFoundError],
           Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NumberError],
           Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
           Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamCutError],
@@ -161,7 +162,7 @@ case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, loca
   
   def universe
       ()
-      (using Monitor, Clock, Log, FrontEnd, Stdio, WorkingDirectory, Internet, Installation, GitCommand, Raises[NotFoundError],
+      (using Monitor, Clock, Log[Output], FrontEnd, Stdio, WorkingDirectory, Internet, Installation, GitCommand, Raises[NotFoundError],
           Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NumberError],
           Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
           Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamCutError],
@@ -182,7 +183,7 @@ case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, loca
 
   def apply
       (path: WorkPath)
-      (using Installation, Internet, Stdio, Monitor, FrontEnd, WorkingDirectory, Log, Raises[CancelError],
+      (using Installation, Internet, Stdio, Monitor, FrontEnd, WorkingDirectory, Log[Output], Raises[CancelError],
           Raises[GitRefError], Raises[GitError], Raises[PathError], Raises[ExecError], Raises[IoError],
           Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[StreamCutError], Raises[NotFoundError],
           Raises[NumberError], Raises[InvalidRefError], Raises[MarkdownError], Raises[CodlReadError],

@@ -17,7 +17,7 @@ repo propensive/acyclicity    0000000000000000000000000000000000000000
 
 project fury
   module model
-    include   xylophone/core  acyclicity/core  galilei/core  telekinesis/client  aviation/core  escritoire/core  cellulose/core  punctuation/core  imperial/core  gastronomy/core  acyclicity/core  nettlesome/url  nonagenarian/core  surveillance/core  exoskeleton/core  exoskeleton/completions  spectral/core
+    include   xylophone/core  acyclicity/core  galilei/core  telekinesis/client  aviation/core  escritoire/core  cellulose/core  punctuation/core  imperial/core  gastronomy/core  acyclicity/core  nettlesome/url  nonagenarian/core  surveillance/core  exoskeleton/core  exoskeleton/completions  spectral/core  eucalyptus/ansi
     sources   src/model
     main      fury.main
     artifact  rage

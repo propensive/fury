@@ -30,6 +30,7 @@ import guillotine.*
 import fulminate.*
 import punctuation.*
 import gossamer.*
+import escapade.*
 import rudiments.*
 import serpentine.*, hierarchies.unixOrWindows
 import spectacular.*
@@ -52,7 +53,7 @@ object Cache:
   def apply
       (snapshot: Snapshot)
       (using installation: Installation)
-      (using Internet, Log, Monitor, FrontEnd, WorkingDirectory, Raises[ExecError], Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NotFoundError], Raises[GitRefError], Raises[NumberError], Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[CodlReadError], Raises[MarkdownError], Raises[PathError], Raises[IoError], Raises[StreamCutError], Raises[GitError], GitCommand)
+      (using Internet, Log[Output], Monitor, FrontEnd, WorkingDirectory, Raises[ExecError], Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NotFoundError], Raises[GitRefError], Raises[NumberError], Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[CodlReadError], Raises[MarkdownError], Raises[PathError], Raises[IoError], Raises[StreamCutError], Raises[GitError], GitCommand)
       : Async[Directory] =
     snapshots.synchronized:
       snapshots.getOrElseUpdate(snapshot, Async:
@@ -69,7 +70,7 @@ object Cache:
   def apply
       (ecosystem: Ecosystem)
       (using installation: Installation)
-      (using Internet, Log, Monitor, FrontEnd, WorkingDirectory, Raises[ExecError],
+      (using Internet, Log[Output], Monitor, FrontEnd, WorkingDirectory, Raises[ExecError],
           Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NotFoundError],
           Raises[GitRefError], Raises[NumberError], Raises[InvalidRefError], Raises[DateError],
           Raises[UrlError], Raises[CodlReadError], Raises[MarkdownError], Raises[PathError], Raises[IoError],
@@ -91,7 +92,7 @@ object Cache:
 
   def workspace(path: Path)
       (using installation: Installation)
-      (using Internet, Log, Stdio, Monitor, FrontEnd, WorkingDirectory, Raises[ExecError],
+      (using Internet, Log[Output], Stdio, Monitor, FrontEnd, WorkingDirectory, Raises[ExecError],
           Raises[HostnameError], Raises[UndecodableCharError], Raises[UnencodableCharError],
           Raises[NotFoundError], Raises[GitRefError], Raises[NumberError], Raises[InvalidRefError],
           Raises[DateError], Raises[UrlError], Raises[CodlReadError], Raises[MarkdownError], Raises[PathError],
