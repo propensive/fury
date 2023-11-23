@@ -69,7 +69,11 @@ object Cache:
   def apply
       (ecosystem: Ecosystem)
       (using installation: Installation)
-      (using Internet, Log, Monitor, FrontEnd, WorkingDirectory, Raises[ExecError], Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NotFoundError], Raises[GitRefError], Raises[NumberError], Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[CodlReadError], Raises[MarkdownError], Raises[PathError], Raises[IoError], Raises[StreamCutError], Raises[GitError], GitCommand)
+      (using Internet, Log, Monitor, FrontEnd, WorkingDirectory, Raises[ExecError],
+          Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NotFoundError],
+          Raises[GitRefError], Raises[NumberError], Raises[InvalidRefError], Raises[DateError],
+          Raises[UrlError], Raises[CodlReadError], Raises[MarkdownError], Raises[PathError], Raises[IoError],
+          Raises[StreamCutError], Raises[GitError], Raises[HostnameError], GitCommand)
       : Async[Vault] =
     ecosystems.synchronized:
       ecosystems.getOrElseUpdate(ecosystem, Async:
@@ -87,7 +91,16 @@ object Cache:
 
   def workspace(path: Path)
       (using installation: Installation)
-      (using Internet, Log, Stdio, Monitor, FrontEnd, WorkingDirectory, Raises[ExecError], Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NotFoundError], Raises[GitRefError], Raises[NumberError], Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[CodlReadError], Raises[MarkdownError], Raises[PathError], Raises[IoError], Raises[StreamCutError], Raises[GitError], GitCommand)
+      (using Internet, Log, Stdio, Monitor, FrontEnd, WorkingDirectory, Raises[ExecError],
+          Raises[HostnameError], Raises[UndecodableCharError], Raises[UnencodableCharError],
+          Raises[NotFoundError], Raises[GitRefError], Raises[NumberError], Raises[InvalidRefError],
+          Raises[DateError], Raises[UrlError], Raises[CodlReadError], Raises[MarkdownError], Raises[PathError],
+          Raises[IoError], Raises[StreamCutError], Raises[GitError], GitCommand)
       : Async[Workspace] =
     workspaces.synchronized:
       workspaces.getOrElseUpdate(path, Async(Workspace(path)))
+
+
+
+
+

@@ -84,11 +84,10 @@ inline def installation(using inline installation: Installation): Installation =
 object Workspace:
   def apply
       (path: Path)
-      (using Stdio, Raises[CodlReadError], Raises[GitRefError], Raises[AggregateError[CodlError]], Raises[StreamCutError], Raises[IoError], Raises[InvalidRefError], Raises[NumberError], Raises[NotFoundError], Raises[UrlError], Raises[PathError], Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[MarkdownError])
+      (using Stdio, Raises[HostnameError], Raises[CodlReadError], Raises[GitRefError], Raises[AggregateError[CodlError]], Raises[StreamCutError], Raises[IoError], Raises[InvalidRefError], Raises[NumberError], Raises[NotFoundError], Raises[UrlError], Raises[PathError], Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[MarkdownError])
       : Workspace =
     val dir: Directory = path.as[Directory]
     val buildFile: File = (dir / p".fury").as[File]
-
     val buildDoc: CodlDoc = Codl.parse(buildFile)
     val build: Build = Codl.read[Build](buildFile)
     val localPath: Path = dir / p".local"
@@ -106,7 +105,7 @@ object Engine:
           Raises[UnknownRefError], Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NumberError],
           Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
           Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamCutError],
-          Raises[GitRefError], Raises[CancelError])
+          Raises[GitRefError], Raises[CancelError], Raises[HostnameError])
       : Async[Digest[Sha2[256]]] =
     builds.synchronized:
       builds.getOrElseUpdate(moduleRef, Async:
@@ -150,7 +149,7 @@ case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, loca
           Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NumberError],
           Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
           Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamCutError],
-          Raises[GitRefError], Raises[CancelError])
+          Raises[GitRefError], Raises[CancelError], Raises[HostnameError])
       : Map[ProjectId, Definition] =
     local.mm: local =>
       local.forks.map: fork =>
@@ -166,7 +165,7 @@ case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, loca
           Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NumberError],
           Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
           Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamCutError],
-          Raises[GitRefError], Raises[CancelError])
+          Raises[GitRefError], Raises[CancelError], Raises[HostnameError])
       : Universe =
     given Timezone = tz"Etc/UTC"
     val vaultProjects = Cache(ecosystem).await()

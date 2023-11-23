@@ -67,42 +67,32 @@ def main(): Unit = daemon[BusMessage]:
     throwErrors[InvalidRefError | ExecError | StreamCutError | CodlReadError | DateError | MarkdownError |
         NumberError | IoError | PathError | GitError | NotFoundError | UrlError | UnknownRefError |
         EnvironmentError | SystemPropertyError | UndecodableCharError | UnencodableCharError | CancelError |
-        GitRefError]:
+        GitRefError | HostnameError]:
       supervise:
+        Out.println(t"Starting")
+        Out.println(logo)
+        given installation: Installation = Installation((Xdg.cacheHome[Path] / p"fury").as[Directory])
+        Out.println(installation.debug)
         terminal:
-          tty.events.stream.foreach: bytes =>
-            Out.println(bytes.debug)
+          internet:
+            // frontEnd:
+            //   import logging.stdout
+            //   val rootWorkspace = Workspace(Properties.user.dir())
+            //   Out.println(rootWorkspace.debug)
+            //   given universe: Universe = rootWorkspace.universe()
+            //   Out.println(universe.debug)
+            //   val projects = universe.projects.to(List)
+            //   Out.println(projects.debug)
+            ExitStatus.Ok
+              
+              // Table[(ProjectId, Definition)](
+              //   Column(e"$Bold(Project ID)")(_(0)),
+              //   Column(e"$Bold(Name)")(_(1).name),
+              //   Column(e"$Bold(Description)")(_(1).description),
+              //   Column(e"$Bold(Website)")(_(1).website.mm(_.show).or(t"—")),
+              //   Column(e"$Bold(Source)"): (_, definition) =>
+              //     definition.source match
+              //       case workspace: Workspace => e"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
+              //       case vault: Vault         => e"$SeaGreen(${vault.name})"
+              // ).tabulate(projects, Environment.columns).map(_.render).foreach(Out.println(_))
 
-    Out.println(logo)
-    ExitStatus.Ok
-
-  // def main2(args: IArray[Text]): Unit throws StreamCutError | AggregateError[Error] =
-  //   import unsafeExceptions.canThrowAny
-  //   throwErrors[InvalidRefError | ExecError | StreamCutError | CodlReadError | DateError | MarkdownError | NumberError | IoError | PathError | GitError |
-  //       NotFoundError | UrlError | UnknownRefError | EnvironmentError | SystemPropertyError | UndecodableCharError | UnencodableCharError | CancelError | GitRefError]:
-  //     given installation: Installation = Installation((Xdg.cacheHome[Path] / p"fury").as[Directory])
-  //     import workingDirectories.default
-      
-  //     internet:
-  //       supervise:
-  //         frontEnd:
-  //           given Log = logging.silent
-  //           val rootWorkspace = Workspace(Properties.user.dir())
-  //           Out.println(msg"Starting build in ${rootWorkspace.directory.path}")
-  //           Out.println(msg"args = ${args.to(List).show}")
-
-  //           given universe: Universe = rootWorkspace.universe()
-  //           val projects = universe.projects.to(List)
-
-  //           Table[(ProjectId, Definition)](
-  //             Column(e"$Bold(Project ID)")(_(0)),
-  //             Column(e"$Bold(Name)")(_(1).name),
-  //             Column(e"$Bold(Description)")(_(1).description),
-  //             Column(e"$Bold(Website)")(_(1).website.mm(_.show).or(t"—")),
-  //             Column(e"$Bold(Source)"): (_, definition) =>
-  //               definition.source match
-  //                 case workspace: Workspace => e"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
-  //                 case vault: Vault         => e"$SeaGreen(${vault.name})"
-  //           ).tabulate(projects, Environment.columns).map(_.render).foreach(Out.println(_))
-
-  //           Engine.build(ModuleRef(args(0))).await()

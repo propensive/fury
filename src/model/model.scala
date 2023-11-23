@@ -128,7 +128,6 @@ case class Module
         usages: List[ModuleRef], omissions: List[ModuleRef], assists: List[Assist],
         compiler: Maybe[Text], main: Maybe[ClassName], coverage: Maybe[ModuleRef])
 
-
 object ModuleRef extends RefType(t"module ref"):
   given moduleRefEncoder: Encoder[ModuleRef] = _.show
   given moduleRefDebug: Debug[ModuleRef] = _.show
