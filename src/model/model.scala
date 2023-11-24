@@ -148,6 +148,8 @@ object ModuleRef extends RefType(t"module ref"):
     case _ =>
       raise(InvalidRefError(value, this))(ModuleRef(ProjectId(t"unknown"), ModuleId(t"unknown")))
 
+
+
 case class ModuleRef(projectId: ProjectId, moduleId: ModuleId)
 
 object Action:
@@ -180,5 +182,5 @@ case class WorkPath(descent: List[PathName[GeneralForbidden]]):
   def link: SafeLink = SafeLink(0, descent)
 
 case class Definition
-    (name: Text, description: InlineMd, website: Maybe[HttpUrl], license: Maybe[LicenseId], keywords: List[Keyword],
-        source: Vault | Workspace)
+    (name: Text, description: InlineMd, website: Maybe[HttpUrl], license: Maybe[LicenseId],
+        keywords: List[Keyword], source: Vault | Workspace)

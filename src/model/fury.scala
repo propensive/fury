@@ -38,7 +38,7 @@ import spectacular.*
 import punctuation.*
 import escritoire.*, tableStyles.horizontal, textWidthCalculation.eastAsianScripts
 import spectacular.*
-import exoskeleton.*, executives.completions, parameterInterpretation.posix
+import exoskeleton.*, executives.completions, unhandledErrors.stackTrace, parameterInterpretation.posix
 import perforate.*
 import spectral.*
 import profanity.*, terminalOptions.terminalSizeDetection
@@ -67,9 +67,12 @@ object flags:
   val Version = Switch(t"version", false, List('v'), t"Show information about the current version of Fury")
   val Install = Switch(t"install", false, List('I'), t"Install tab-completions for the fury command")
 
+  val About = Subcommand(t"about", e"About this tool")
+  val Build = Subcommand(t"build", e"Start a $Italic[new] build")
+  val Shutdown = Subcommand(t"shutdown", e"Shutdown the $Bold(daemon)")
+
 @main
 def main(): Unit = daemon[BusMessage]:
-
   if !flags.Version().unset then
     execute:
       Out.println(logo)
@@ -83,10 +86,22 @@ def main(): Unit = daemon[BusMessage]:
       import unsafeExceptions.canThrowAny
       import logging.silent
       throwErrors[ExecError | PathError | IoError | StreamCutError | OverwriteError]:
-        TabCompletions.install().foreach(Out.println(_))
+        Out.println(TabCompletions.install().communicate)
         ExitStatus.Ok
-  else
-    execute:
+  else safely(arguments.head) match
+    case flags.About() => execute:
+      Out.println(t"Find out about this tool")
+      ExitStatus.Ok
+    case flags.Build() => execute:
+      Out.println(t"Running the build")
+      throw new java.lang.Error("FAilure")
+      ExitStatus.Ok
+    case flags.Shutdown() => execute:
+      import unsafeExceptions.canThrowAny
+      throw SystemPropertyError(t"foo.bar")
+      ExitStatus.Ok
+    
+    case _ => execute:
       import unsafeExceptions.canThrowAny
       throwErrors[InvalidRefError | ExecError | StreamCutError | CodlReadError | DateError | MarkdownError |
           NumberError | IoError | PathError | GitError | NotFoundError | UrlError | UnknownRefError |
@@ -122,4 +137,3 @@ def main(): Unit = daemon[BusMessage]:
                 ).tabulate(projects, tty.knownColumns, DelimitRows.SpaceIfMultiline).foreach(Out.println(_))
   
               ExitStatus.Ok
-  
