@@ -233,11 +233,19 @@ object Artifact:
     
     artifact.path.file(Expect).setPermissions(executable = true)
 
+<<<<<<< Updated upstream:src/old/fury.scala
 case class Step(pwd: Directory, /*path: File, publishing: Option[Publishing],*/ name: Text,
                     id: Ref, links: Set[Ref], resources: Set[Directory],
                     sources: Set[Directory], jars: Set[Text],
                     version: Text, docs: List[DiskPath], artifact: Option[Artifact],
                     exec: Option[Exec], plugins: List[Plugin], main: Option[Text], js: Boolean):
+=======
+case class Step(path: File[Unix], publishing: Option[Publishing],
+                    id: Ref, links: Set[Ref], resources: Set[Directory[Unix]],
+                    sources: Set[Directory[Unix]], jars: Set[Text], dependencies: Set[Dependency],
+                    docs: List[DiskPath[Unix]], artifact: Option[Artifact],
+                    exec: Option[Exec], plugins: List[Plugin], main: Option[Text]):
+>>>>>>> Stashed changes:src/core/irk.scala
   
   def publish(build: Build): Publishing =// publishing.orElse(build.publishing).getOrElse:
     throw AppError(t"There are no publishing details for $id")
@@ -305,6 +313,54 @@ case class Step(pwd: Directory, /*path: File, publishing: Option[Publishing],*/ 
       case err: BrokenLinkError => throw AppError(t"There was an unsatisfied reference to ${err.link}", err)
       //case err: Error[?]        => throw AppError(t"An unexpected error occurred", err)
 
+<<<<<<< Updated upstream:src/old/fury.scala
+=======
+case class BuildConfig(imports: Option[List[Text]], publishing: Option[Publishing], modules: List[Module],
+                           repos: Option[List[Repo]], targets: Option[List[Target]]):
+  
+  def gen(current: DiskPath[Unix], build: Build, seen: Set[Digest[Crc32]], files: DiskPath[Unix]*)(using Stdout, Allocator, Environment)
+         : Build throws IoError | AppError | BuildfileError =
+    
+    repos.presume.foreach:
+      case Repo(base, uri) =>
+        val root = unsafely(current.parent + Relative.parse(base))
+        if !root.exists() then
+          Out.println(ansi"Cloning repository $uri to $base".render)
+          Irk.cloneRepo(root, uri)
+
+    files.to(List) match
+      case Nil =>
+        build
+      
+      case path :: tail =>
+        val root = unsafely(path.file(Expect).parent.path)
+        val steps: Map[Ref, Step] = modules.map: module =>
+          val links = (module.include ++ module.use).presume.map(Ref(_))
+          val plugins = module.plugin.map(Plugin(_))
+          val resources = module.resource.map(root + _).map(_.directory(Expect))
+          val sources = module.source.map(root + _).map(_.directory(Expect))
+          val dependencies = module.include.presume
+          
+          val artifact = module.artifact.map: spec =>
+            val format = spec.format.flatMap(Format.unapply(_)).getOrElse(Format.FatJar)
+            Artifact(unsafely(path.parent + Relative.parse(spec.path)), spec.main, format)
+          
+          val id = Ref(module.id)
+          
+          Step(path.file(), publishing, id, links, resources, sources, module.jars.presume,
+              dependencies, Nil, artifact, module.exec, plugins, module.main)
+        .mtwin.map(_.id -> _).to(Map)
+        
+        val importPaths = imports.presume.map: p =>
+          unsafely(path.parent + Relative.parse(p))
+        
+        val reposMap: Map[DiskPath[Unix], Text] = repos.presume.map: repo =>
+          unsafely(build.pwd.path + Relative.parse(repo.base)) -> repo.url
+        .to(Map)
+
+        Irk.readBuilds(build ++ Build(build.pwd, reposMap, build.publishing, steps), seen,
+            (importPaths ++ tail)*)
+>>>>>>> Stashed changes:src/core/irk.scala
 
 class FileCache[T]:
   private val files: scm.HashMap[Text, (Instant, T)] = scm.HashMap()
