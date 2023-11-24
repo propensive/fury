@@ -62,78 +62,120 @@ val logo: Text = t"CiAgICAgICAgICAgICAgIBtbMzg7MjsyMTc7MTsxMDFtwrcg4oCiIOKXjyAbW
 
 given Realm = realm"fury"
 
-
-object flags:
+object userInterface:
   val Version = Switch(t"version", false, List('v'), t"Show information about the current version of Fury")
   val Install = Switch(t"install", false, List('I'), t"Install tab-completions for the fury command")
+  val Interactive = Switch(t"interactive", false, List('i'), t"Run the command interactively")
+  val Artifact = Switch(t"artifact", false, List('a'), t"Produce an artifact")
+  val Benchmarks = Switch(t"benchmark", false, List('b'), t"Run with OS settings for benchmarking")
 
-  val About = Subcommand(t"about", e"About this tool")
-  val Build = Subcommand(t"build", e"Start a $Italic[new] build")
-  val Shutdown = Subcommand(t"shutdown", e"Shutdown the $Bold(daemon)")
+  val About = Subcommand(t"about", e"About Fury")
+  val Build = Subcommand(t"build", e"Start a new build (default)")
+  val Cache = Subcommand(t"cache", e"Cache operations")
+  val Shutdown = Subcommand(t"shutdown", e"Shutdown the Fury daemon")
+  val Init = Subcommand(t"init", e"Initialize a new project")
+  val Universe = Subcommand(t"universe", e"Universe actions")
+  val Update = Subcommand(t"update", e"Update Fury")
+  val Vent = Subcommand(t"vent", e"Access the Vent Ecosystem")
+
+  val Clean = Subcommand(t"clean", e"Clean the cache")
+  val Details = Subcommand(t"info", e"Information about cache usage")
 
 @main
-def main(): Unit = daemon[BusMessage]:
-  if !flags.Version().unset then
-    execute:
-      Out.println(logo)
-      Out.println(e"$Bold(Fury, version 1.0)")
-      Out.println(e"$Italic(© Copyright 2023, Jon Pretty, Propensive OÜ.)")
-      Out.println(e"$Italic(All rights reserved.)")
-      ExitStatus.Ok
-  else if !flags.Install().unset then
-    execute:
-      import workingDirectories.daemonClient
-      import unsafeExceptions.canThrowAny
-      import logging.silent
-      throwErrors[ExecError | PathError | IoError | StreamCutError | OverwriteError]:
-        Out.println(TabCompletions.install().communicate)
-        ExitStatus.Ok
-  else safely(arguments.head) match
-    case flags.About() => execute:
-      Out.println(t"Find out about this tool")
-      ExitStatus.Ok
-    case flags.Build() => execute:
-      Out.println(t"Running the build")
-      throw new java.lang.Error("FAilure")
-      ExitStatus.Ok
-    case flags.Shutdown() => execute:
-      import unsafeExceptions.canThrowAny
-      throw SystemPropertyError(t"foo.bar")
-      ExitStatus.Ok
-    
-    case _ => execute:
-      import unsafeExceptions.canThrowAny
-      throwErrors[InvalidRefError | ExecError | StreamCutError | CodlReadError | DateError | MarkdownError |
-          NumberError | IoError | PathError | GitError | NotFoundError | UrlError | UnknownRefError |
-          EnvironmentError | SystemPropertyError | UndecodableCharError | UnencodableCharError | CancelError |
-          GitRefError | HostnameError]:
-        supervise:
-          given Log[Output] = Log.route[Output]:
-            case message => Out
-  
-          Out.println(e"Starting $Bold(now)!")
-          Out.println(logo)
-          given installation: Installation = Installation((Xdg.cacheHome[Path] / p"fury").as[Directory])
-          terminal:
-            Async(tty.events.foreach(_ => ()))
-            internet:
-              frontEnd:
-                val rootWorkspace = Workspace(Properties.user.dir())
-                given universe: Universe = rootWorkspace.universe()
-                val projects = universe.projects.to(List)
+def main(): Unit =
+  import userInterface.*
+  import unsafeExceptions.canThrowAny
+  throwErrors[CancelError]:
+    supervise:
+      given Log[Output] = logging.silent[Output]
+
+      daemon[BusMessage]:
+        if !Version().unset then
+          execute:
+            Out.println(e"$Bold(Fury, version 1.0)")
+            ExitStatus.Ok
+        
+        else safely(arguments.head) match
+          case Update() =>
+            Install()
+            
+            execute:
+              if !Install().unset then
+                import workingDirectories.daemonClient
+                import unsafeExceptions.canThrowAny
+                import logging.silent
                 
-                // val terminfo = sh"infocmp -0 -L -q -t ${Environment.term}".exec[Text]().cut(t",").
-                // Out.println(terminfo.debug)
-  
-                Table[(ProjectId, Definition)](
-                  Column(e"$Bold(Project ID)")(_(0)),
-                  Column(e"$Bold(Name)")(_(1).name),
-                  Column(e"$Bold(Description)")(_(1).description),
-                  Column(e"$Bold(Website)")(_(1).website.mm(_.show).or(t"—")),
-                  Column(e"$Bold(Source)"): (_, definition) =>
-                    definition.source match
-                      case workspace: Workspace => e"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
-                      case vault: Vault         => e"$SeaGreen(${vault.name})"
-                ).tabulate(projects, tty.knownColumns, DelimitRows.SpaceIfMultiline).foreach(Out.println(_))
-  
-              ExitStatus.Ok
+                throwErrors[ExecError | PathError | IoError | StreamCutError | OverwriteError]:
+                  Out.println(TabCompletions.install().communicate)
+                
+                ExitStatus.Ok
+              
+              else
+                Out.println(t"This does nothing without the --install/-I flag.")
+                ExitStatus.Fail(1)
+          case Init() => execute:
+            Out.println(t"Creating a new build")
+            ExitStatus.Ok
+
+          case Vent() => execute:
+            Out.println(e"${colors.Goldenrod}(Vent your Fury!)")
+            ExitStatus.Ok
+
+          case Cache() => safely(arguments.tail.head) match
+            case Clean() =>
+              execute:
+                Out.println(t"Clean the cache")
+                ExitStatus.Ok
+            
+            case Details() =>
+              execute:
+                Out.println(t"Details of the cache")
+                ExitStatus.Ok
+
+          case About() => execute:
+            Out.println(logo)
+            ExitStatus.Ok
+          
+          case Build() => execute:
+            Out.println(t"Running the build")
+            ExitStatus.Ok
+          
+          case Shutdown() => execute:
+            service.shutdown()
+            ExitStatus.Ok
+          
+          case Universe() => execute:
+            import unsafeExceptions.canThrowAny
+            throwErrors[PathError | SystemPropertyError | CancelError | HostnameError | CodlReadError | UrlError |
+                GitRefError | StreamCutError | IoError | InvalidRefError | NumberError | NotFoundError | GitError |
+                UndecodableCharError | UnencodableCharError | MarkdownError | ExecError | DateError]:
+              internet:
+                frontEnd:
+                  given installation: Installation = Installation((Xdg.cacheHome[Path] / p"fury").as[Directory])
+                  val rootWorkspace = Workspace(Properties.user.dir())
+                  given universe: Universe = rootWorkspace.universe()
+                  val projects = universe.projects.to(List)
+                  
+                  // val terminfo = sh"infocmp -0 -L -q -t ${Environment.term}".exec[Text]().cut(t",").
+                  // Out.println(terminfo.debug)
+
+                  terminal:
+                    Async(tty.events.foreach(_ => ()))
+                    
+                    Table[(ProjectId, Definition)](
+                      Column(e"$Bold(Project ID)")(_(0)),
+                      Column(e"$Bold(Name)")(_(1).name),
+                      Column(e"$Bold(Description)")(_(1).description),
+                      Column(e"$Bold(Website)")(_(1).website.mm(_.show).or(t"—")),
+                      Column(e"$Bold(Source)"): (_, definition) =>
+                        definition.source match
+                          case workspace: Workspace => e"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
+                          case vault: Vault         => e"$SeaGreen(${vault.name})"
+                    ).tabulate(projects, tty.knownColumns, DelimitRows.SpaceIfMultiline).foreach(Out.println(_))
+
+                    ExitStatus.Ok
+          
+          case subcommand =>
+            execute:
+              Out.println(t"Unrecognized subcommand: ${subcommand.mm(_()).or(t"")}.")
+              ExitStatus.Fail(1)
