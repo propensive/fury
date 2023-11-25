@@ -132,6 +132,11 @@ def main(): Unit =
                 Out.println(t"Details of the cache")
                 ExitStatus.Ok
 
+            case other =>
+              execute:
+                Out.println(t"Not a valid subcommand")
+                ExitStatus.Fail(1)
+
           case About() => execute:
             Out.println(logo)
             ExitStatus.Ok
