@@ -107,25 +107,22 @@ def main(): Unit =
               import logging.pinned
               
               throwErrors[ExecError | NotFoundError | DismissError | EnvironmentError | NumberError | SystemPropertyError | PathError | IoError | StreamCutError | OverwriteError]:
-                val Question = LineEditor()
-                val Menu = SelectMenu(License.values.to(List), License.values.head)
-                
                 if interactive then terminal:
-                  Out.print(e"Install location: ")
-                  val (answer, events) = Question.ask(tty.events)
-                  Out.println()
-                  Out.print(e"License: ")
-                  val (answer2, events2) = Menu.ask(events)
-                  Out.println()
-                  Out.println(e"Destination $Italic($answer)")
-                  Out.println(e"Chosen $Italic($answer2)")
-                  Out.println(Installer.install().communicate.text)
-                  Out.println(TabCompletions.install(force = true).communicate.text)
-                
+                  val directories = Installer.candidateTargets().map(_.path)
+                  if directories.length <= 1 then Installer.install()
+                  else
+                    Out.println(t"Please choose an install location:")
+                    val menu = SelectMenu(directories, directories.head)
+                    val (target, events2) = menu.ask(tty.events)
+                    Out.println()
+                    Out.println(e"Installing to $target/${service.scriptName}")
+                    Out.println(Installer.install(force = true, target).communicate.text)
+                    Out.println(TabCompletions.install(force = true).communicate.text)
                 else
                   Out.println(Installer.install().communicate.text)
                   Out.println(TabCompletions.install(force = true).communicate.text)
               
+              service.shutdown()
               ExitStatus.Ok
 
           case Init() => execute:
