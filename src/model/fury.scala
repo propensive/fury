@@ -65,6 +65,7 @@ given Realm = realm"fury"
 object userInterface:
   val Version = Switch(t"version", false, List('v'), t"Show information about the current version of Fury")
   val Interactive = Switch(t"interactive", false, List('i'), t"Run the command interactively")
+  val NoTabCompletions = Switch(t"no-tab-completions", false, Nil, t"Do not install tab completions")
   val Artifact = Switch(t"artifact", false, List('a'), t"Produce an artifact")
   val Benchmarks = Switch(t"benchmark", false, List('b'), t"Run with OS settings for benchmarking")
 
@@ -100,6 +101,7 @@ def main(): Unit =
         else safely(arguments.head) match
           case Install() =>
             val interactive = !Interactive().unset
+            val noTabCompletions = !NoTabCompletions().unset
             
             execute:
               import workingDirectories.daemonClient
@@ -111,16 +113,15 @@ def main(): Unit =
                   val directories = Installer.candidateTargets().map(_.path)
                   if directories.length <= 1 then Installer.install()
                   else
-                    Out.println(t"Please choose an install location:")
+                    Out.println(e"$Italic(Please choose an install location.)")
                     val menu = SelectMenu(directories, directories.head)
                     val (target, events2) = menu.ask(tty.events)
-                    Out.println()
                     Out.println(e"Installing to $target/${service.scriptName}")
-                    Out.println(Installer.install(force = true, target).communicate.text)
-                    Out.println(TabCompletions.install(force = true).communicate.text)
+                    Out.println(Installer.install(force = true, target).communicate)
+                    if !noTabCompletions then Out.println(TabCompletions.install(force = true).communicate)
                 else
-                  Out.println(Installer.install().communicate.text)
-                  Out.println(TabCompletions.install(force = true).communicate.text)
+                  Out.println(Installer.install().communicate)
+                  if !noTabCompletions then Out.println(TabCompletions.install(force = true).communicate)
               
               service.shutdown()
               ExitStatus.Ok
