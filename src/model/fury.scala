@@ -64,7 +64,6 @@ given Realm = realm"fury"
 
 object userInterface:
   val Version = Switch(t"version", false, List('v'), t"Show information about the current version of Fury")
-  val Install = Switch(t"install", false, List('I'), t"Install tab-completions for the fury command")
   val Interactive = Switch(t"interactive", false, List('i'), t"Run the command interactively")
   val Artifact = Switch(t"artifact", false, List('a'), t"Produce an artifact")
   val Benchmarks = Switch(t"benchmark", false, List('b'), t"Run with OS settings for benchmarking")
@@ -77,9 +76,12 @@ object userInterface:
   val Universe = Subcommand(t"universe", e"Universe actions")
   val Update = Subcommand(t"update", e"Update Fury")
   val Vent = Subcommand(t"vent", e"Access the Vent Ecosystem")
+  val Install = Subcommand(t"install", e"Install Fury")
 
   val Clean = Subcommand(t"clean", e"Clean the cache")
   val Details = Subcommand(t"info", e"Information about cache usage")
+
+
 
 @main
 def main(): Unit =
@@ -96,23 +98,36 @@ def main(): Unit =
             ExitStatus.Ok
         
         else safely(arguments.head) match
-          case Update() =>
-            Install()
+          case Install() =>
+            val interactive = !Interactive().unset
             
             execute:
-              if !Install().unset then
-                import workingDirectories.daemonClient
-                import unsafeExceptions.canThrowAny
-                import logging.silent
-                
-                throwErrors[ExecError | PathError | IoError | StreamCutError | OverwriteError]:
-                  Out.println(TabCompletions.install().communicate)
-                
-                ExitStatus.Ok
+              import workingDirectories.daemonClient
+              import unsafeExceptions.canThrowAny
+              import logging.pinned
               
-              else
-                Out.println(t"This does nothing without the --install/-I flag.")
-                ExitStatus.Fail(1)
+              throwErrors[ExecError | NotFoundError | DismissError | EnvironmentError | NumberError | SystemPropertyError | PathError | IoError | StreamCutError | OverwriteError]:
+                val Question = LineEditor()
+                val Menu = SelectMenu(License.values.to(List), License.values.head)
+                
+                if interactive then terminal:
+                  Out.print(e"Install location: ")
+                  val (answer, events) = Question.ask(tty.events)
+                  Out.println()
+                  Out.print(e"License: ")
+                  val (answer2, events2) = Menu.ask(events)
+                  Out.println()
+                  Out.println(e"Destination $Italic($answer)")
+                  Out.println(e"Chosen $Italic($answer2)")
+                  Out.println(Installer.install().communicate.text)
+                  Out.println(TabCompletions.install(force = true).communicate.text)
+                
+                else
+                  Out.println(Installer.install().communicate.text)
+                  Out.println(TabCompletions.install(force = true).communicate.text)
+              
+              ExitStatus.Ok
+
           case Init() => execute:
             Out.println(t"Creating a new build")
             ExitStatus.Ok
