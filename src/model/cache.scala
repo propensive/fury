@@ -101,7 +101,3 @@ object Cache:
     workspaces.synchronized:
       workspaces.getOrElseUpdate(path, Async(Workspace(path)))
 
-
-
-
-

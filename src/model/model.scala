@@ -59,7 +59,6 @@ case class Release
 
 case class Snapshot(url: HttpUrl, commit: CommitHash, branch: Maybe[Branch])
 
-
 object Vault:
   given releasesLabel: CodlLabel[Vault, "releases"] = CodlLabel("release")
 

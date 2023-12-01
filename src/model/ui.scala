@@ -18,7 +18,7 @@ import perforate.*
 case class UserError(userMessage: Message) extends Error(userMessage)
 
 def installInteractive
-    (noTabCompletions: Boolean)
+    (force: Boolean, noTabCompletions: Boolean)
     (using DaemonService[?], Terminal, Log[Output], SystemProperties, Environment, WorkingDirectory,
         HomeDirectory, Effectful)
     : ExitStatus raises UserError =
@@ -27,7 +27,7 @@ def installInteractive
     case DismissError()       => UserError(msg"Installation was aborted.")
   .within:
     val directories = Installer.candidateTargets().map(_.path)
-    if directories.length <= 1 then Installer.install()
+    if directories.length <= 1 then Installer.install(force)
     else
     Out.println(e"$Italic(Please choose an install location.)")
     val menu = SelectMenu(directories, directories.head)
@@ -38,19 +38,19 @@ def installInteractive
     ExitStatus.Ok
 
 def installBatch
-    (noTabCompletions: Boolean)
+    (force: Boolean, noTabCompletions: Boolean)
     (using DaemonService[?], Stdio, Log[Output], SystemProperties, Environment, WorkingDirectory, HomeDirectory,
         Effectful)
     : ExitStatus raises UserError =
   mitigate:
     case InstallError(reason) => UserError(msg"Installation was not possible because $reason.")
   .within:
-    Out.println(Installer.install().communicate)
+    Out.println(Installer.install(force).communicate)
     if !noTabCompletions then Out.println(TabCompletions.install(force = true).communicate)
     ExitStatus.Ok
 
-def initializeBuild()(using Stdio): ExitStatus raises UserError =
-  Out.println(t"Creating a new build")
+def initializeBuild(directory: Path)(using Stdio): ExitStatus raises UserError =
+  Out.println(t"Creating a new build in $directory")
   ExitStatus.Ok
 
 def cleanCache()(using Stdio): ExitStatus raises UserError =

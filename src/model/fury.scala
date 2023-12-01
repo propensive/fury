@@ -29,7 +29,7 @@ import eucalyptus.*, logFormats.standardColor
 import aviation.*
 import iridescence.*, colors.*
 import fulminate.*
-import rudiments.*, homeDirectory.jvm, workingDirectory.jvm
+import rudiments.*, homeDirectories.jvm, workingDirectories.jvm
 import hieroglyph.*, charEncoders.utf8, charDecoders.utf8
 import nonagenarian.*
 import nettlesome.*
@@ -40,7 +40,7 @@ import escritoire.*, tableStyles.horizontal, textWidthCalculation.eastAsianScrip
 import spectacular.*
 import exoskeleton.*, executives.completions, unhandledErrors.stackTrace, parameterInterpretation.posix
 import perforate.*
-import spectral.*
+import spectral.*, daemonConfig.supportStderr
 import profanity.*, terminalOptions.terminalSizeDetection
 import turbulence.*
 
@@ -67,6 +67,10 @@ object userInterface:
   val NoTabCompletions = Switch(t"no-tab-completions", false, Nil, t"Do not install tab completions")
   val Artifact = Switch(t"artifact", false, List('a'), t"Produce an artifact")
   val Benchmarks = Switch(t"benchmark", false, List('b'), t"Run with OS settings for benchmarking")
+  val Discover = Switch(t"discover", false, List('D'), t"Try to discover build details from the directory")
+  val Force = Switch(t"force", false, List('F'), t"Overwrite existing files if necessary")
+  def Dir(using Raises[PathError]) = Flag[Path](t"dir", false, List('d'), t"Specify the working directory")
+  val Offline = Switch(t"offline", false, List('o'), t"Work offline, if possible")
 
   val About = Subcommand(t"about", e"About Fury")
   val Build = Subcommand(t"build", e"Start a new build (default)")
@@ -80,6 +84,14 @@ object userInterface:
   val Clean = Subcommand(t"clean", e"Clean the cache")
   val Details = Subcommand(t"info", e"Information about cache usage")
 
+given (using Raises[UserError]): HomeDirectory =
+  mitigate:
+    case SystemPropertyError(property) =>
+      UserError(msg"Could not access the home directory because the $property system property was not set.")
+  .within(homeDirectories.jvm)
+
+given (using Cli): WorkingDirectory = workingDirectories.daemonClient 
+
 @main
 def main(): Unit =
   import userInterface.*
@@ -90,32 +102,19 @@ def main(): Unit =
 
       daemon[BusMessage]:
         try throwErrors[UserError]:
-          given HomeDirectory =
-            mitigate:
-              case SystemPropertyError(property) =>
-                UserError(msg"""Could not work out home directory because the $property system property was not
-                    set""")
-            .within(homeDirectory.jvm)
-          
-          given WorkingDirectory =
-            mitigate:
-              case SystemPropertyError(property) =>
-                UserError(msg"""Could not discover the working directory because the $property system property
-                    was not set""")
-            .within(workingDirectories.daemonClient)
-
-          if !Version().unset then execute(versionInfo())
+          if Version().present then execute(versionInfo())
           else safely(arguments.head) match
             case Install() =>
-              val interactive = !Interactive().unset
-              val noTabCompletions = !NoTabCompletions().unset
+              val interactive = Interactive().present
+              val force = Force().present
+              val noTabCompletions = NoTabCompletions().present
               
               execute:
                 try throwErrors[UserError]:
                   import logging.pinned
                   
-                  if interactive then terminal(installInteractive(noTabCompletions))
-                  else installBatch(noTabCompletions)
+                  if interactive then terminal(installInteractive(force, noTabCompletions))
+                  else installBatch(force, noTabCompletions)
                   
                   service.shutdown()
                   ExitStatus.Ok
@@ -125,50 +124,62 @@ def main(): Unit =
                     Out.println(userError.message)
                     ExitStatus.Fail(1)
 
-            case Init() => execute(initializeBuild())
+            case Init() =>
+              val dir: Maybe[Path] = safely(Dir()).or(safely(workingDirectory))
+              val discover = Discover()
+              execute:
+                dir.mm(initializeBuild(_)).or:
+                  abort(UserError(msg"The working directory could not be determined."))
 
             case Cache() => safely(arguments.tail.head) match
               case Clean()   => execute(cleanCache())
               case Details() => execute(cacheDetails())
               case other     => execute(other.mm(invalidSubcommand(_)).or(missingSubcommand()))
 
-            case About() => execute(about())
+            case About() => //execute(about())
+              execute:
+                Err.println(t"This is stderr")
+                ExitStatus.Fail(1)
+            
             case Build() => execute(runBuild())
             
             case Shutdown() => execute:
               service.shutdown()
               ExitStatus.Ok
             
-            case Universe() => execute:
-              import unsafeExceptions.canThrowAny
-              throwErrors[PathError | SystemPropertyError | CancelError | HostnameError | CodlReadError | UrlError |
-                  GitRefError | StreamCutError | IoError | InvalidRefError | NumberError | NotFoundError | GitError |
-                  UndecodableCharError | UnencodableCharError | MarkdownError | ExecError | DateError]:
-                internet:
-                  frontEnd:
-                    given installation: Installation = Installation((Xdg.cacheHome[Path] / p"fury").as[Directory])
-                    val rootWorkspace = Workspace(Properties.user.dir())
-                    given universe: Universe = rootWorkspace.universe()
-                    val projects = universe.projects.to(List)
-                    
-                    // val terminfo = sh"infocmp -0 -L -q -t ${Environment.term}".exec[Text]().cut(t",").
-                    // Out.println(terminfo.debug)
+            case Universe() =>
+            
+              val offline = Offline().present
+              execute:
+                import unsafeExceptions.canThrowAny
+                throwErrors[PathError | SystemPropertyError | CancelError | HostnameError | CodlReadError | UrlError |
+                    GitRefError | StreamCutError | IoError | InvalidRefError | NumberError | NotFoundError | GitError |
+                    UndecodableCharError | UnencodableCharError | MarkdownError | ExecError | DateError]:
+                  internet(!offline):
+                    frontEnd:
+                      given installation: Installation = Installation((Xdg.cacheHome[Path] / p"fury").as[Directory])
+                      val rootWorkspace = Workspace(Properties.user.dir())
+                      given universe: Universe = rootWorkspace.universe()
+                      val projects = universe.projects.to(List)
 
-                    terminal:
-                      Async(tty.events.foreach(_ => ()))
-                      
-                      Table[(ProjectId, Definition)](
-                        Column(e"$Bold(Project ID)")(_(0)),
-                        Column(e"$Bold(Name)")(_(1).name),
-                        Column(e"$Bold(Description)")(_(1).description),
-                        Column(e"$Bold(Website)")(_(1).website.mm(_.show).or(t"—")),
-                        Column(e"$Bold(Source)"): (_, definition) =>
-                          definition.source match
-                            case workspace: Workspace => e"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
-                            case vault: Vault         => e"$SeaGreen(${vault.name})"
-                      ).tabulate(projects, tty.knownColumns, DelimitRows.SpaceIfMultiline).foreach(Out.println(_))
-
-                      ExitStatus.Ok
+                      // val terminfo = sh"infocmp -0 -L -q -t ${Environment.term}".exec[Text]().cut(t",").
+                      // Out.println(terminfo.debug)
+  
+                      terminal:
+                        Async(tty.events.foreach(_ => ()))
+                        
+                        Table[(ProjectId, Definition)](
+                          Column(e"$Bold(Project ID)")(_(0)),
+                          Column(e"$Bold(Name)")(_(1).name),
+                          Column(e"$Bold(Description)")(_(1).description),
+                          Column(e"$Bold(Website)")(_(1).website.mm(_.show).or(t"—")),
+                          Column(e"$Bold(Source)"): (_, definition) =>
+                            definition.source match
+                              case workspace: Workspace => e"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
+                              case vault: Vault         => e"$SeaGreen(${vault.name})"
+                        ).tabulate(projects, tty.knownColumns, DelimitRows.SpaceIfMultiline).foreach(Out.println(_))
+  
+                        ExitStatus.Ok
             
             case subcommand =>
               execute:
