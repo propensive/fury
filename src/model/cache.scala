@@ -63,7 +63,7 @@ object Cache:
           log(msg"Cloning ${snapshot.url}")
           val process = Git.cloneCommit(snapshot.url.encode, destination, snapshot.commit)
           follow(msg"Cloning ${snapshot.url}")(gitProgress(process.progress))
-          process.complete().workTree.vouch(using Unsafe).tap: _ =>
+          process.complete().workTree.vouch(using Unsafe).also:
             log(msg"Finished cloning ${snapshot.url}")
       )
         
@@ -84,7 +84,7 @@ object Cache:
           log(msg"Cloning ${ecosystem.url}")
           val process = Git.clone(ecosystem.url.encode, destination, branch = ecosystem.branch)
           follow(msg"Cloning ${ecosystem.url}")(gitProgress(process.progress))
-          process.complete().tap: _ =>
+          process.complete().also:
             log(msg"Finished cloning ${ecosystem.url}")
         
         Codl.read[Vault]((destination / p"vault.codl").as[File])

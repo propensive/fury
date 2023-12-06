@@ -47,9 +47,7 @@ export FrontEndEvent.*, TaskEvent.*
 
 def frontEnd[ResultType](using Monitor, Stdio)(block: FrontEnd ?=> ResultType): ResultType raises CancelError =
   val frontEnd = FrontEnd()
-  block(using frontEnd).tap: _ =>
-    frontEnd.stop()
-
+  block(using frontEnd).also(frontEnd.stop())
   
 object FrontEnd:
   class TaskId(val name: Message)
