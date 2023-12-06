@@ -135,7 +135,7 @@ object ModuleRef extends RefType(t"module ref"):
 
 
   given Show[ModuleRef] = ref =>
-    t"${ref.projectId.mm { projectId => t"$projectId/" }.or(t"")}${ref.moduleId}"
+    t"${ref.projectId.let { projectId => t"$projectId/" }.or(t"")}${ref.moduleId}"
   
   def apply(value: Text)(using Raises[InvalidRefError]): ModuleRef = value match
     case r"${ProjectId(project)}([^/]+)\/${ModuleId(module)}([^/]+)" =>
@@ -183,3 +183,4 @@ case class WorkPath(descent: List[PathName[GeneralForbidden]]):
 case class Definition
     (name: Text, description: InlineMd, website: Maybe[HttpUrl], license: Maybe[LicenseId],
         keywords: List[Keyword], source: Vault | Workspace)
+

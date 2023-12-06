@@ -205,3 +205,6 @@ case class CompilerSpec(id: Text, version: Maybe[Text])
 case class Variant(id: Text)
 
 case class ArtifactSpec(`type`: Text, path: Relative, main: Text)
+
+
+

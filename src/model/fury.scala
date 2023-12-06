@@ -94,6 +94,7 @@ given (using Cli): WorkingDirectory = workingDirectories.daemonClient
 
 @main
 def main(): Unit =
+  System.out.nn.println("JVM starting")
   import userInterface.*
   import unsafeExceptions.canThrowAny
   throwErrors[CancelError]:
@@ -128,13 +129,13 @@ def main(): Unit =
               val dir: Maybe[Path] = safely(Dir()).or(safely(workingDirectory))
               val discover = Discover()
               execute:
-                dir.mm(initializeBuild(_)).or:
+                dir.let(initializeBuild(_)).or:
                   abort(UserError(msg"The working directory could not be determined."))
 
             case Cache() => safely(arguments.tail.head) match
               case Clean()   => execute(cleanCache())
               case Details() => execute(cacheDetails())
-              case other     => execute(other.mm(invalidSubcommand(_)).or(missingSubcommand()))
+              case other     => execute(other.let(invalidSubcommand(_)).or(missingSubcommand()))
 
             case About() => //execute(about())
               execute:
@@ -172,7 +173,7 @@ def main(): Unit =
                           Column(e"$Bold(Project ID)")(_(0)),
                           Column(e"$Bold(Name)")(_(1).name),
                           Column(e"$Bold(Description)")(_(1).description),
-                          Column(e"$Bold(Website)")(_(1).website.mm(_.show).or(t"—")),
+                          Column(e"$Bold(Website)")(_(1).website.let(_.show).or(t"—")),
                           Column(e"$Bold(Source)"): (_, definition) =>
                             definition.source match
                               case workspace: Workspace => e"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
@@ -183,7 +184,7 @@ def main(): Unit =
             
             case subcommand =>
               execute:
-                Out.println(t"Unrecognized subcommand: ${subcommand.mm(_()).or(t"")}.")
+                Out.println(t"Unrecognized subcommand: ${subcommand.let(_()).or(t"")}.")
                 ExitStatus.Fail(1)
         catch
           case userError: UserError =>

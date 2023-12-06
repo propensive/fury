@@ -93,7 +93,7 @@ object Workspace:
     val build: Build = Codl.read[Build](buildFile)
     val localPath: Path = dir / p".local"
     val localFile: Maybe[File] = if localPath.exists() then localPath.as[File] else Unset
-    val local: Maybe[Local] = localFile.mm(Codl.read[Local](_))
+    val local: Maybe[Local] = localFile.let(Codl.read[Local](_))
 
     Workspace(dir, buildDoc, build, local)
 
@@ -152,7 +152,7 @@ case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, loca
           Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamCutError],
           Raises[GitRefError], Raises[CancelError], Raises[HostnameError])
       : Map[ProjectId, Definition] =
-    local.mm: local =>
+    local.let: local =>
       local.forks.map: fork =>
         val workspace = Cache.workspace(fork.path).await()
         val projects = workspace.projects
