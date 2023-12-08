@@ -126,7 +126,7 @@ def main(): Unit =
                     ExitStatus.Fail(1)
 
             case Init() =>
-              val dir: Maybe[Path] = safely(Dir()).or(safely(workingDirectory))
+              val dir: Optional[Path] = safely(Dir()).or(safely(workingDirectory))
               val discover = Discover()
               execute:
                 dir.let(initializeBuild(_)).or:

@@ -33,7 +33,7 @@ export Ids.*
 case class InvalidRefError(id: Text, refType: RefType)
 extends Error(msg"The value $id is not a valid ${refType.name}")
 
-case class AppError(userMessage: Message, underlyingCause: Maybe[Error] = Unset)
+case class AppError(userMessage: Message, underlyingCause: Optional[Error] = Unset)
 extends Error(userMessage)
 
 case class UnknownRefError(ref: ProjectId) extends Error(msg"the reference ${ref.show} could not be resolved")

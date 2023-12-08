@@ -46,7 +46,7 @@ object Zip:
   val epoch = jnf.attribute.FileTime.fromMillis(946684800000L)
 
   def write(base: galilei.File, path: galilei.DiskPath, inputs: LazyList[ZipEntry],
-                prefix: Maybe[Bytes] = Unset)
+                prefix: Optional[Bytes] = Unset)
            (using Environment)
            : Unit throws StreamCutError | IoError =
     

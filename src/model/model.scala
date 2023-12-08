@@ -48,7 +48,7 @@ object Release:
   given packagesLabel: CodlLabel[Release, "packages"] = CodlLabel("provide")
 
 case class Release
-    (id: ProjectId, name: Text, stream: StreamId, website: Maybe[HttpUrl], description: InlineMd,
+    (id: ProjectId, name: Text, stream: StreamId, website: Optional[HttpUrl], description: InlineMd,
         license: LicenseId, date: Date, lifetime: Int, repo: Snapshot, packages: List[Package],
         keywords: List[Keyword]):
   def expiry: Date = date + lifetime.days
@@ -57,7 +57,7 @@ case class Release
     Definition(name, description, website, license, keywords, vault)
 
 
-case class Snapshot(url: HttpUrl, commit: CommitHash, branch: Maybe[Branch])
+case class Snapshot(url: HttpUrl, commit: CommitHash, branch: Optional[Branch])
 
 object Vault:
   given releasesLabel: CodlLabel[Vault, "releases"] = CodlLabel("release")
@@ -88,7 +88,7 @@ object Build:
   given mountsLabel: CodlLabel[Build, "mounts"] = CodlLabel("mount")
 
 case class Build
-    (prelude: Maybe[Prelude], ecosystem: Ecosystem, actions: List[Action], default: Maybe[ActionName],
+    (prelude: Optional[Prelude], ecosystem: Ecosystem, actions: List[Action], default: Optional[ActionName],
         projects: List[Project], mounts: List[Mount])
 
 
@@ -99,7 +99,7 @@ object Project:
   given modulesLabel: CodlLabel[Project, "modules"] = CodlLabel("module")
 
 case class Project
-    (id: ProjectId, name: Text, description: InlineMd, modules: List[Module], website: HttpUrl, license: Maybe[LicenseId],
+    (id: ProjectId, name: Text, description: InlineMd, modules: List[Module], website: HttpUrl, license: Optional[LicenseId],
         keywords: List[Keyword]):
   
   // FIXME: Handle not-found
@@ -125,7 +125,7 @@ object Module:
 case class Module
     (id: ModuleId, includes: List[ModuleRef], sources: List[WorkPath], packages: List[Package],
         usages: List[ModuleRef], omissions: List[ModuleRef], assists: List[Assist],
-        compiler: Maybe[Text], main: Maybe[ClassName], coverage: Maybe[ModuleRef])
+        compiler: Optional[Text], main: Optional[ClassName], coverage: Optional[ModuleRef])
 
 object ModuleRef extends RefType(t"module ref"):
   given moduleRefEncoder: Encoder[ModuleRef] = _.show
@@ -181,6 +181,6 @@ case class WorkPath(descent: List[PathName[GeneralForbidden]]):
   def link: SafeLink = SafeLink(0, descent)
 
 case class Definition
-    (name: Text, description: InlineMd, website: Maybe[HttpUrl], license: Maybe[LicenseId],
+    (name: Text, description: InlineMd, website: Optional[HttpUrl], license: Optional[LicenseId],
         keywords: List[Keyword], source: Vault | Workspace)
 

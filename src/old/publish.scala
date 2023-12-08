@@ -45,7 +45,7 @@ extends Exception(t"the profile $name was not found for these credentials".s)
 case class ProfileId(id: Text, repoTargetId: Text)
 
 object Sonatype:
-  def publish(build: Build, passwordOpt: Maybe[Text] = Unset)(using Stdio, Internet, Environment): Unit =
+  def publish(build: Build, passwordOpt: Optional[Text] = Unset)(using Stdio, Internet, Environment): Unit =
     val password = passwordOpt.or:
       throw AppError(t"The environment variable SONATYPE_PASSWORD is not set")
     

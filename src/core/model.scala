@@ -36,7 +36,7 @@ case class Publishing(username: Text, group: Text, url: Text, organization: Orga
 
 case class Issue(level: Level, baseDir: DiskPath[Unix], code: CodeRange, stack: List[CodeRange], message: Text)
 
-case class CodeRange(module: Maybe[Ref], path: Maybe[Relative], startLine: Int, from: Int, to: Int, endLine: Int,
+case class CodeRange(module: Optional[Ref], path: Optional[Relative], startLine: Int, from: Int, to: Int, endLine: Int,
                          content: IArray[Char])
 
 // case class Repo(base: Text, url: Text):
@@ -69,10 +69,10 @@ case class Ref(project: Text, module: Text):
   def dashed: Text = t"$project-$module"
 
 object AppError:
-  def apply(msg: Text, originalCause: Maybe[Error[?]] = Unset): AppError =
+  def apply(msg: Text, originalCause: Optional[Error[?]] = Unset): AppError =
     AppError(msg.ansi, originalCause)
 
-case class AppError(appMsg: AnsiText, originalCause: Maybe[Error[?]])
+case class AppError(appMsg: AnsiText, originalCause: Optional[Error[?]])
 extends Error(err"an application error occurred: $appMsg", originalCause)
 
 case class BuildfileError(bfMsg: Text) extends Error(err"the build file contained an error: $bfMsg")
@@ -168,7 +168,7 @@ case class PluginRef(jarFile: DiskPath[Unix], params: List[Text])
 
 case class Module(id: Text, source: List[Relative], use: List[Text], `export`: List[Text],
                       include: List[Text], assist: List[Text], artifact: List[Artifact],
-                      resource: List[Relative], compiler: Maybe[CompilerSpec], java: Int, plugin: List[PluginSpec])
+                      resource: List[Relative], compiler: Optional[CompilerSpec], java: Int, plugin: List[PluginSpec])
 
 // case class Module(name: Text, id: Text, links: Option[Set[Text]], resources: Option[Set[Text]],
 //                       sources: Set[Text], jars: Option[Set[Text]], docs: Option[List[Text]],
@@ -191,17 +191,17 @@ given Codec[Relative] with
   def serialize(dir: Relative): List[IArray[Node]] = List(IArray(Node(Data(dir.show))))
   def deserialize(value: List[Indexed]): Relative = unsafely(Relative.parse(readField(value).option.get))
 
-case class CodlBuild(`:<<` : Text, user: Text, project: List[Project], script: Text, universe: Maybe[Text], command: List[Command])
+case class CodlBuild(`:<<` : Text, user: Text, project: List[Project], script: Text, universe: Optional[Text], command: List[Command])
 
-case class Project(id: Text, name: Text, description: Maybe[Text], repo: List[Repo], module: List[Module],
-                        variant: List[Variant], expiry: Maybe[Int])
+case class Project(id: Text, name: Text, description: Optional[Text], repo: List[Repo], module: List[Module],
+                        variant: List[Variant], expiry: Optional[Int])
 
-case class Repo(id: Text, url: Text, commit: Text, branch: Maybe[Text])
+case class Repo(id: Text, url: Text, commit: Text, branch: Optional[Text])
 
 case class Command(id: Text, main: Text, include: List[Text])
 
 
-case class CompilerSpec(id: Text, version: Maybe[Text])
+case class CompilerSpec(id: Text, version: Optional[Text])
 case class Variant(id: Text)
 
 case class ArtifactSpec(`type`: Text, path: Relative, main: Text)

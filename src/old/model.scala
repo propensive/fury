@@ -37,7 +37,7 @@ case class Publishing(username: Text, group: Text, url: Text, organization: Mave
 
 case class Issue(level: Level, baseDir: DiskPath, code: CodeRange, stack: List[CodeRange], message: Text)
 
-case class CodeRange(module: Maybe[Ref], path: Maybe[Relative], startLine: Int, from: Int, to: Int, endLine: Int,
+case class CodeRange(module: Optional[Ref], path: Optional[Relative], startLine: Int, from: Int, to: Int, endLine: Int,
                          content: IArray[Char])
 
 case class Repo(base: Text, url: Text):
@@ -57,7 +57,7 @@ object RepoPath:
     case r"$path@(.+)"                        => Some(RepoPath(Unset, Relative.parse(path.show)))
     case _                                    => None
 
-case class RepoPath(repoId: Maybe[Text], path: Relative)
+case class RepoPath(repoId: Optional[Text], path: Relative)
 
 object ModuleId:
   def unapply(text: Text): Option[ModuleId] = text match
@@ -70,7 +70,7 @@ object ModuleId:
   
   given Show[ModuleId] = id => id.project.fm(id.module) { p => t"${p}/${id.module}" }
 
-case class ModuleId(project: Maybe[Text], module: Text):
+case class ModuleId(project: Optional[Text], module: Text):
   def in(id: ProjectId): Ref = Ref(project.or(id.project), module)
   def ref: Ref = Ref(project.or(throw AppError(t"Project has not been specified")), module)
 
@@ -103,19 +103,19 @@ case class ProjectId(project: Text)
 
 case class PackageName(pkg: Text)
 
-case class Intro(terminator: Text, header: Maybe[Text])
+case class Intro(terminator: Text, header: Optional[Text])
 
-case class BuildConfig(@targetName("prelude") `:<<`: Maybe[Intro], universe: Maybe[Text],
+case class BuildConfig(@targetName("prelude") `:<<`: Optional[Intro], universe: Optional[Text],
                            overlay: List[Overlay], project: List[Project], command: List[Target],
-                           script: Maybe[Text])
+                           script: Optional[Text])
 
-case class Project(id: ProjectId, description: Maybe[Text], module: List[Module], repo: List[GitRepo]):
+case class Project(id: ProjectId, description: Optional[Text], module: List[Module], repo: List[GitRepo]):
   lazy val index: Map[Text, Module] = unsafely(module.indexBy(_.id.module))
 
 case class Module(id: ModuleId, include: Set[ModuleId], use: Set[ModuleId], resource: Set[RepoPath],
-                        source: Set[RepoPath], binary: Set[RepoPath], docs: Maybe[RepoPath],
+                        source: Set[RepoPath], binary: Set[RepoPath], docs: Optional[RepoPath],
                         artifact: Option[ArtifactSpec], exec: Option[Exec], plugin: List[PluginSpec],
-                        main: Option[Text], publish: Option[Boolean], js: Maybe[Boolean])
+                        main: Option[Text], publish: Option[Boolean], js: Optional[Boolean])
 
 case class Overlay(url: Text, commit: Text, project: ProjectId)
   //def resolve(): Directory = GitCache(url, commit)
@@ -153,10 +153,10 @@ case class Ref(project: Text, module: Text):
   def dashed: Text = t"$project-$module"
 
 object AppError:
-  def apply(msg: Text, originalCause: Maybe[Error[?]] = Unset): AppError =
+  def apply(msg: Text, originalCause: Optional[Error[?]] = Unset): AppError =
     AppError(msg.ansi, originalCause)
 
-case class AppError(appMsg: AnsiText, originalCause: Maybe[Error[?]])
+case class AppError(appMsg: AnsiText, originalCause: Optional[Error[?]])
 extends Error(msg"an application error occurred: $appMsg", originalCause)
 
 case class BuildfileError(bfMsg: Text) extends Error(msg"the build file contained an error: $bfMsg")
@@ -252,6 +252,6 @@ case class Version(digest: Text, major: Int, minor: Int):
 
 case class PluginRef(jarFile: DiskPath, params: List[Text])
 
-case class Target(id: Text, include: List[ModuleId], main: Maybe[Text], args: List[Text])
+case class Target(id: Text, include: List[ModuleId], main: Optional[Text], args: List[Text])
 
 case class GitRepo(id: RepoId, url: Text, commit: Text)

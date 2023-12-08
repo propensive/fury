@@ -55,7 +55,7 @@ object Universe:
         if !forkSet.contains(ov.project.project) then GitCache(ov.url, ov.commit)
         else (pwd.path + forkSet(ov.project.project).path).directory(Expect)
 
-    def recur(universe: Maybe[(List[Target], Universe)], todo: List[Directory], seen: Set[Directory]): (List[Target], Universe) =
+    def recur(universe: Optional[(List[Target], Universe)], todo: List[Directory], seen: Set[Directory]): (List[Target], Universe) =
       todo match
         case Nil =>
           universe.or(throw AppError(t"Could not resolve the build"))

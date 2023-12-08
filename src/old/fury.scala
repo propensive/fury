@@ -64,7 +64,7 @@ object palette:
   val Class = colors.MediumAquamarine
 
 object Build:
-  def apply(pwd: Directory, command: Maybe[Target], universe: Universe)
+  def apply(pwd: Directory, command: Optional[Target], universe: Universe)
            (using Environment, Monitor, Stdio)
            : Build throws GitError | IoError | EnvError | RootParentError | CancelError =
     
@@ -216,7 +216,7 @@ object Artifact:
     val in = ji.BufferedInputStream(ji.ByteArrayInputStream(manifest.bytes.mutable(using Unsafe)))
     val mfEntry = Zip.Entry(Relative.parse(t"META-INF/MANIFEST.MF"), in)
     
-    val header: Maybe[Bytes] = artifact.format match
+    val header: Optional[Bytes] = artifact.format match
       case Format.DaemonApp => unsafely((Classpath() / p"exoskeleton" / p"invoke").read[Bytes])
       case Format.App       => unsafely((Classpath() / p"exoskeleton" / p"invoke").read[Bytes])
       case _                => Bytes.empty

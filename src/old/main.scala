@@ -499,7 +499,7 @@ object Fury extends Daemon():
       case Source    => t"source"
       case Resource  => t"resource"
 
-  def build(command: Maybe[Text], publishSonatype: Boolean, watch: Boolean = false, scriptFile: File,
+  def build(command: Optional[Text], publishSonatype: Boolean, watch: Boolean = false, scriptFile: File,
                 exec: Boolean)
            (using Stdio, InputSource, Monitor, Environment)
            : ExitStatus throws AppError = unsafely:
@@ -558,12 +558,12 @@ object Fury extends Daemon():
         case err: InotifyError => throw AppError(t"Could not update watch directories", err)
         case err: IoError      => throw AppError(t"Could not update watch directories", err)
 
-      def generateBuild(command: Maybe[Text]): Build =
+      def generateBuild(command: Optional[Text]): Build =
         try
           val pwd = env.pwd.directory(Expect)
           val (commands, universe) = Universe.resolve(pwd)
           
-          val command2: Maybe[Target] = commands.find(_.id == command.or(t"default")).maybe
+          val command2: Optional[Target] = commands.find(_.id == command.or(t"default")).maybe
           val build = Build(pwd, command2, universe)
           if watch then updateWatches(watcher, build) else build
         catch

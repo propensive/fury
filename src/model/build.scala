@@ -92,8 +92,8 @@ object Workspace:
     val buildDoc: CodlDoc = Codl.parse(buildFile)
     val build: Build = Codl.read[Build](buildFile)
     val localPath: Path = dir / p".local"
-    val localFile: Maybe[File] = if localPath.exists() then localPath.as[File] else Unset
-    val local: Maybe[Local] = localFile.let(Codl.read[Local](_))
+    val localFile: Optional[File] = if localPath.exists() then localPath.as[File] else Unset
+    val local: Optional[Local] = localFile.let(Codl.read[Local](_))
 
     Workspace(dir, buildDoc, build, local)
 
@@ -138,7 +138,7 @@ object Engine:
       )
 
 
-case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, local: Maybe[Local]):
+case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, local: Optional[Local]):
   val ecosystem = build.ecosystem
   lazy val actions: Map[ActionName, Action] = unsafely(build.actions.indexBy(_.name))
   lazy val projects: Map[ProjectId, Project] = unsafely(build.projects.indexBy(_.id))

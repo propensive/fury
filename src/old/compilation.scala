@@ -103,13 +103,13 @@ object Compiler:
           cancelator.cancel()
           reporter.errors.to(List)
 
-      def codeRange(pos: dtdi.SourcePosition): Maybe[CodeRange] =
+      def codeRange(pos: dtdi.SourcePosition): Optional[CodeRange] =
         val content = pos.source.nn.content.nn.immutable(using Unsafe)
         val file = pos.source.nn.path.nn.show
         
         safely(Unix.parse(file)).mm: p =>
           val roots = owners.filter(_(0).precedes(p))
-          val (step: Maybe[Step], path: Maybe[Relative]) =
+          val (step: Optional[Step], path: Optional[Relative]) =
             if roots.isEmpty then Unset -> Unset else
               val (root: DiskPath, step: Step) = roots.maxBy(_(0).parts.size)
               step -> p.relativeTo(step.pwd.path)
