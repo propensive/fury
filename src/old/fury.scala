@@ -111,10 +111,10 @@ case class Build(pwd: Directory, index: Map[Ref, Step] = Map()):
 
   private var hashesResult: Option[Map[Step, Digest[Crc32]]] = None
   def clearHashes(): Unit = synchronized { hashesResult = None }
-  def hashes: Map[Step, Digest[Crc32]] throws BrokenLinkError | IoError | StreamCutError =
+  def hashes: Map[Step, Digest[Crc32]] throws BrokenLinkError | IoError | StreamError =
 
     def recur(todo: List[Step], hashes: Map[Step, Digest[Crc32]])
-             : Map[Step, Digest[Crc32]] throws BrokenLinkError | StreamCutError =
+             : Map[Step, Digest[Crc32]] throws BrokenLinkError | StreamError =
       if todo.isEmpty then hashes
       else try
         val step = todo.head
@@ -148,7 +148,7 @@ case class Build(pwd: Directory, index: Map[Ref, Step] = Map()):
       .to(Map)
     catch
       case err: JsonParseError  => throw AppError(t"The cache file is not in the correct format", err)
-      case err: StreamCutError  => throw AppError(t"The stream was cut while reading the cache file", err)
+      case err: StreamError     => throw AppError(t"The stream was cut while reading the cache file", err)
       case err: IoError         => throw AppError(t"There was an IO error while reading the cache",err)
       case err: JsonAccessError => throw AppError(t"The cache file was not in the correct JSON format", err)
       case err: Exception       => throw AppError(StackTrace(err).ansi.plain)
@@ -171,7 +171,7 @@ case class Build(pwd: Directory, index: Map[Ref, Step] = Map()):
     
     catch
       case err: JsonParseError  => throw AppError(t"The cache file is not in the correct format", err)
-      case err: StreamCutError  => throw AppError(t"The stream was cut while reading the cache file", err)
+      case err: StreamError     => throw AppError(t"The stream was cut while reading the cache file", err)
       case err: IoError         => throw AppError(t"There was an IO error while reading the cache", err)
       case err: JsonAccessError => throw AppError(t"The cache did not contain the correct JSON format", err)
       case err: Exception       => throw AppError(StackTrace(err).ansi.plain)
@@ -309,7 +309,7 @@ case class Step(path: File[Unix], publishing: Option[Publishing],
     
     catch
       case err: IoError         => throw AppError(t"Could not read the source files", err)
-      case err: StreamCutError  => throw AppError(t"Reading the source files broke before it completed", err)
+      case err: StreamError     => throw AppError(t"Reading the source files broke before it completed", err)
       case err: BrokenLinkError => throw AppError(t"There was an unsatisfied reference to ${err.link}", err)
       //case err: Error[?]        => throw AppError(t"An unexpected error occurred", err)
 

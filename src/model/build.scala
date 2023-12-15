@@ -58,7 +58,7 @@ object Installation:
         Installation(config, cache, vault, lib, tmp, snapshots)
     
     catch
-      case error: StreamCutError =>
+      case error: StreamError =>
         throw AppError(msg"The stream was cut while reading a file", error)
       
       case error: EnvironmentError => error match
@@ -85,7 +85,7 @@ inline def installation(using inline installation: Installation): Installation =
 object Workspace:
   def apply
       (path: Path)
-      (using Stdio, Raises[HostnameError], Raises[CodlReadError], Raises[GitRefError], Raises[AggregateError[CodlError]], Raises[StreamCutError], Raises[IoError], Raises[InvalidRefError], Raises[NumberError], Raises[NotFoundError], Raises[UrlError], Raises[PathError], Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[MarkdownError])
+      (using Stdio, Raises[HostnameError], Raises[CodlReadError], Raises[GitRefError], Raises[AggregateError[CodlError]], Raises[StreamError], Raises[IoError], Raises[InvalidRefError], Raises[NumberError], Raises[NotFoundError], Raises[UrlError], Raises[PathError], Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[MarkdownError])
       : Workspace =
     val dir: Directory = path.as[Directory]
     val buildFile: File = (dir / p".fury").as[File]
@@ -105,7 +105,7 @@ object Engine:
       (using Monitor, Clock, Log[Output], FrontEnd, Stdio, WorkingDirectory, Internet, Installation, GitCommand, Raises[NotFoundError],
           Raises[UnknownRefError], Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NumberError],
           Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
-          Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamCutError],
+          Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamError],
           Raises[GitRefError], Raises[CancelError], Raises[HostnameError])
       : Async[Digest[Sha2[256]]] =
     builds.synchronized:
@@ -149,7 +149,7 @@ case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, loca
       (using Monitor, Log[Output], FrontEnd, Stdio, WorkingDirectory, Internet, Installation, GitCommand, Raises[NotFoundError],
           Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NumberError],
           Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
-          Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamCutError],
+          Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamError],
           Raises[GitRefError], Raises[CancelError], Raises[HostnameError])
       : Map[ProjectId, Definition] =
     local.let: local =>
@@ -165,7 +165,7 @@ case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, loca
       (using Monitor, Clock, Log[Output], FrontEnd, Stdio, WorkingDirectory, Internet, Installation, GitCommand, Raises[NotFoundError],
           Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NumberError],
           Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
-          Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamCutError],
+          Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamError],
           Raises[GitRefError], Raises[CancelError], Raises[HostnameError])
       : Universe =
     given Timezone = tz"Etc/UTC"
@@ -185,7 +185,7 @@ case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, loca
       (path: WorkPath)
       (using Installation, Internet, Stdio, Monitor, FrontEnd, WorkingDirectory, Log[Output], Raises[CancelError],
           Raises[GitRefError], Raises[GitError], Raises[PathError], Raises[ExecError], Raises[IoError],
-          Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[StreamCutError], Raises[NotFoundError],
+          Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[StreamError], Raises[NotFoundError],
           Raises[NumberError], Raises[InvalidRefError], Raises[MarkdownError], Raises[CodlReadError],
           Raises[DateError], Raises[UrlError])
       : Directory =
@@ -203,5 +203,5 @@ enum Compiler:
   case Scala
 
 case class Step(sources: List[File], dependencies: List[Digest[Sha2[256]]], binaries: List[Digest[Sha2[256]]]):
-  def digest(using Raises[StreamCutError], Raises[IoError]): Digest[Sha2[256]] =
+  def digest(using Raises[StreamError], Raises[IoError]): Digest[Sha2[256]] =
     (sources.map(_.readAs[Bytes]), dependencies, binaries).digest

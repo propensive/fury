@@ -154,7 +154,7 @@ def main(): Unit =
               execute:
                 import unsafeExceptions.canThrowAny
                 throwErrors[PathError | SystemPropertyError | CancelError | HostnameError | CodlReadError | UrlError |
-                    GitRefError | StreamCutError | IoError | InvalidRefError | NumberError | NotFoundError | GitError |
+                    GitRefError | StreamError | IoError | InvalidRefError | NumberError | NotFoundError | GitError |
                     UndecodableCharError | UnencodableCharError | MarkdownError | ExecError | DateError]:
                   internet(!offline):
                     frontEnd:
