@@ -20,12 +20,8 @@ import anticipation.*
 import aviation.*
 import cellulose.*
 import symbolism.*
-import escapade.*
-import guillotine.*
 import galilei.*
 import gastronomy.*
-import diuretic.*
-import eucalyptus.*
 import fulminate.*
 import perforate.*
 import gossamer.*
@@ -33,9 +29,7 @@ import serpentine.*
 import kaleidoscope.*
 import nettlesome.*
 import punctuation.*
-import turbulence.*
-import hieroglyph.*, charEncoders.utf8, charDecoders.utf8
-import parasite.*
+import hieroglyph.*, charEncoders.utf8
 import rudiments.*
 import spectacular.*
 import nonagenarian.*

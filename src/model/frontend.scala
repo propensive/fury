@@ -16,21 +16,18 @@
 
 package fury
 
-import anticipation.*
+import anticipation.*, timeApi.aviationApi
 import fulminate.*
 import gossamer.*
 import parasite.*
 import iridescence.*
 import perforate.*
 import quantitative.*
-import diuretic.*, timeApi.aviationApi
 import rudiments.*
 import turbulence.*
 import hieroglyph.*, textWidthCalculation.uniform
 import escapade.*
 import spectacular.*
-
-import scala.collection.mutable as scm
 
 import language.experimental.captureChecking
 
@@ -99,7 +96,7 @@ case class FrontEnd()(using Monitor, Stdio):
     Out.print(csi.ed())
     if tasks.size > 0 then Out.print(csi.cuu(tasks.size))
     
-  def log(message: Message | Text): Unit = message match
+  def log(message: Message | Text): Unit = (message: @unchecked) match
     case message: Message => funnel.put(LogMessage(message.show))
     case text: Text       => funnel.put(LogMessage(text))
   

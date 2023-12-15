@@ -22,11 +22,10 @@ import gossamer.*
 import anticipation.*
 import gastronomy.*
 import galilei.*
-import digression.*
 import perforate.*
 import spectacular.*
 import kaleidoscope.*
-import hieroglyph.*, charEncoders.utf8, charDecoders.utf8
+import hieroglyph.*, charEncoders.utf8
 
 export Ids.*
 
@@ -71,7 +70,7 @@ object Ids:
   object Keyword extends Id[Keyword]()
   object ActionName extends Id[ActionName]()
 
-  class GitRefType[Type](name: Text) extends RefType(name):
+  class GitRefType[Type](ref: Text) extends RefType(ref):
     def apply(value: Text)(using Raises[InvalidRefError]): Type =
       value.cut(t"/").foreach: part =>
         if part.starts(t".") || part.ends(t".") then raise(InvalidRefError(value, this))(GitRefType[Type](value))

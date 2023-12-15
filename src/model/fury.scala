@@ -20,21 +20,19 @@ import ambience.*, systemProperties.jvm, environments.jvm
 import anticipation.*
 import cellulose.*
 import galilei.*, fileApi.galileiApi, filesystemOptions.{doNotCreateNonexistent, dereferenceSymlinks}
-import gastronomy.*
 import parasite.*
 import gossamer.*
 import escapade.*
 import guillotine.*
-import eucalyptus.*, logFormats.standardColor
+import eucalyptus.*
 import aviation.*
 import iridescence.*, colors.*
 import fulminate.*
-import rudiments.*, homeDirectories.jvm, workingDirectories.jvm
-import hieroglyph.*, charEncoders.utf8, charDecoders.utf8
+import rudiments.*, homeDirectories.jvm
+import hieroglyph.*
 import nonagenarian.*
 import nettlesome.*
 import serpentine.*, hierarchies.unixOrWindows
-import spectacular.*
 import punctuation.*
 import escritoire.*, tableStyles.horizontal, textWidthCalculation.eastAsianScripts
 import spectacular.*
@@ -78,6 +76,7 @@ object userInterface:
   val Shutdown = Subcommand(t"shutdown", e"Shutdown the Fury daemon")
   val Init = Subcommand(t"init", e"Initialize a new project")
   val Universe = Subcommand(t"universe", e"Universe actions")
+  val Graph = Subcommand(t"graph", e"Show a build graph")
   val Update = Subcommand(t"update", e"Update Fury")
   val Install = Subcommand(t"install", e"Install Fury")
 
@@ -94,7 +93,6 @@ given (using Cli): WorkingDirectory = workingDirectories.daemonClient
 
 @main
 def main(): Unit =
-  System.out.nn.println("JVM starting")
   import userInterface.*
   import unsafeExceptions.canThrowAny
   throwErrors[CancelError]:
@@ -112,8 +110,6 @@ def main(): Unit =
               
               execute:
                 try throwErrors[UserError]:
-                  import logging.pinned
-                  
                   if interactive then terminal(installInteractive(force, noTabCompletions))
                   else installBatch(force, noTabCompletions)
                   
@@ -137,15 +133,19 @@ def main(): Unit =
               case Details() => execute(cacheDetails())
               case other     => execute(other.let(invalidSubcommand(_)).or(missingSubcommand()))
 
-            case About() => //execute(about())
+            case About() =>
               execute:
-                Err.println(t"This is stderr")
+                about()
                 ExitStatus.Fail(1)
             
             case Build() => execute(runBuild())
             
             case Shutdown() => execute:
               service.shutdown()
+              ExitStatus.Ok
+            
+            case Graph() => execute:
+              Out.println(t"Show graph")
               ExitStatus.Ok
             
             case Universe() =>
@@ -155,7 +155,7 @@ def main(): Unit =
                 import unsafeExceptions.canThrowAny
                 throwErrors[PathError | SystemPropertyError | CancelError | HostnameError | CodlReadError | UrlError |
                     GitRefError | StreamError | IoError | InvalidRefError | NumberError | NotFoundError | GitError |
-                    UndecodableCharError | UnencodableCharError | MarkdownError | ExecError | DateError]:
+                    UndecodableCharError | UnencodableCharError | MarkdownError | ExecError | DateError | VaultError]:
                   internet(!offline):
                     frontEnd:
                       given installation: Installation = Installation((Xdg.cacheHome[Path] / p"fury").as[Directory])
@@ -191,3 +191,4 @@ def main(): Unit =
             execute:
               Out.println(userError.message)
               ExitStatus.Fail(1)
+

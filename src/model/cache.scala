@@ -71,10 +71,9 @@ object Cache:
       (ecosystem: Ecosystem)
       (using installation: Installation)
       (using Internet, Log[Output], Monitor, FrontEnd, WorkingDirectory, Raises[ExecError],
-          Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NotFoundError],
-          Raises[GitRefError], Raises[NumberError], Raises[InvalidRefError], Raises[DateError],
-          Raises[UrlError], Raises[CodlReadError], Raises[MarkdownError], Raises[PathError], Raises[IoError],
-          Raises[StreamError], Raises[GitError], Raises[HostnameError], GitCommand)
+          Raises[UnencodableCharError], Raises[NotFoundError],
+          Raises[CodlReadError], Raises[MarkdownError], Raises[PathError], Raises[IoError],
+          Raises[GitError], Raises[VaultError], GitCommand)
       : Async[Vault] =
     ecosystems.synchronized:
       ecosystems.getOrElseUpdate(ecosystem, Async:
@@ -87,7 +86,17 @@ object Cache:
           process.complete().also:
             log(msg"Finished cloning ${ecosystem.url}")
         
-        Codl.read[Vault]((destination / p"vault.codl").as[File])
+        mitigate:
+          case UrlError(_, _, _)          => VaultError()
+          case InvalidRefError(_, _)      => VaultError()
+          case StreamError(bytes)         => VaultError()
+          case NumberError(_, _)          => VaultError()
+          case DateError(_)               => VaultError()
+          case GitRefError(_)             => VaultError()
+          case HostnameError(_)           => VaultError()
+          case UndecodableCharError(_, _) => VaultError()
+        .within:
+          Codl.read[Vault]((destination / p"vault.codl").as[File])
       )
 
   def workspace(path: Path)
@@ -101,3 +110,4 @@ object Cache:
     workspaces.synchronized:
       workspaces.getOrElseUpdate(path, Async(Workspace(path)))
 
+case class VaultError() extends Error(msg"the vault file is not valid")

@@ -16,8 +16,6 @@
 
 package fury
 
-import acyclicity.*
-
 import galilei.*, filesystemOptions.{createNonexistent, createNonexistentParents, dereferenceSymlinks}
 import anticipation.*, fileApi.galileiApi
 import rudiments.*
@@ -38,7 +36,6 @@ import imperial.*
 import serpentine.*, hierarchies.unixOrWindows
 import cellulose.*
 import spectacular.*
-import symbolism.*
 import nettlesome.*
 import nonagenarian.*
 
@@ -97,7 +94,6 @@ object Workspace:
 
     Workspace(dir, buildDoc, build, local)
 
-
 object Engine:
   private val builds: scm.HashMap[ModuleRef, Async[Digest[Sha2[256]]]] = scm.HashMap()
   
@@ -137,7 +133,6 @@ object Engine:
         module.digest[Sha2[256]]
       )
 
-
 case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, local: Optional[Local]):
   val ecosystem = build.ecosystem
   lazy val actions: Map[ActionName, Action] = unsafely(build.actions.indexBy(_.name))
@@ -158,7 +153,7 @@ case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, loca
         val projects = workspace.projects
         workspace.locals(ancestors + fork.path)
         
-    .or(Nil).foldRight(projects.mapValues(_.definition(this)).to(Map))(_ ++ _)
+    .or(Nil).foldRight(projects.view.mapValues(_.definition(this)).to(Map))(_ ++ _)
   
   def universe
       ()
@@ -166,7 +161,7 @@ case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, loca
           Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NumberError],
           Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
           Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamError],
-          Raises[GitRefError], Raises[CancelError], Raises[HostnameError])
+          Raises[GitRefError], Raises[CancelError], Raises[HostnameError], Raises[VaultError])
       : Universe =
     given Timezone = tz"Etc/UTC"
     val vaultProjects = Cache(ecosystem).await()
@@ -201,6 +196,7 @@ case class Universe(projects: Map[ProjectId, Definition]):
 enum Compiler:
   case Java(version: Int)
   case Scala
+  case Kotlin
 
 case class Step(sources: List[File], dependencies: List[Digest[Sha2[256]]], binaries: List[Digest[Sha2[256]]]):
   def digest(using Raises[StreamError], Raises[IoError]): Digest[Sha2[256]] =
