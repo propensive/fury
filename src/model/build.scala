@@ -79,20 +79,33 @@ case class Installation
   
 inline def installation(using inline installation: Installation): Installation = installation
 
-object Workspace:
-  def apply
-      (path: Path)
-      (using Stdio, Raises[HostnameError], Raises[CodlReadError], Raises[GitRefError], Raises[AggregateError[CodlError]], Raises[StreamError], Raises[IoError], Raises[InvalidRefError], Raises[NumberError], Raises[NotFoundError], Raises[UrlError], Raises[PathError], Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[MarkdownError])
-      : Workspace =
-    val dir: Directory = path.as[Directory]
-    val buildFile: File = (dir / p".fury").as[File]
-    val buildDoc: CodlDoc = Codl.parse(buildFile)
-    val build: Build = Codl.read[Build](buildFile)
-    val localPath: Path = dir / p".local"
-    val localFile: Optional[File] = if localPath.exists() then localPath.as[File] else Unset
-    val local: Optional[Local] = localFile.let(Codl.read[Local](_))
+case class WorkspaceError() extends Error(msg"there was a problem reading the build file")
 
-    Workspace(dir, buildDoc, build, local)
+object Workspace:
+  def apply(path: Path)(using Raises[AggregateError[CodlReadError]], Raises[WorkspaceError]): Workspace =
+    mitigate:
+      case HostnameError(_)           => WorkspaceError()
+      case NotFoundError(_)           => WorkspaceError()
+      case CodlReadError()            => WorkspaceError()
+      case GitRefError(_)             => WorkspaceError()
+      case StreamError(_)             => WorkspaceError()
+      case MarkdownError(_)           => WorkspaceError()
+      case IoError(_)                 => WorkspaceError()
+      case UrlError(_, _, _)          => WorkspaceError()
+      case PathError(_)               => WorkspaceError()
+      case InvalidRefError(_, _)      => WorkspaceError()
+      case NumberError(_, _)          => WorkspaceError()
+      case UndecodableCharError(_, _) => WorkspaceError()
+    .within:
+      val dir: Directory = path.as[Directory]
+      val buildFile: File = (dir / p".fury").as[File]
+      val buildDoc: CodlDoc = Codl.parse(buildFile)
+      val build: Build = Codl.read[Build](buildFile)
+      val localPath: Path = dir / p".local"
+      val localFile: Optional[File] = if localPath.exists() then localPath.as[File] else Unset
+      val local: Optional[Local] = localFile.let(Codl.read[Local](_))
+  
+      Workspace(dir, buildDoc, build, local)
 
 object Engine:
   private val builds: scm.HashMap[ModuleRef, Async[Digest[Sha2[256]]]] = scm.HashMap()
@@ -102,7 +115,7 @@ object Engine:
           Raises[UnknownRefError], Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NumberError],
           Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
           Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamError],
-          Raises[GitRefError], Raises[CancelError], Raises[HostnameError])
+          Raises[GitRefError], Raises[CancelError], Raises[HostnameError], Raises[WorkspaceError])
       : Async[Digest[Sha2[256]]] =
     builds.synchronized:
       builds.getOrElseUpdate(moduleRef, Async:
@@ -145,7 +158,7 @@ case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, loca
           Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NumberError],
           Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
           Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamError],
-          Raises[GitRefError], Raises[CancelError], Raises[HostnameError])
+          Raises[GitRefError], Raises[CancelError], Raises[HostnameError], Raises[WorkspaceError])
       : Map[ProjectId, Definition] =
     local.let: local =>
       local.forks.map: fork =>
@@ -161,7 +174,7 @@ case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, loca
           Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NumberError],
           Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
           Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamError],
-          Raises[GitRefError], Raises[CancelError], Raises[HostnameError], Raises[VaultError])
+          Raises[GitRefError], Raises[CancelError], Raises[HostnameError], Raises[VaultError], Raises[WorkspaceError])
       : Universe =
     given Timezone = tz"Etc/UTC"
     val vaultProjects = Cache(ecosystem).await()

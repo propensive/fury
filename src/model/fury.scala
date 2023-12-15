@@ -155,7 +155,7 @@ def main(): Unit =
                 import unsafeExceptions.canThrowAny
                 throwErrors[PathError | SystemPropertyError | CancelError | HostnameError | CodlReadError | UrlError |
                     GitRefError | StreamError | IoError | InvalidRefError | NumberError | NotFoundError | GitError |
-                    UndecodableCharError | UnencodableCharError | MarkdownError | ExecError | DateError | VaultError]:
+                    UndecodableCharError | WorkspaceError | UnencodableCharError | MarkdownError | ExecError | DateError | VaultError]:
                   internet(!offline):
                     frontEnd:
                       given installation: Installation = Installation((Xdg.cacheHome[Path] / p"fury").as[Directory])

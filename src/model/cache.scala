@@ -70,43 +70,42 @@ object Cache:
   def apply
       (ecosystem: Ecosystem)
       (using installation: Installation)
-      (using Internet, Log[Output], Monitor, FrontEnd, WorkingDirectory, Raises[ExecError],
-          Raises[UnencodableCharError], Raises[NotFoundError],
-          Raises[CodlReadError], Raises[MarkdownError], Raises[PathError], Raises[IoError],
-          Raises[GitError], Raises[VaultError], GitCommand)
-      : Async[Vault] =
+      (using Internet, Log[Output], Monitor, FrontEnd, WorkingDirectory, GitCommand)
+      : Async[Vault] raises VaultError =
     ecosystems.synchronized:
       ecosystems.getOrElseUpdate(ecosystem, Async:
-        val destination = unsafely(installation.vault.path / PathName(ecosystem.id.show) / PathName(ecosystem.branch.show))
-        
-        if !destination.exists() then
-          log(msg"Cloning ${ecosystem.url}")
-          val process = Git.clone(ecosystem.url.encode, destination, branch = ecosystem.branch)
-          follow(msg"Cloning ${ecosystem.url}")(gitProgress(process.progress))
-          process.complete().also:
-            log(msg"Finished cloning ${ecosystem.url}")
-        
         mitigate:
           case UrlError(_, _, _)          => VaultError()
           case InvalidRefError(_, _)      => VaultError()
+          case ExecError(_, _, _)         => VaultError()
           case StreamError(bytes)         => VaultError()
           case NumberError(_, _)          => VaultError()
           case DateError(_)               => VaultError()
+          case GitError(_)                => VaultError()
+          case IoError(_)                 => VaultError()
           case GitRefError(_)             => VaultError()
           case HostnameError(_)           => VaultError()
           case UndecodableCharError(_, _) => VaultError()
+          case PathError(_)               => VaultError()
+          case NotFoundError(_)           => VaultError()
+          case CodlReadError()            => VaultError()
+          case MarkdownError(_)           => VaultError()
         .within:
+          val destination = installation.vault.path / PathName(ecosystem.id.show) / PathName(ecosystem.branch.show)
+          if !destination.exists() then
+            log(msg"Cloning ${ecosystem.url}")
+            val process = Git.clone(ecosystem.url.encode, destination, branch = ecosystem.branch)
+            follow(msg"Cloning ${ecosystem.url}")(gitProgress(process.progress))
+            process.complete().also:
+              log(msg"Finished cloning ${ecosystem.url}")            
+
           Codl.read[Vault]((destination / p"vault.codl").as[File])
       )
 
-  def workspace(path: Path)
-      (using installation: Installation)
-      (using Internet, Log[Output], Stdio, Monitor, FrontEnd, WorkingDirectory, Raises[ExecError],
-          Raises[HostnameError], Raises[UndecodableCharError], Raises[UnencodableCharError],
-          Raises[NotFoundError], Raises[GitRefError], Raises[NumberError], Raises[InvalidRefError],
-          Raises[DateError], Raises[UrlError], Raises[CodlReadError], Raises[MarkdownError], Raises[PathError],
-          Raises[IoError], Raises[StreamError], Raises[GitError], GitCommand)
-      : Async[Workspace] =
+  def workspace
+      (path: Path)
+      (using Installation, Internet, Log[Output], Stdio, Monitor, FrontEnd, WorkingDirectory, GitCommand)
+      : Async[Workspace] raises WorkspaceError =
     workspaces.synchronized:
       workspaces.getOrElseUpdate(path, Async(Workspace(path)))
 
