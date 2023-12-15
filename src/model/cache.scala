@@ -52,12 +52,12 @@ object Cache:
 
   def apply
       (snapshot: Snapshot)
-      (using installation: Installation)
-      (using Internet, Log[Output], Monitor, FrontEnd, WorkingDirectory, Raises[ExecError], Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NotFoundError], Raises[GitRefError], Raises[NumberError], Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[CodlReadError], Raises[MarkdownError], Raises[PathError], Raises[IoError], Raises[StreamError], Raises[GitError], GitCommand)
+      (using Installation, Internet, Log[Output], Monitor, FrontEnd, WorkingDirectory, GitCommand,
+          Raises[ExecError], Raises[PathError], Raises[IoError], Raises[GitError])
       : Async[Directory] =
     snapshots.synchronized:
       snapshots.getOrElseUpdate(snapshot, Async:
-        val destination = unsafely(installation.snapshots.path / PathName(snapshot.commit.show))
+        val destination = summon[Installation].snapshots.path / PathName(snapshot.commit.show)
         
         if destination.exists() then destination.as[Directory] else
           log(msg"Cloning ${snapshot.url}")

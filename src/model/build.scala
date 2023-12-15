@@ -41,38 +41,26 @@ import nonagenarian.*
 
 import scala.collection.mutable as scm
 
+case class ConfigError(msg: Message) extends Error(msg)
+
 object Installation:
-  def apply(cache: Directory): Installation throws AppError =
-    try
-      throwErrors:
-        val configPath: Path = Home.Config() / p"fury"
-        val config: File = (configPath / p"config.codl").as[File]
-        val vault: Directory = (cache / p"vault").as[Directory]
-        val snapshots: Directory = (cache / p"repos").as[Directory]
-        val lib: Directory = (cache / p"lib").as[Directory]
-        val tmp: Directory = (cache / p"tmp").as[Directory]
-      
-        Installation(config, cache, vault, lib, tmp, snapshots)
+  def apply(cache: Directory): Installation raises ConfigError =
+    mitigate:
+      case StreamError(_)                => ConfigError(msg"The stream was cut while reading a file")
+      case EnvironmentError(variable)    => ConfigError(msg"The environment variable $variable could not be accessed")
+      case SystemPropertyError(property) => ConfigError(msg"The JVM system property $property could not be accessed")
+      case IoError(path)                 => ConfigError(msg"An I/O error occurred while trying to access $path")
+      case PathError(reason)             => ConfigError(msg"The path was not valid because $reason")
+    .within:
+      val configPath: Path = Home.Config() / p"fury"
+      val config: File = (configPath / p"config.codl").as[File]
+      val vault: Directory = (cache / p"vault").as[Directory]
+      val snapshots: Directory = (cache / p"repos").as[Directory]
+      val lib: Directory = (cache / p"lib").as[Directory]
+      val tmp: Directory = (cache / p"tmp").as[Directory]
     
-    catch
-      case error: StreamError =>
-        throw AppError(msg"The stream was cut while reading a file", error)
-      
-      case error: EnvironmentError => error match
-        case EnvironmentError(variable) =>
-          throw AppError(msg"The environment variable $variable could not be accessed", error)
-      
-      case error: SystemPropertyError => error match
-        case SystemPropertyError(property) =>
-           throw AppError(msg"The JVM system property $property could not be accessed", error)
-      
-      case error: IoError => error match
-        case IoError(path) =>
-          throw AppError(msg"An I/O error occurred while trying to access $path", error)
-      
-      case error: PathError => error match
-        case PathError(reason) =>
-          throw AppError(msg"The path was not valid because $reason", error)
+      Installation(config, cache, vault, lib, tmp, snapshots)
+    
     
 case class Installation
     (config: File, cache: Directory, vault: Directory, lib: Directory, tmp: Directory, snapshots: Directory)
@@ -107,43 +95,52 @@ object Workspace:
   
       Workspace(dir, buildDoc, build, local)
 
+case class BuildError() extends Error(msg"the build could not run")
+
 object Engine:
   private val builds: scm.HashMap[ModuleRef, Async[Digest[Sha2[256]]]] = scm.HashMap()
   
   def build(moduleRef: ModuleRef)(using universe: Universe)
-      (using Monitor, Clock, Log[Output], FrontEnd, Stdio, WorkingDirectory, Internet, Installation, GitCommand, Raises[NotFoundError],
-          Raises[UnknownRefError], Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NumberError],
-          Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
-          Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamError],
-          Raises[GitRefError], Raises[CancelError], Raises[HostnameError], Raises[WorkspaceError])
-      : Async[Digest[Sha2[256]]] =
+      (using Monitor, Clock, Log[Output], FrontEnd, Stdio, WorkingDirectory, Internet, Installation, GitCommand)
+      : Async[Digest[Sha2[256]]] raises BuildError =
     builds.synchronized:
       builds.getOrElseUpdate(moduleRef, Async:
-        val workspace = universe(moduleRef.projectId).source match
-          case vault: Vault         => Workspace(Cache(vault.index.releases(moduleRef.projectId).repo).await().path)
-          case workspace: Workspace => workspace
-        
-        val project: Project = workspace(moduleRef.projectId)
-        val module = project(moduleRef.moduleId)
 
-        val sourceFiles: List[File] = module.sources.flatMap: directory =>
-          workspace(directory).descendants.filter(_.is[File]).filter(_.name.ends(t".scala")).map(_.as[File])
-
-
-        val includes = module.includes.map(Engine.build(_)).map(_.await())
-        
-        val step = Step(sourceFiles, includes, Nil)
-        log(msg"Digest = ${step.digest.encodeAs[Base32]}")
-        
-        val part = (math.random*36).toLong
-        
-        val progress = LazyList.range(0, 100).map: pc =>
-          Thread.sleep(part)
-          TaskEvent.Progress(t"typer", pc/100.0)
-        
-        follow(msg"Building $moduleRef")(progress)
-        progress.length
-        module.digest[Sha2[256]]
+        mitigate:
+          case GitError(_)        => BuildError()
+          case ExecError(_, _, _) => BuildError()
+          case PathError(_)       => BuildError()
+          case IoError(_)         => BuildError()
+          case UnknownRefError(_) => BuildError()
+          case WorkspaceError()   => BuildError()
+          case StreamError(_)     => BuildError()
+          case CancelError()      => BuildError()
+        .within:
+          val workspace = universe(moduleRef.projectId).source match
+            case vault: Vault         => Workspace(Cache(vault.index.releases(moduleRef.projectId).repo).await().path)
+            case workspace: Workspace => workspace
+          
+          val project: Project = workspace(moduleRef.projectId)
+          val module = project(moduleRef.moduleId)
+  
+          val sourceFiles: List[File] = module.sources.flatMap: directory =>
+            workspace(directory).descendants.filter(_.is[File]).filter(_.name.ends(t".scala")).map(_.as[File])
+  
+  
+          val includes = module.includes.map(Engine.build(_)).map(_.await())
+          
+          val step = Step(sourceFiles, includes, Nil)
+          log(msg"Digest = ${step.digest.encodeAs[Base32]}")
+          
+          val part = (math.random*36).toLong
+          
+          val progress = LazyList.range(0, 100).map: pc =>
+            Thread.sleep(part)
+            TaskEvent.Progress(t"typer", pc/100.0)
+          
+          follow(msg"Building $moduleRef")(progress)
+          progress.length
+          module.digest[Sha2[256]]
       )
 
 case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, local: Optional[Local]):
@@ -154,12 +151,8 @@ case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, loca
 
   def locals
       (ancestors: Set[Path] = Set())
-      (using Monitor, Log[Output], FrontEnd, Stdio, WorkingDirectory, Internet, Installation, GitCommand, Raises[NotFoundError],
-          Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NumberError],
-          Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
-          Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamError],
-          Raises[GitRefError], Raises[CancelError], Raises[HostnameError], Raises[WorkspaceError])
-      : Map[ProjectId, Definition] =
+      (using Monitor, Log[Output], FrontEnd, Stdio, WorkingDirectory, Internet, Installation, GitCommand)
+      : Map[ProjectId, Definition] raises CancelError raises WorkspaceError =
     local.let: local =>
       local.forks.map: fork =>
         val workspace = Cache.workspace(fork.path).await()
@@ -170,12 +163,8 @@ case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, loca
   
   def universe
       ()
-      (using Monitor, Clock, Log[Output], FrontEnd, Stdio, WorkingDirectory, Internet, Installation, GitCommand, Raises[NotFoundError],
-          Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[NumberError],
-          Raises[InvalidRefError], Raises[DateError], Raises[UrlError], Raises[MarkdownError],
-          Raises[CodlReadError], Raises[GitError], Raises[ExecError], Raises[PathError], Raises[IoError], Raises[StreamError],
-          Raises[GitRefError], Raises[CancelError], Raises[HostnameError], Raises[VaultError], Raises[WorkspaceError])
-      : Universe =
+      (using Monitor, Clock, Log[Output], FrontEnd, Stdio, WorkingDirectory, Internet, Installation, GitCommand)
+      : Universe raises CancelError raises VaultError raises WorkspaceError =
     given Timezone = tz"Etc/UTC"
     val vaultProjects = Cache(ecosystem).await()
     val localProjects = locals()
@@ -191,11 +180,8 @@ case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, loca
 
   def apply
       (path: WorkPath)
-      (using Installation, Internet, Stdio, Monitor, FrontEnd, WorkingDirectory, Log[Output], Raises[CancelError],
-          Raises[GitRefError], Raises[GitError], Raises[PathError], Raises[ExecError], Raises[IoError],
-          Raises[UndecodableCharError], Raises[UnencodableCharError], Raises[StreamError], Raises[NotFoundError],
-          Raises[NumberError], Raises[InvalidRefError], Raises[MarkdownError], Raises[CodlReadError],
-          Raises[DateError], Raises[UrlError])
+      (using Installation, Internet, Stdio, Monitor, FrontEnd, WorkingDirectory, Log[Output],
+          Raises[CancelError], Raises[GitError], Raises[PathError], Raises[ExecError], Raises[IoError])
       : Directory =
     mounts.keys.find(_.precedes(path)).match
       case None        => directory.path + path.link

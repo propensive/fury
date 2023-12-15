@@ -153,9 +153,8 @@ def main(): Unit =
               val offline = Offline().present
               execute:
                 import unsafeExceptions.canThrowAny
-                throwErrors[PathError | SystemPropertyError | CancelError | HostnameError | CodlReadError | UrlError |
-                    GitRefError | StreamError | IoError | InvalidRefError | NumberError | NotFoundError | GitError |
-                    UndecodableCharError | WorkspaceError | UnencodableCharError | MarkdownError | ExecError | DateError | VaultError]:
+                throwErrors[PathError | SystemPropertyError | CancelError |
+                    IoError | ConfigError | WorkspaceError | ExecError | VaultError]:
                   internet(!offline):
                     frontEnd:
                       given installation: Installation = Installation((Xdg.cacheHome[Path] / p"fury").as[Directory])
