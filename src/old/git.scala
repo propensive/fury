@@ -1,4 +1,3 @@
-
 /*
     Fury, version [unreleased]. Copyright 2023 Jon Pretty, Propensive OÜ.
 
