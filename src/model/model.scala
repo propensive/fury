@@ -31,6 +31,7 @@ import nettlesome.*
 import punctuation.*
 import hieroglyph.*, charEncoders.utf8
 import rudiments.*
+import vacuous.*
 import spectacular.*
 import nonagenarian.*
 

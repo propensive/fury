@@ -24,6 +24,7 @@ import iridescence.*
 import perforate.*
 import quantitative.*
 import rudiments.*
+import vacuous.*
 import turbulence.*
 import hieroglyph.*, textWidthCalculation.uniform
 import escapade.*

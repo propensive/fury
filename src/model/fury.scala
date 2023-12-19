@@ -29,6 +29,7 @@ import aviation.*
 import iridescence.*, colors.*
 import fulminate.*
 import rudiments.*, homeDirectories.jvm
+import vacuous.*
 import hieroglyph.*
 import nonagenarian.*
 import nettlesome.*

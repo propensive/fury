@@ -17,6 +17,7 @@
 package fury
 
 import rudiments.*
+import vacuous.*
 import profanity.*
 import turbulence.*
 import ambience.*

@@ -32,6 +32,7 @@ import punctuation.*
 import gossamer.*
 import escapade.*
 import rudiments.*
+import vacuous.*
 import serpentine.*, hierarchies.unixOrWindows
 import spectacular.*
 import turbulence.*
