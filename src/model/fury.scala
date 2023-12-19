@@ -18,7 +18,6 @@ package fury
 
 import ambience.*, systemProperties.jvm, environments.jvm
 import anticipation.*
-import cellulose.*
 import galilei.*, fileApi.galileiApi, filesystemOptions.{doNotCreateNonexistent, dereferenceSymlinks}
 import parasite.*
 import gossamer.*

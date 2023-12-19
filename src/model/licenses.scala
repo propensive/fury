@@ -18,7 +18,6 @@ package fury
 
 import anticipation.*
 import rudiments.*
-import vacuous.*
 import punctuation.*
 
 enum LicenseGroup:
