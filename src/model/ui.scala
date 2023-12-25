@@ -27,7 +27,6 @@ import fulminate.*
 import galilei.*
 import gastronomy.*
 import gossamer.*
-import iridescence.*
 import anticipation.*
 import hellenism.*, classloaders.threadContext
 import hieroglyph.*, charDecoders.utf8, badEncodingHandlers.skip, textWidthCalculation.uniform
@@ -113,14 +112,15 @@ def about()(using Stdio): ExitStatus =
   case class Software(name: Text, version: Text, copyright: Text)
 
   Table[Software](
-    Column(t"Dependency")(_.name),
-    Column(t"Version")(_.version),
-    Column(t"Copyright")(_.copyright)
+    Column(e"", align = Alignment.Right): software =>
+      e"$Bold(${software.name})",
+    Column(e"$Bold(Version)")(_.version.display),
+    Column(e"$Bold(Copyright)")(_.copyright.display)
   ).tabulate(List(
     Software(t"Fury", t"0.0${buildId.lay(t"") { id => t", build $id"}}", t"2017-2023, Propensive"),
     Software(t"Scala", scalaProperties(t"version.number"), scalaProperties(t"copyright.string").sub(t"Copyright ", t"")),
-    unsafely(Software(t"Java specification", Properties.java.vm.specification.version(), Properties.java.vm.specification.vendor())),
-    unsafely(Software(t"Java distribution", Properties.java.version(), Properties.java.vendor()))
+    unsafely(Software(t"Java distribution", Properties.java.version(), Properties.java.vendor())),
+    unsafely(Software(t"Java specification", Properties.java.vm.specification.version(), Properties.java.vm.specification.vendor()))
   ), 200).foreach(Out.println(_))
 
   safely(Out.println(e"  ${Italic}(${Properties.os.name()} ${Properties.os.version()}, ${Properties.os.arch()})\n"))
@@ -130,4 +130,3 @@ def about()(using Stdio): ExitStatus =
 def versionInfo()(using Stdio): ExitStatus = 
   Out.println(t"Fury version 1.0")
   ExitStatus.Ok
-
