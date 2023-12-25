@@ -19,20 +19,24 @@ package fury
 import rudiments.*
 import profanity.*
 import turbulence.*
-import ambience.*
+import kaleidoscope.*
+import spectacular.*
+import ambience.*, systemProperties.jvm
 import exoskeleton.*
 import fulminate.*
 import galilei.*
 import gastronomy.*
 import gossamer.*
+import iridescence.*
 import anticipation.*
 import hellenism.*, classloaders.threadContext
-import hieroglyph.*, charDecoders.utf8, badEncodingHandlers.skip
+import hieroglyph.*, charDecoders.utf8, badEncodingHandlers.skip, textWidthCalculation.uniform
 import vacuous.*
 import eucalyptus.*
 import serpentine.*
 import spectral.*
 import escapade.*
+import escritoire.*, tableStyles.minimalist
 import perforate.*
 
 case class UserError(userMessage: Message) extends Error(userMessage)
@@ -96,9 +100,31 @@ def about()(using Stdio): ExitStatus =
   Out.println(logo)
   val buildId = safely:
     val resource = Classpath / p"spectral" / p"build.id"
-    resource().readAs[Text]
+    resource().readAs[Text].trim
   
-  Out.println(e"$Bold(Build ID ${buildId.or(t"unknown")})")
+  val scalaProperties = unsafely:
+    val resource = Classpath / p"compiler.properties"
+
+    resource().readAs[Text].cut(t"\n").flatMap:
+      case r"$key([^=]*)=$value(.*)" => List(key -> value)
+      case _                         => Nil
+    .to(Map)
+
+  case class Software(name: Text, version: Text, copyright: Text)
+
+  Table[Software](
+    Column(t"Dependency")(_.name),
+    Column(t"Version")(_.version),
+    Column(t"Copyright")(_.copyright)
+  ).tabulate(List(
+    Software(t"Fury", t"0.0${buildId.lay(t"") { id => t", build $id"}}", t"2017-2023, Propensive"),
+    Software(t"Scala", scalaProperties(t"version.number"), scalaProperties(t"copyright.string").sub(t"Copyright ", t"")),
+    unsafely(Software(t"Java specification", Properties.java.vm.specification.version(), Properties.java.vm.specification.vendor())),
+    unsafely(Software(t"Java distribution", Properties.java.version(), Properties.java.vendor()))
+  ), 200).foreach(Out.println(_))
+
+  safely(Out.println(e"  ${Italic}(${Properties.os.name()} ${Properties.os.version()}, ${Properties.os.arch()})\n"))
+  
   ExitStatus.Ok
 
 def versionInfo()(using Stdio): ExitStatus = 
