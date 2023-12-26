@@ -112,7 +112,7 @@ def about()(using Stdio): ExitStatus =
   case class Software(name: Text, version: Text, copyright: Text)
 
   Table[Software](
-    Column(e"", align = Alignment.Right): software =>
+    Column(e"$Bold(Component)", align = Alignment.Right): software =>
       e"$Bold(${software.name})",
     Column(e"$Bold(Version)")(_.version.display),
     Column(e"$Bold(Copyright)")(_.copyright.display)
