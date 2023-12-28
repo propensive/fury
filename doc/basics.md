@@ -20,11 +20,60 @@ each step, whether running it today or in ten years' time on a newer release of
 Fury. This is true, so long as the code that runs in each step is
 deterministic.
 
-While the builds 
+## Build file format
 
-But to accommodate an ever-evolving ecosystem, Fury makes it easy to update a build to use newer dependencies
+However, to accommodate an ever-evolving ecosystem
 
 Builds are composable, and 
+
+## Escaping Dependency Hell
+
+Fury takes on the valiant endeavour of defeating Dependency Hell, the situation
+that many projects fall into when their transitive dependencies cannot coexist
+coherently in the same project.
+
+This occurs when one project has at least two dependencies which depend on
+different versions of the same project. A coherent set of dependencies can only
+contain one version of the same project, so one of the two primary dependencies
+must be changed. If those two versions are compatible, resolving the conflict
+may be trivial, or may be problematic, leading to new conflicts or requiring
+code changes to accommodate a new version.
+
+The colloquialism of "Dependency Hell" accurately reflects the user's
+experience of dealing with a series of dependency conflicts, though it also
+manifests itself passively as Dependency Stagnation, where a working set of
+dependencies never changes for fear that it would lead to Dependency Hell.
+
+These scenarios are never desirable, and developers on projects with many
+dependencies can waste hours, days, or longer on build maintenance just to keep
+up to date with an evolving ecosystem, while the project is making no material
+progress.
+
+Dependency Hell arises for several complex reasons, but it is fundamentally a
+problem of scale, exacerbated by the network effect and a long feedback loop.
+Of these reasons, it is the network effect which transforms it into a
+worse-than-exponential problem.
+
+Fury's approach to overcoming Dependency Hell is to introduce new ideas which
+attack these problems in several different ways:
+ - to reduce the number of concurrent candidate versions for each dependency
+ - to make it possible for certain conflicting versions of some dependencies to
+   coexist as transitive dependencies
+ - to obviate dependencies which do not need to be transitive
+ - to make it easier to resolve conflicts when they occur
+ - to clearly communicate expectations about dependencies
+
+Alone, any one of these ideas would probably be insufficient to overcome
+Dependency Hell, but together they can make an impact on the likelihood of a
+conflict occurring at any node in a dependency tree, and together they can
+overcome the exponential growth which can cause a dependency conflict to spread
+throughout the tree.
+
+The new ideas which form this concerted attack on Dependency Hell are,
+ - [scope-qualified dependencies](qualified-dependencies.md)
+ - [Vent](vent.md), a resource-scarce publishing ecosystem
+ - [source dependencies and composable builds](sources.md)
+each of which is described on its own page.
 
 ## Extensibility
 
