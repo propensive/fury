@@ -18,7 +18,7 @@ package fury
 
 import rudiments.*
 import ambience.*
-import turbulence.*, lineSeparation.jvm
+import turbulence.*, lineSeparation.virtualMachine
 import gastronomy.*
 import telekinesis.*
 import jacinta.*, jsonPrinters.minimal

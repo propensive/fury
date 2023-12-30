@@ -22,7 +22,7 @@ import rudiments.*
 import aviation.*
 import ambience.*
 import parasite.*
-import turbulence.*, lineSeparation.jvm
+import turbulence.*, lineSeparation.virtualMachine
 import acyclicity.*
 import merino.*
 import jacinta.*, jsonPrinters.minimal

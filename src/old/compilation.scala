@@ -24,7 +24,7 @@ import serpentine.*
 import escapade.*
 import eucalyptus.*
 import ambience.*
-import turbulence.*, lineSeparation.jvm
+import turbulence.*, lineSeparation.virtualMachine
 import digression.*
 
 import rendering.ansi

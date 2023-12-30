@@ -16,7 +16,7 @@
 
 package fury
 
-import ambience.*, systemProperties.jvm, environments.jvm
+import ambience.*, systemProperties.virtualMachine, environments.virtualMachine
 import anticipation.*
 import galilei.*, fileApi.galileiApi, filesystemOptions.{doNotCreateNonexistent, dereferenceSymlinks}
 import parasite.*
@@ -27,7 +27,7 @@ import eucalyptus.*
 import aviation.*
 import iridescence.*, colors.*
 import fulminate.*
-import rudiments.*, homeDirectories.jvm
+import rudiments.*, homeDirectories.virtualMachine
 import vacuous.*
 import hieroglyph.*
 import nonagenarian.*
@@ -87,7 +87,7 @@ given (using Raises[UserError]): HomeDirectory =
   mitigate:
     case SystemPropertyError(property) =>
       UserError(msg"Could not access the home directory because the $property system property was not set.")
-  .within(homeDirectories.jvm)
+  .within(homeDirectories.virtualMachine)
 
 given (using Cli): WorkingDirectory = workingDirectories.daemonClient 
 

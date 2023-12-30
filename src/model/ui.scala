@@ -21,7 +21,7 @@ import profanity.*
 import turbulence.*
 import kaleidoscope.*
 import spectacular.*
-import ambience.*, systemProperties.jvm
+import ambience.*, systemProperties.virtualMachine
 import exoskeleton.*
 import fulminate.*
 import galilei.*
