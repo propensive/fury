@@ -25,7 +25,7 @@ import parasite.*
 import aviation.*, calendars.gregorian
 import guillotine.*
 import fulminate.*
-import ambience.*, environments.jvm, systemProperties.jvm
+import ambience.*, environments.virtualMachine, systemProperties.virtualMachine
 import gossamer.*
 import perforate.*
 import eucalyptus.*

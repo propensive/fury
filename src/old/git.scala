@@ -23,7 +23,7 @@ import parasite.*
 import guillotine.*
 import serpentine.*
 import digression.*
-import turbulence.*, lineSeparation.jvm
+import turbulence.*, lineSeparation.virtualMachine
 import ambience.*
 
 given GitCommand = gitCommands.environment

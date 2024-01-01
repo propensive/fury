@@ -20,7 +20,7 @@ import gossamer.*
 import hieroglyph.*, textWidthCalculation.eastAsianScripts
 import rudiments.*
 import digression.*
-import turbulence.*, lineSeparation.jvm
+import turbulence.*, lineSeparation.virtualMachine
 import acyclicity.*
 import jacinta.*
 import eucalyptus.Log
@@ -389,7 +389,7 @@ object Fury extends Daemon():
     def format(text: Text, line: Int, margin: Int) =
       val syntax = highlight(text)
       if line >= syntax.length then ansi""
-      else syntax(line).map:
+      else (syntax(line): Int).map:
         case Token.Code(code, accent) => accent match
           case Accent.Type              => ansi"${colors.YellowGreen}(${code})"
           case Accent.Term              => ansi"${colors.CadetBlue}(${code})"
