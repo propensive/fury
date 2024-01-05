@@ -59,12 +59,12 @@ case class FrontEnd()(using Monitor, Stdio):
   val pulsar = Pulsar(0.1*Second)
   
   val pulse: Async[Unit] = Async[Unit]:
-    pulsar.stream.foreach: pulse =>
+    pulsar.stream.each: pulse =>
       funnel.put(Render)
       acquiesce()
 
   val async: Async[Unit] = Async[Unit]:
-    funnel.stream.foreach:
+    funnel.stream.each:
       case Render                                        => render()
       case LogMessage(message)                           => pending = message :: pending
       case TaskUpdate(taskId, Complete())                => tasks = tasks - taskId
@@ -80,13 +80,13 @@ case class FrontEnd()(using Monitor, Stdio):
   def render(): Unit =
     Out.print(csi.dectcem(false))
     
-    pending.reverse.foreach: line =>
+    pending.reverse.each: line =>
       Out.print(line)
       Out.println(csi.el())
     
     pending = Nil
 
-    tasks.foreach: (taskId, progress) =>
+    tasks.each: (taskId, progress) =>
       val bar = t"━"
       val size = (progress*20).toInt
       Out.print(e"${taskId.name.text.fit(60)} [${colors.LimeGreen}(${bar.s*size}${t" ".s*(19 - size)})]")
@@ -106,7 +106,7 @@ case class FrontEnd()(using Monitor, Stdio):
       stream.map:
         case Progress(stage, progress) => TaskUpdate(taskId, Progress(stage, progress))
         case Complete()                => TaskUpdate(taskId, Complete())
-      .foreach(funnel.put(_))
+      .each(funnel.put(_))
       funnel.put(TaskUpdate(taskId, Complete()))
     
 def log(message: Text | Message)(using frontEnd: FrontEnd): Unit = frontEnd.log(message)

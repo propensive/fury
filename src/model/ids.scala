@@ -73,7 +73,7 @@ object Ids:
 
   class GitRefType[Type](ref: Text) extends RefType(ref):
     def apply(value: Text)(using Raises[InvalidRefError]): Type =
-      value.cut(t"/").foreach: part =>
+      value.cut(t"/").each: part =>
         if part.starts(t".") || part.ends(t".") then raise(InvalidRefError(value, this))(GitRefType[Type](value))
         if part.ends(t".lock") then raise(InvalidRefError(value, this))(GitRefType[Type](value))
         if part.contains(t"@{") then raise(InvalidRefError(value, this))(GitRefType[Type](value))

@@ -121,7 +121,7 @@ def about()(using Stdio): ExitStatus =
     Software(t"Scala", scalaProperties(t"version.number"), scalaProperties(t"copyright.string").sub(t"Copyright ", t"")),
     unsafely(Software(t"Java distribution", Properties.java.version(), Properties.java.vendor())),
     unsafely(Software(t"Java specification", Properties.java.vm.specification.version(), Properties.java.vm.specification.vendor()))
-  ), 200).foreach(Out.println(_))
+  ), 200).each(Out.println(_))
 
   safely(Out.println(e"  ${Italic}(${Properties.os.name()} ${Properties.os.version()}, ${Properties.os.arch()})\n"))
   
