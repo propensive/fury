@@ -166,7 +166,7 @@ def main(): Unit =
                       // Out.println(terminfo.debug)
   
                       terminal:
-                        Async(tty.events.foreach(_ => ()))
+                        Async(terminal.events.foreach(_ => ()))
                         
                         Table[(ProjectId, Definition)](
                           Column(e"$Bold(Project ID)")(_(0)),
@@ -177,7 +177,7 @@ def main(): Unit =
                             definition.source match
                               case workspace: Workspace => e"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
                               case vault: Vault         => e"$SeaGreen(${vault.name})"
-                        ).tabulate(projects, tty.knownColumns, DelimitRows.SpaceIfMultiline).foreach(Out.println(_))
+                        ).tabulate(projects, terminal.knownColumns, DelimitRows.SpaceIfMultiline).foreach(Out.println(_))
   
                         ExitStatus.Ok
             
@@ -190,4 +190,3 @@ def main(): Unit =
             execute:
               Out.println(userError.message)
               ExitStatus.Fail(1)
-

@@ -32,4 +32,3 @@ object Macros:
       LicenseId(string.tt)
     
     '{${Expr(string)}.asInstanceOf[LicenseId]}
-    

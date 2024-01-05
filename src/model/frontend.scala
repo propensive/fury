@@ -77,7 +77,6 @@ case class FrontEnd()(using Monitor, Stdio):
     pulsar.stop()
     async.await()
 
-
   def render(): Unit =
     Out.print(csi.dectcem(false))
     
@@ -114,3 +113,4 @@ def log(message: Text | Message)(using frontEnd: FrontEnd): Unit = frontEnd.log(
 
 def follow(name: Message)(stream: LazyList[TaskEvent])(using frontEnd: FrontEnd): Unit =
   frontEnd.follow(name)(stream)
+

@@ -54,7 +54,7 @@ def installInteractive
     else
     Out.println(e"$Italic(Please choose an install location.)")
     val menu = SelectMenu(directories, directories.head)
-    val (target, events2) = menu.ask(tty.events)
+    val (target, events2) = menu.ask(terminal.events)
     Out.println(e"Installing to $target/${service.scriptName}")
     Out.println(Installer.install(force = true, target).communicate)
     if !noTabCompletions then Out.println(TabCompletions.install(force = true).communicate)

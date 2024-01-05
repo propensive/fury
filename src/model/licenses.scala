@@ -59,4 +59,3 @@ enum License(name: InlineMd, id: LicenseId, group: LicenseGroup):
   case Ncsa extends License(md"University of Illinois/NCSA Open Source License", lid"ncsa", LicenseGroup.Ncsa)
   case Unlicense extends License(md"The Unlicense", lid"unlicense", LicenseGroup.Unlicense)
   case Zlib extends License(md"zLib License", lid"zlib", LicenseGroup.Zlib)
-
