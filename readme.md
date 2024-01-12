@@ -16,8 +16,8 @@ TBC
 ## Availability Plan
 
 Fury has not yet been published. The medium-term plan is to build Fury
-with [Fury](/propensive/fury) and to publish it as a source build on
-[Vent](/propensive/vent). This will enable ordinary users to write and build
+with [Fury](https://github.com/propensive/fury) and to publish it as a source build on
+[Vent](https://github.com/propensive/vent). This will enable ordinary users to write and build
 software which depends on Fury.
 
 Subsequently, Fury will also be made available as a binary in the Maven
@@ -180,6 +180,7 @@ for a particular build action, then it should always be possible to perform
 that step in a Docker container as a step in the build.
 
 ## Dependencies
+
 
 
 
