@@ -59,7 +59,7 @@ case class FrontEnd()(using Monitor, Stdio):
   val pulsar = Pulsar(0.1*Second)
   
   val pulse: Async[Unit] = Async[Unit]:
-    pulsar.stream.each: pulse =>
+    pulsar.stream.foreach: pulse =>
       funnel.put(Render)
       acquiesce()
 

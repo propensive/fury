@@ -19,6 +19,7 @@ package fury
 import galilei.*, filesystemOptions.{createNonexistent, createNonexistentParents, dereferenceSymlinks}
 import anticipation.*, fileApi.galileiApi
 import rudiments.*
+import hypotenuse.*
 import vacuous.*
 import escapade.*
 import parasite.*
