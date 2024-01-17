@@ -4,7 +4,7 @@
 
 # Fury
 
-__A build tool for Scala__
+__Develop software in anger__
 
 TBC
 
