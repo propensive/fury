@@ -166,7 +166,7 @@ object Tests extends Suite(t"Fury Model Tests"):
           repo      https://github.com/propensive/two/  0000000000000000000000000000000000000001  main
       """
 
-      val vault: Vault = test(t"Parse a Vault file"):
+      test(t"Parse a Vault file"):
         Codl.read[Vault](vaultFile)
       .check()
       

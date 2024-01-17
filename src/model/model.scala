@@ -125,16 +125,17 @@ enum Artifact:
 
 object Module:
   given relabelling: CodlRelabelling[Module] = () => Map(
-    t"includes" -> t"include",
-    t"packages" -> t"provide",
-    t"usages" -> t"use",
-    t"omissions" -> t"omit",
-    t"assists" -> t"assist"
+    t"includes"     -> t"include",
+    t"packages"     -> t"provide",
+    t"requirements" -> t"require",
+    t"usages"       -> t"use",
+    t"omissions"    -> t"omit",
+    t"assists"      -> t"assist"
   )
   
 case class Module
-    (id: ModuleId, includes: List[ModuleRef], sources: List[WorkPath], packages: List[Package],
-        usages: List[ModuleRef], omissions: List[ModuleRef], assists: List[Assist],
+    (id: ModuleId, includes: List[ModuleRef], requirements: List[ModuleRef], sources: List[WorkPath],
+        packages: List[Package], usages: List[ModuleRef], omissions: List[ModuleRef], assists: List[Assist],
         compiler: Optional[Text], main: Optional[ClassName], coverage: Optional[ModuleRef])
 
 object ModuleRef extends RefType(t"module ref"):
