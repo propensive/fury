@@ -1,1 +1,1 @@
-A build tool for Scala
+Develop software in anger
