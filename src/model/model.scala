@@ -20,22 +20,33 @@ import anticipation.*
 import aviation.*
 import cellulose.*
 import symbolism.*
-import galilei.*
+import galilei.*, filesystemOptions.{createNonexistent, createNonexistentParents, dereferenceSymlinks}
 import gastronomy.*
 import fulminate.*
 import perforate.*
 import gossamer.*
+import turbulence.*
 import serpentine.*
 import kaleidoscope.*
 import nettlesome.*
 import punctuation.*
-import hieroglyph.*, charEncoders.utf8
+import hieroglyph.*, charEncoders.utf8, charDecoders.utf8, badEncodingHandlers.strict
 import rudiments.*
 import vacuous.*
 import spectacular.*
 import nonagenarian.*
 
 import calendars.gregorian
+
+export gitCommands.environmentDefault
+
+erased given CanThrow[AppError] = ###
+
+// FIXME: This shouldn't need to exist. AggregateError needs to be replaced.
+given (using CanThrow[AppError]): Raises[AggregateError[Error]] =
+  new Raises[AggregateError[Error]]:
+    def record(error: AggregateError[Error]): Unit = throw AppError(error.message, error)
+    def abort(error: AggregateError[Error]): Nothing = throw AppError(error.message, error)
 
 import Ids.*
 
@@ -142,8 +153,6 @@ object ModuleRef extends RefType(t"module ref"):
     case _ =>
       raise(InvalidRefError(value, this))(ModuleRef(ProjectId(t"unknown"), ModuleId(t"unknown")))
 
-
-
 case class ModuleRef(projectId: ProjectId, moduleId: ModuleId)
 
 object Action:
@@ -179,3 +188,36 @@ case class Definition
     (name: Text, description: InlineMd, website: Optional[HttpUrl], license: Optional[LicenseId],
         keywords: List[Keyword], source: Vault | Workspace)
 
+object Workspace:
+  def apply(path: Path): Workspace raises WorkspaceError =
+    mitigate:
+      case HostnameError(_)             => WorkspaceError()
+      case NotFoundError(_)             => WorkspaceError()
+      case CodlReadError()              => WorkspaceError()
+      case GitRefError(_)               => WorkspaceError()
+      case StreamError(_)               => WorkspaceError()
+      case MarkdownError(_)             => WorkspaceError()
+      case IoError(_)                   => WorkspaceError()
+      case UrlError(_, _, _)            => WorkspaceError()
+      case PathError(_)                 => WorkspaceError()
+      case InvalidRefError(_, _)        => WorkspaceError()
+      case NumberError(_, _)            => WorkspaceError()
+      case UndecodableCharError(_, _)   => WorkspaceError()
+    .within:
+      val dir: Directory = path.as[Directory]
+      val buildFile: File = (dir / p".fury").as[File]
+      val buildDoc: CodlDoc = Codl.parse(buildFile)
+      val build: Build = Codl.read[Build](buildFile)
+      val localPath: Path = dir / p".local"
+      val localFile: Optional[File] = if localPath.exists() then localPath.as[File] else Unset
+      val local: Optional[Local] = localFile.let(Codl.read[Local](_))
+  
+      Workspace(dir, buildDoc, build, local)
+
+case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, local: Optional[Local]):
+  val ecosystem = build.ecosystem
+  lazy val actions: Map[ActionName, Action] = unsafely(build.actions.indexBy(_.name))
+  lazy val projects: Map[ProjectId, Project] = unsafely(build.projects.indexBy(_.id))
+  lazy val mounts: Map[WorkPath, Mount] = unsafely(build.mounts.indexBy(_.path))
+
+case class WorkspaceError() extends Error(msg"there was a problem reading the build file")

@@ -31,12 +31,9 @@ import gossamer.*
 import perforate.*
 import eucalyptus.*
 import gastronomy.*, alphabets.base32.zBase32
-import punctuation.*
 import turbulence.*
-import hieroglyph.*, charDecoders.utf8, badEncodingHandlers.strict
 import imperial.*
 import serpentine.*, hierarchies.unixOrWindows
-import cellulose.*
 import spectacular.*
 import nettlesome.*
 import nonagenarian.*
@@ -69,34 +66,6 @@ case class Installation
   
 inline def installation(using inline installation: Installation): Installation = installation
 
-case class WorkspaceError() extends Error(msg"there was a problem reading the build file")
-
-object Workspace:
-  def apply(path: Path)(using Raises[AggregateError[CodlReadError]], Raises[WorkspaceError]): Workspace =
-    mitigate:
-      case HostnameError(_)           => WorkspaceError()
-      case NotFoundError(_)           => WorkspaceError()
-      case CodlReadError()            => WorkspaceError()
-      case GitRefError(_)             => WorkspaceError()
-      case StreamError(_)             => WorkspaceError()
-      case MarkdownError(_)           => WorkspaceError()
-      case IoError(_)                 => WorkspaceError()
-      case UrlError(_, _, _)          => WorkspaceError()
-      case PathError(_)               => WorkspaceError()
-      case InvalidRefError(_, _)      => WorkspaceError()
-      case NumberError(_, _)          => WorkspaceError()
-      case UndecodableCharError(_, _) => WorkspaceError()
-    .within:
-      val dir: Directory = path.as[Directory]
-      val buildFile: File = (dir / p".fury").as[File]
-      val buildDoc: CodlDoc = Codl.parse(buildFile)
-      val build: Build = Codl.read[Build](buildFile)
-      val localPath: Path = dir / p".local"
-      val localFile: Optional[File] = if localPath.exists() then localPath.as[File] else Unset
-      val local: Optional[Local] = localFile.let(Codl.read[Local](_))
-  
-      Workspace(dir, buildDoc, build, local)
-
 case class BuildError() extends Error(msg"the build could not run")
 
 object Engine:
@@ -128,7 +97,6 @@ object Engine:
           val sourceFiles: List[File] = module.sources.flatMap: directory =>
             workspace(directory).descendants.filter(_.is[File]).filter(_.name.ends(t".scala")).map(_.as[File])
   
-  
           val includes = module.includes.map(Engine.build(_)).map(_.await())
           
           val step = Step(sourceFiles, includes, Nil)
@@ -145,30 +113,25 @@ object Engine:
           module.digest[Sha2[256]]
       )
 
-case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, local: Optional[Local]):
-  val ecosystem = build.ecosystem
-  lazy val actions: Map[ActionName, Action] = unsafely(build.actions.indexBy(_.name))
-  lazy val projects: Map[ProjectId, Project] = unsafely(build.projects.indexBy(_.id))
-  lazy val mounts: Map[WorkPath, Mount] = unsafely(build.mounts.indexBy(_.path))
-
+extension (workspace: Workspace)
   def locals
       (ancestors: Set[Path] = Set())
       (using Monitor, Log[Output], FrontEnd, Stdio, WorkingDirectory, Internet, Installation, GitCommand)
       : Map[ProjectId, Definition] raises CancelError raises WorkspaceError =
-    local.let: local =>
+    workspace.local.let: local =>
       local.forks.map: fork =>
         val workspace = Cache.workspace(fork.path).await()
         val projects = workspace.projects
         workspace.locals(ancestors + fork.path)
         
-    .or(Nil).foldRight(projects.view.mapValues(_.definition(this)).to(Map))(_ ++ _)
+    .or(Nil).foldRight(workspace.projects.view.mapValues(_.definition(workspace)).to(Map))(_ ++ _)
   
   def universe
       ()
       (using Monitor, Clock, Log[Output], FrontEnd, Stdio, WorkingDirectory, Internet, Installation, GitCommand)
       : Universe raises CancelError raises VaultError raises WorkspaceError =
     given Timezone = tz"Etc/UTC"
-    val vaultProjects = Cache(ecosystem).await()
+    val vaultProjects = Cache(workspace.ecosystem).await()
     val localProjects = locals()
     
     val projects: Map[ProjectId, Definition] =
@@ -178,16 +141,16 @@ case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, loca
     
     Universe(projects -- localProjects.keySet ++ localProjects)
 
-  def apply(projectId: ProjectId): Project = projects(projectId)
+  def apply(projectId: ProjectId): Project = workspace.projects(projectId)
 
   def apply
       (path: WorkPath)
       (using Installation, Internet, Stdio, Monitor, FrontEnd, WorkingDirectory, Log[Output],
           Raises[CancelError], Raises[GitError], Raises[PathError], Raises[ExecError], Raises[IoError])
       : Directory =
-    mounts.keys.find(_.precedes(path)).match
-      case None        => directory.path + path.link
-      case Some(mount) => Cache(mounts(mount).repo).await().path + path.link
+    workspace.mounts.keys.find(_.precedes(path)).match
+      case None        => workspace.directory.path + path.link
+      case Some(mount) => Cache(workspace.mounts(mount).repo).await().path + path.link
     .as[Directory]
 
 case class Universe(projects: Map[ProjectId, Definition]):

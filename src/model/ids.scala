@@ -92,6 +92,7 @@ object Ids:
       case _                                      => raise(InvalidRefError(value, this))(value.asInstanceOf[Package])
 
   object LicenseId extends RefType(t"license ID"):
+    def unsafe(value: Text) = value.asInstanceOf[LicenseId]
     def apply(value: Text)(using Raises[InvalidRefError]): LicenseId = value match
       case r"[a-z]([-.]?[a-z0-9])*" => value.asInstanceOf[LicenseId]
       case _                        => raise(InvalidRefError(value, this))(value.asInstanceOf[LicenseId])

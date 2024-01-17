@@ -1,30 +1,42 @@
-target fury/model
+target fury/cli
 
-repo propensive/xylophone     0000000000000000000000000000000000000000
-repo propensive/probably      0000000000000000000000000000000000000000
-repo propensive/galilei       0000000000000000000000000000000000000000
-repo propensive/jacinta       0000000000000000000000000000000000000000
-repo propensive/cellulose     0000000000000000000000000000000000000000
-repo propensive/aviation      0000000000000000000000000000000000000000
-repo propensive/imperial      0000000000000000000000000000000000000000
-repo propensive/gastronomy    0000000000000000000000000000000000000000
-repo propensive/punctuation   0000000000000000000000000000000000000000
-repo propensive/scintillate   0000000000000000000000000000000000000000
-repo propensive/nonagenarian  0000000000000000000000000000000000000000
-repo propensive/exoskeleton   0000000000000000000000000000000000000000
-repo propensive/spectral      0000000000000000000000000000000000000000
-repo propensive/acyclicity    0000000000000000000000000000000000000000
-repo propensive/superlunary   0000000000000000000000000000000000000000
+repo propensive/xylophone      0000000000000000000000000000000000000000
+repo propensive/probably       0000000000000000000000000000000000000000
+repo propensive/galilei        0000000000000000000000000000000000000000
+repo propensive/jacinta        0000000000000000000000000000000000000000
+repo propensive/cellulose      0000000000000000000000000000000000000000
+repo propensive/aviation       0000000000000000000000000000000000000000
+repo propensive/imperial       0000000000000000000000000000000000000000
+repo propensive/gastronomy     0000000000000000000000000000000000000000
+repo propensive/punctuation    0000000000000000000000000000000000000000
+repo propensive/scintillate    0000000000000000000000000000000000000000
+repo propensive/nonagenarian   0000000000000000000000000000000000000000
+repo propensive/exoskeleton    0000000000000000000000000000000000000000
+repo propensive/spectral       0000000000000000000000000000000000000000
+repo propensive/acyclicity     0000000000000000000000000000000000000000
+repo propensive/superlunary    0000000000000000000000000000000000000000
+repo propensive/hallucination  0000000000000000000000000000000000000000
 
 project fury
   module model
-    include   xylophone/core  acyclicity/core  galilei/core  telekinesis/client  aviation/core  escritoire/core  cellulose/core  punctuation/core  imperial/core  gastronomy/core  acyclicity/core  nettlesome/url  nonagenarian/core  surveillance/core  exoskeleton/core  exoskeleton/completions  spectral/core  eucalyptus/ansi  superlunary/core
+    compiler  scala
+    include   xylophone/core  acyclicity/core  galilei/core  telekinesis/client  aviation/core  escritoire/core  cellulose/core  punctuation/core  imperial/core  gastronomy/core  acyclicity/core  nettlesome/url  nonagenarian/core  surveillance/core  exoskeleton/core  exoskeleton/completions  spectral/core  eucalyptus/ansi  superlunary/core  hallucination/core
     sources   src/model
-    main      fury.main
-    artifact  rage
     lib       scalajs-linker-interface https://repo1.maven.org/maven2/org/scala-js/scalajs-linker-interface_2.13/1.14.0/scalajs-linker-interface_2.13-1.14.0.jar
     lib       scalajs-logging https://repo1.maven.org/maven2/org/scala-js/scalajs-logging_2.13/1.1.1/scalajs-logging_2.13-1.1.1.jar
-    counter   res/spectral/build.id
+
+  module engine
+    compiler  scala
+    include   fury/model
+    sources   src/engine
+
+  module cli
+    compiler  scala
+    include   fury/engine
+    sources   src/cli
+    main      fury.main
+    artifact  rage
+    counter   res/build.id
 
   module core
     sources  src/core

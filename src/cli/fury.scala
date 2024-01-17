@@ -30,7 +30,6 @@ import fulminate.*
 import rudiments.*, homeDirectories.virtualMachine
 import vacuous.*
 import hieroglyph.*
-import nonagenarian.*
 import nettlesome.*
 import serpentine.*, hierarchies.unixOrWindows
 import punctuation.*
@@ -42,20 +41,8 @@ import spectral.*, daemonConfig.supportStderr
 import profanity.*, terminalOptions.terminalSizeDetection
 import turbulence.*
 
-export gitCommands.environmentDefault
-
-//import language.experimental.captureChecking
-
-erased given CanThrow[AppError] = ###
-
-given (using CanThrow[AppError]): Raises[AggregateError[Error]] =
-  new Raises[AggregateError[Error]]:
-    def record(error: AggregateError[Error]): Unit = throw AppError(error.message, error)
-    def abort(error: AggregateError[Error]): Nothing = throw AppError(error.message, error)
-
 enum BusMessage:
   case Ping
-
 
 given Realm = realm"fury"
 

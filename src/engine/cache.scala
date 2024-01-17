@@ -90,6 +90,7 @@ object Cache:
           case PathError(_)               => VaultError()
           case NotFoundError(_)           => VaultError()
           case CodlReadError()            => VaultError()
+          case CodlReadError()            => VaultError()
           case MarkdownError(_)           => VaultError()
         .within:
           val destination = installation.vault.path / PathName(ecosystem.id.show) / PathName(ecosystem.branch.show)
