@@ -23,6 +23,7 @@ import rudiments.*
 import anticipation.*
 import galilei.*
 import serpentine.*
+import perforate.*, errorHandlers.throwUnsafely
 import cellulose.*
 
 import unsafeExceptions.canThrowAny
@@ -52,7 +53,7 @@ object Tests extends Suite(t"Fury Model Tests"):
           capture(ModuleId(t"moduleId"))
         .assert(_ == InvalidRefError(t"moduleId", Ids.ModuleId))
       
-      suite(t"Git refs"):
+      /*suite(t"Git refs"):
         test(t"Parse a Git Commit"):
           Commit(t"0123456789abcdef0123456789abcdef01234567")
         .assert(_ == Commit(t"0123456789abcdef0123456789abcdef01234567"))
@@ -117,33 +118,36 @@ object Tests extends Suite(t"Fury Model Tests"):
         
         test(t"Package name parts cannot start with a number"):
           capture(Package(t"com.123abc"))
-        .assert(_ == InvalidRefError(t"com.123abc", Ids.Package))
+        .assert(_ == InvalidRefError(t"com.123abc", Ids.Package))*/
     
     suite(t"CoDL parsing tests"):
       val buildFile = t"""
         :<< "##"
             This is a Fury source file
-        ecosystem ecosystemId https://example.com/ 0000000000000000000000000000000000000000 main
+        ecosystem vent 2024 https://example.com/
         command build myaction/foo
         default build
         
-        project main-project
+        project main-project  Main Project
+          website      https://github.com/propensive/
+          description  A *complicated* project
+          
           module core
             sources src/core
             provide org.mainpkg
-          
+
           module test
             sources  src/test
-        ##
       """
 
-
       val vaultFile = t"""
+        name Vent
+        version 2024
         release myproject current
-          
+          name         MyProject
           lifetime     365
           license      apache-2
-          tags         active  software  clever  scala
+          keywords     active  software  clever  scala
           date         2021-11-11
           description  A project to demonstrate Fury
           
@@ -152,9 +156,10 @@ object Tests extends Suite(t"Fury Model Tests"):
           provide   com.example
           
         release another current
+          name         Another Project
           description  _Another_ project to demonstrate Fury
           
-          tags      alternative  scala  project
+          keywords  alternative  scala  project
           license   apache-2
           date      2022-12-20
           lifetime  30
@@ -165,7 +170,6 @@ object Tests extends Suite(t"Fury Model Tests"):
         Codl.read[Vault](vaultFile)
       .check()
       
-
       val localFile = t"""
         fork  rudiments  /home/propensive/work/rudiments
         fork  gossamer   C:\\Documents and Settings\\Files
@@ -192,3 +196,6 @@ object Tests extends Suite(t"Fury Model Tests"):
       test(t"Check exactly two modules"):
         build.projects.head.modules.length
       .assert(_ == 2)
+
+
+

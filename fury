@@ -1,4 +1,4 @@
-target fury/cli
+target fury/test
 
 repo propensive/xylophone      0000000000000000000000000000000000000000
 repo propensive/probably       0000000000000000000000000000000000000000
@@ -46,3 +46,4 @@ project fury
     compiler scala
     sources  src/test
     include  probably/cli  fury/model
+    main     fury.Tests

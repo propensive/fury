@@ -137,7 +137,3 @@ def about()(using Stdio): ExitStatus =
 def versionInfo()(using Stdio): ExitStatus = 
   Out.println(t"Fury version 1.0")
   ExitStatus.Ok
-
-
-
-

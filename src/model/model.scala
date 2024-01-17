@@ -51,10 +51,10 @@ given (using CanThrow[AppError]): Raises[AggregateError[Error]] =
 import Ids.*
 
 object Release:
-  given packagesLabel: CodlLabel[Release, "packages"] = CodlLabel("provide")
+  given relabelling: CodlRelabelling[Release] = () => Map(t"packages" -> t"provide")
 
 case class Release
-    (id: ProjectId, name: Text, stream: StreamId, website: Optional[HttpUrl], description: InlineMd,
+    (id: ProjectId, stream: StreamId, name: Text, website: Optional[HttpUrl], description: InlineMd,
         license: LicenseId, date: Date, lifetime: Int, repo: Snapshot, packages: List[Package],
         keywords: List[Keyword]):
   def expiry: Date = date + lifetime.days
@@ -66,7 +66,7 @@ case class Release
 case class Snapshot(url: HttpUrl, commit: CommitHash, branch: Optional[Branch])
 
 object Vault:
-  given releasesLabel: CodlLabel[Vault, "releases"] = CodlLabel("release")
+  given relabelling: CodlRelabelling[Vault] = () => Map(t"releases" -> t"release")
 
 case class Vault(name: Text, version: Int, releases: List[Release]):
   inline def vault: Vault = this
@@ -76,22 +76,24 @@ case class Vault(name: Text, version: Int, releases: List[Release]):
 
 
 object Local:
-  given forksLabel: CodlLabel[Local, "forks"] = CodlLabel("fork")
+  given relabelling: CodlRelabelling[Local] = () => Map(t"forks" -> t"fork")
 
 case class Local(forks: List[Fork])
 
 case class Fork(id: ProjectId, path: Path)
 
-case class Ecosystem(id: EcosystemId, version: Int, url: HttpUrl, branch: Branch)
+case class Ecosystem(id: EcosystemId, version: Int, url: HttpUrl)
 
 case class Mount(path: WorkPath, repo: Snapshot)
 
 
 object Build:
-  given preludeLabel: CodlLabel[Build, "prelude"] = CodlLabel(":<<")
-  given actionsLabel: CodlLabel[Build, "actions"] = CodlLabel("command")
-  given projectsLabel: CodlLabel[Build, "projects"] = CodlLabel("project")
-  given mountsLabel: CodlLabel[Build, "mounts"] = CodlLabel("mount")
+  given relabelling: CodlRelabelling[Build] = () => Map(
+    t"prelude" -> t":<<",
+    t"actions" -> t"command",
+    t"projects" -> t"project",
+    t"mounts" -> t"mount",
+  )
 
 case class Build
     (prelude: Optional[Prelude], ecosystem: Ecosystem, actions: List[Action], default: Optional[ActionName],
@@ -102,7 +104,7 @@ case class Prelude(terminator: Text, comment: List[Text])
 
 
 object Project:
-  given modulesLabel: CodlLabel[Project, "modules"] = CodlLabel("module")
+  given relabelling: CodlRelabelling[Project] = () => Map(t"modules" -> t"module")
 
 case class Project
     (id: ProjectId, name: Text, description: InlineMd, modules: List[Module], website: HttpUrl, license: Optional[LicenseId],
@@ -122,12 +124,14 @@ enum Artifact:
 
 
 object Module:
-  given includesLabel: CodlLabel[Module, "includes"] = CodlLabel("include")
-  given packagesLabel: CodlLabel[Module, "packages"] = CodlLabel("provide")
-  given usagesLabel: CodlLabel[Module, "usages"] = CodlLabel("use")
-  given omissionsLabel: CodlLabel[Module, "omissions"] = CodlLabel("omit")
-  given assistsLabel: CodlLabel[Module, "assists"] = CodlLabel("assist")
-
+  given relabelling: CodlRelabelling[Module] = () => Map(
+    t"includes" -> t"include",
+    t"packages" -> t"provide",
+    t"usages" -> t"use",
+    t"omissions" -> t"omit",
+    t"assists" -> t"assist"
+  )
+  
 case class Module
     (id: ModuleId, includes: List[ModuleRef], sources: List[WorkPath], packages: List[Package],
         usages: List[ModuleRef], omissions: List[ModuleRef], assists: List[Assist],
@@ -156,7 +160,7 @@ object ModuleRef extends RefType(t"module ref"):
 case class ModuleRef(projectId: ProjectId, moduleId: ModuleId)
 
 object Action:
-  given CodlLabel[Action, "actions"] = CodlLabel("action")
+  given relabelling: CodlRelabelling[Action] = () => Map(t"actions" -> t"action")
 
 case class Action(name: ActionName, modules: List[ModuleRef])
 
