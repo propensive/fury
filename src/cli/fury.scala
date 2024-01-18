@@ -60,6 +60,7 @@ object userInterface:
   val About = Subcommand(t"about", e"About Fury")
   val Build = Subcommand(t"build", e"Start a new build (default)")
   val Cache = Subcommand(t"cache", e"Cache operations")
+  val Config = Subcommand(t"config", e"View and change configuration")
   val Shutdown = Subcommand(t"shutdown", e"Shutdown the Fury daemon")
   val Init = Subcommand(t"init", e"Initialize a new project")
   val Universe = Subcommand(t"universe", e"Universe actions")
@@ -77,11 +78,13 @@ given (using Raises[UserError]): HomeDirectory =
   .within(homeDirectories.virtualMachine)
 
 given (using Cli): WorkingDirectory = workingDirectories.daemonClient 
+given installation(using Raises[ConfigError], Raises[SystemPropertyError]): Installation = Installation()
 
 @main
 def main(): Unit =
   import userInterface.*
   import unsafeExceptions.canThrowAny
+  
   throwErrors[CancelError]:
     supervise:
       given Log[Output] = logging.silent[Output]
@@ -115,6 +118,15 @@ def main(): Unit =
                 dir.let(initializeBuild(_)).or:
                   abort(UserError(msg"The working directory could not be determined."))
 
+            case Config() =>
+              execute:
+                mitigate:
+                  case SystemPropertyError(property) => UserError(msg"The system property could not be read: $property")
+                  case ConfigError(message) => UserError(msg"The configuration could not be read: $message")
+                .within(Out.println(installation.config.debug))
+
+                ExitStatus.Ok
+
             case Cache() => safely(arguments.tail.head) match
               case Clean()   => execute(cleanCache())
               case Details() => execute(cacheDetails())
@@ -140,33 +152,39 @@ def main(): Unit =
               val offline = Offline().present
               execute:
                 import unsafeExceptions.canThrowAny
-                throwErrors[PathError | SystemPropertyError | CancelError |
-                    IoError | ConfigError | WorkspaceError | ExecError | VaultError]:
+                mitigate:
+                  case PathError(_)           => UserError(msg"Got a path error")
+                  case SystemPropertyError(_) => UserError(msg"Got a system property error")
+                  case CancelError()          => UserError(msg"Got a cancellation error")
+                  case IoError(_)             => UserError(msg"Got an IO error")
+                  case ConfigError(_)         => UserError(msg"Got a config error")
+                  case WorkspaceError()       => UserError(msg"Got a Workspace error")
+                  case ExecError(_, _, _)     => UserError(msg"Got an Exec error")
+                  case VaultError()           => UserError(msg"Got a Vault error")
+                .within:
                   internet(!offline):
-                    frontEnd:
-                      given installation: Installation = Installation((Xdg.cacheHome[Path] / p"fury").as[Directory])
-                      val rootWorkspace = Workspace(Properties.user.dir())
-                      given universe: Universe = rootWorkspace.universe()
-                      val projects = universe.projects.to(List)
+                    val rootWorkspace = Workspace(Properties.user.dir())
+                    given universe: Universe = rootWorkspace.universe()
+                    val projects = universe.projects.to(List)
 
-                      // val terminfo = sh"infocmp -0 -L -q -t ${Environment.term}".exec[Text]().cut(t",").
-                      // Out.println(terminfo.debug)
-  
-                      terminal:
-                        Async(terminal.events.each(_ => ()))
-                        
-                        Table[(ProjectId, Definition)](
-                          Column(e"$Bold(Project ID)")(_(0)),
-                          Column(e"$Bold(Name)")(_(1).name),
-                          Column(e"$Bold(Description)")(_(1).description),
-                          Column(e"$Bold(Website)")(_(1).website.let(_.show).or(t"—")),
-                          Column(e"$Bold(Source)"): (_, definition) =>
-                            definition.source match
-                              case workspace: Workspace => e"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
-                              case vault: Vault         => e"$SeaGreen(${vault.name})"
-                        ).tabulate(projects, terminal.knownColumns, DelimitRows.SpaceIfMultiline).each(Out.println(_))
-  
-                        ExitStatus.Ok
+                    // val terminfo = sh"infocmp -0 -L -q -t ${Environment.term}".exec[Text]().cut(t",").
+                    // Out.println(terminfo.debug)
+
+                    terminal:
+                      Async(terminal.events.each(_ => ()))
+                      
+                      Table[(ProjectId, Definition)](
+                        Column(e"$Bold(Project ID)")(_(0)),
+                        Column(e"$Bold(Name)")(_(1).name),
+                        Column(e"$Bold(Description)")(_(1).description),
+                        Column(e"$Bold(Website)")(_(1).website.let(_.show).or(t"—")),
+                        Column(e"$Bold(Source)"): (_, definition) =>
+                          definition.source match
+                            case workspace: Workspace => e"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
+                            case vault: Vault         => e"$SeaGreen(${vault.name})"
+                      ).tabulate(projects, terminal.knownColumns, DelimitRows.SpaceIfMultiline).each(Out.println(_))
+
+                      ExitStatus.Ok
             
             case subcommand =>
               safely(Workspace()).let: workspace =>

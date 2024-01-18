@@ -44,16 +44,16 @@ object Cache:
   private val snapshots: scm.HashMap[Snapshot, Async[Directory]] = scm.HashMap()
   private val workspaces: scm.HashMap[Path, Async[Workspace]] = scm.HashMap()
 
-  def gitProgress(stream: LazyList[Progress]): LazyList[TaskEvent] = stream.collect:
-    case Progress.Receiving(percent)         => TaskEvent.Progress(t"receiving", percent)
-    case Progress.Unpacking(percent)         => TaskEvent.Progress(t"unpacking", percent)
-    case Progress.Resolving(percent)         => TaskEvent.Progress(t"resolving", percent)
-    case Progress.RemoteCounting(percent)    => TaskEvent.Progress(t"counting", percent)
-    case Progress.RemoteCompressing(percent) => TaskEvent.Progress(t"compressing", percent)
+  def gitProgress(stream: LazyList[Progress]): LazyList[Activity] = stream.collect:
+    case Progress.Receiving(percent)         => Activity.Progress(t"receiving", percent)
+    case Progress.Unpacking(percent)         => Activity.Progress(t"unpacking", percent)
+    case Progress.Resolving(percent)         => Activity.Progress(t"resolving", percent)
+    case Progress.RemoteCounting(percent)    => Activity.Progress(t"counting", percent)
+    case Progress.RemoteCompressing(percent) => Activity.Progress(t"compressing", percent)
 
   def apply
       (snapshot: Snapshot)
-      (using Installation, Internet, Log[Output], Monitor, FrontEnd, WorkingDirectory, GitCommand,
+      (using Installation, Internet, Log[Output], Monitor, WorkingDirectory, GitCommand,
           Raises[ExecError], Raises[PathError], Raises[IoError], Raises[GitError])
       : Async[Directory] =
     snapshots.synchronized:
@@ -61,17 +61,19 @@ object Cache:
         val destination = summon[Installation].snapshots.path / PathName(snapshot.commit.show)
         
         if destination.exists() then destination.as[Directory] else
-          log(msg"Cloning ${snapshot.url}")
+          Log.info(msg"Cloning ${snapshot.url}")
           val process = Git.cloneCommit(snapshot.url.encode, destination, snapshot.commit)
-          follow(msg"Cloning ${snapshot.url}")(gitProgress(process.progress))
+          Log.info(msg"Cloning ${snapshot.url}")
+          gitProgress(process.progress)
+          
           process.complete().workTree.vouch(using Unsafe).also:
-            log(msg"Finished cloning ${snapshot.url}")
+            Log.info(msg"Finished cloning ${snapshot.url}")
       )
         
   def apply
       (ecosystem: Ecosystem)
       (using installation: Installation)
-      (using Internet, Log[Output], Monitor, FrontEnd, WorkingDirectory, GitCommand)
+      (using Internet, Log[Output], Monitor, WorkingDirectory, GitCommand)
       : Async[Vault] raises VaultError =
     ecosystems.synchronized:
       ecosystems.getOrElseUpdate(ecosystem, Async:
@@ -95,20 +97,25 @@ object Cache:
         .within:
           val destination = installation.vault.path / PathName(ecosystem.id.show) / PathName(ecosystem.branch.show)
           if !destination.exists() then
-            log(msg"Cloning ${ecosystem.url}")
+            Log.info(msg"Cloning ${ecosystem.url}")
             val process = Git.clone(ecosystem.url.encode, destination, branch = ecosystem.branch)
-            follow(msg"Cloning ${ecosystem.url}")(gitProgress(process.progress))
+            
+            Log.info(msg"Cloning ${ecosystem.url}")
+            gitProgress(process.progress)
+            
             process.complete().also:
-              log(msg"Finished cloning ${ecosystem.url}")            
+              Log.info(msg"Finished cloning ${ecosystem.url}")            
 
           Codl.read[Vault]((destination / p"vault.codl").as[File])
       )
 
   def workspace
       (path: Path)
-      (using Installation, Internet, Log[Output], Stdio, Monitor, FrontEnd, WorkingDirectory, GitCommand)
+      (using Installation, Internet, Log[Output], Stdio, Monitor, WorkingDirectory, GitCommand)
       : Async[Workspace] raises WorkspaceError =
     workspaces.synchronized:
       workspaces.getOrElseUpdate(path, Async(Workspace(path)))
 
 case class VaultError() extends Error(msg"the vault file is not valid")
+
+given Realm = realm"fury"

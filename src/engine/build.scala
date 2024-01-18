@@ -16,34 +16,36 @@
 
 package fury
 
-import galilei.*, filesystemOptions.{createNonexistent, createNonexistentParents, dereferenceSymlinks}
-import anticipation.*, fileApi.galileiApi
-import rudiments.*
-import hypotenuse.*
-import vacuous.*
-import escapade.*
-import parasite.*
-import aviation.*, calendars.gregorian
-import guillotine.*
-import fulminate.*
 import ambience.*, environments.virtualMachine, systemProperties.virtualMachine
-import gossamer.*
-import perforate.*
+import anticipation.*, fileApi.galileiApi
+import aviation.*, calendars.gregorian
+import cellulose.*
+import escapade.*
 import eucalyptus.*
+import fulminate.*
+import galilei.*, filesystemOptions.{createNonexistent, createNonexistentParents, dereferenceSymlinks}
 import gastronomy.*, alphabets.base32.zBase32
-import turbulence.*
+import gossamer.*
+import guillotine.*
+import hypotenuse.*
+import hieroglyph.*, charDecoders.utf8, badEncodingHandlers.strict
 import imperial.*
-import serpentine.*, hierarchies.unixOrWindows
-import spectacular.*
 import nettlesome.*
 import nonagenarian.*
+import parasite.*
+import perforate.*
+import rudiments.*
+import serpentine.*, hierarchies.unixOrWindows
+import spectacular.*
+import turbulence.*
+import vacuous.*
 
 import scala.collection.mutable as scm
 
 case class ConfigError(msg: Message) extends Error(msg)
 
 object Installation:
-  def apply(cache: Directory): Installation raises ConfigError =
+  def apply()(using HomeDirectory): Installation raises ConfigError =
     mitigate:
       case StreamError(_)                => ConfigError(msg"The stream was cut while reading a file")
       case EnvironmentError(variable)    => ConfigError(msg"The environment variable $variable could not be accessed")
@@ -51,8 +53,9 @@ object Installation:
       case IoError(path)                 => ConfigError(msg"An I/O error occurred while trying to access $path")
       case PathError(reason)             => ConfigError(msg"The path was not valid because $reason")
     .within:
+      val cache = (Xdg.cacheHome[Path] / p"fury").as[Directory]
       val configPath: Path = Home.Config() / p"fury"
-      val config: File = (configPath / p"config.codl").as[File]
+      val config: Optional[Config] = safely(Codl.read[Config]((configPath / p"config.codl").as[File]))
       val vault: Directory = (cache / p"vault").as[Directory]
       val snapshots: Directory = (cache / p"repos").as[Directory]
       val lib: Directory = (cache / p"lib").as[Directory]
@@ -62,9 +65,14 @@ object Installation:
     
     
 case class Installation
-    (config: File, cache: Directory, vault: Directory, lib: Directory, tmp: Directory, snapshots: Directory)
+    (config: Optional[Config], cache: Directory, vault: Directory, lib: Directory, tmp: Directory,
+        snapshots: Directory)
   
 inline def installation(using inline installation: Installation): Installation = installation
+
+case class Config(log: LogConfig = LogConfig())
+
+case class LogConfig(path: Path = Unix / p"var" / p"log" / p"fury.log")
 
 case class BuildError() extends Error(msg"the build could not run")
 
@@ -72,7 +80,7 @@ object Engine:
   private val builds: scm.HashMap[ModuleRef, Async[Digest[Sha2[256]]]] = scm.HashMap()
   
   def build(moduleRef: ModuleRef)(using universe: Universe)
-      (using Monitor, Clock, Log[Output], FrontEnd, Stdio, WorkingDirectory, Internet, Installation, GitCommand)
+      (using Monitor, Clock, Log[Output], Stdio, WorkingDirectory, Internet, Installation, GitCommand)
       : Async[Digest[Sha2[256]]] raises BuildError =
     builds.synchronized:
       builds.getOrElseUpdate(moduleRef, Async:
@@ -100,23 +108,24 @@ object Engine:
           val includes = module.includes.map(Engine.build(_)).map(_.await())
           
           val step = Step(sourceFiles, includes, Nil)
-          log(msg"Digest = ${step.digest.encodeAs[Base32]}")
+          Log.info(msg"Digest = ${step.digest.encodeAs[Base32]}")
           
           val part = (math.random*36).toLong
           
           val progress = LazyList.range(0, 100).map: pc =>
             Thread.sleep(part)
-            TaskEvent.Progress(t"typer", pc/100.0)
+            Activity.Progress(t"typer", pc/100.0)
           
-          follow(msg"Building $moduleRef")(progress)
-          progress.length
+          Log.info(msg"Building $moduleRef")
+          //progress
+          //progress.length
           module.digest[Sha2[256]]
       )
 
 extension (workspace: Workspace)
   def locals
       (ancestors: Set[Path] = Set())
-      (using Monitor, Log[Output], FrontEnd, Stdio, WorkingDirectory, Internet, Installation, GitCommand)
+      (using Monitor, Log[Output], Stdio, WorkingDirectory, Internet, Installation, GitCommand)
       : Map[ProjectId, Definition] raises CancelError raises WorkspaceError =
     workspace.local.let: local =>
       local.forks.map: fork =>
@@ -128,7 +137,7 @@ extension (workspace: Workspace)
   
   def universe
       ()
-      (using Monitor, Clock, Log[Output], FrontEnd, Stdio, WorkingDirectory, Internet, Installation, GitCommand)
+      (using Monitor, Clock, Log[Output], Stdio, WorkingDirectory, Internet, Installation, GitCommand)
       : Universe raises CancelError raises VaultError raises WorkspaceError =
     given Timezone = tz"Etc/UTC"
     val vaultProjects = Cache(workspace.ecosystem).await()
@@ -145,7 +154,7 @@ extension (workspace: Workspace)
 
   def apply
       (path: WorkPath)
-      (using Installation, Internet, Stdio, Monitor, FrontEnd, WorkingDirectory, Log[Output],
+      (using Installation, Internet, Stdio, Monitor, WorkingDirectory, Log[Output],
           Raises[CancelError], Raises[GitError], Raises[PathError], Raises[ExecError], Raises[IoError])
       : Directory =
     workspace.mounts.keys.find(_.precedes(path)).match

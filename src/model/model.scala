@@ -33,7 +33,7 @@ import nonagenarian.*
 import perforate.*
 import punctuation.*
 import rudiments.*
-import serpentine.*, hierarchies.unix
+import serpentine.*, hierarchies.unixOrWindows
 import spectacular.*
 import symbolism.*
 import turbulence.*
