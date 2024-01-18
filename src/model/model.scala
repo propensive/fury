@@ -82,7 +82,7 @@ case class Local(forks: List[Fork])
 
 case class Fork(id: ProjectId, path: Path)
 
-case class Ecosystem(id: EcosystemId, version: Int, url: HttpUrl)
+case class Ecosystem(id: EcosystemId, version: Int, url: HttpUrl, branch: Branch)
 
 case class Mount(path: WorkPath, repo: Snapshot)
 
@@ -143,7 +143,6 @@ object ModuleRef extends RefType(t"module ref"):
   given moduleRefDebug: Debug[ModuleRef] = _.show
   given moduleRefMessage: Communicable[ModuleRef] = ref => Message(ref.show)
   given moduleRefDecoder(using Raises[InvalidRefError]): Decoder[ModuleRef] = ModuleRef(_)
-
 
   given Show[ModuleRef] = ref =>
     t"${ref.projectId.let { projectId => t"$projectId/" }.or(t"")}${ref.moduleId}"

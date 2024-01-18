@@ -125,7 +125,8 @@ def main(): Unit =
                 about()
                 ExitStatus.Fail(1)
             
-            case Build() => execute(runBuild())
+            case Build() =>
+              execute(runBuild())
             
             case Shutdown() => execute:
               service.shutdown()

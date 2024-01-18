@@ -1,4 +1,4 @@
-target fury/test
+target fury/cli
 
 repo propensive/xylophone      0000000000000000000000000000000000000000
 repo propensive/probably       0000000000000000000000000000000000000000
@@ -13,6 +13,8 @@ repo propensive/scintillate    0000000000000000000000000000000000000000
 repo propensive/nonagenarian   0000000000000000000000000000000000000000
 repo propensive/exoskeleton    0000000000000000000000000000000000000000
 repo propensive/spectral       0000000000000000000000000000000000000000
+repo propensive/feudalism      0000000000000000000000000000000000000000
+repo propensive/anthology      0000000000000000000000000000000000000000
 repo propensive/acyclicity     0000000000000000000000000000000000000000
 repo propensive/superlunary    0000000000000000000000000000000000000000
 repo propensive/hallucination  0000000000000000000000000000000000000000
@@ -27,7 +29,7 @@ project fury
 
   module engine
     compiler  scala
-    include   fury/model
+    include   fury/model  feudalism/core  anthology/scala
     sources   src/engine
 
   module cli
