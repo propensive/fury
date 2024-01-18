@@ -3,6 +3,8 @@ package fury
 import feudalism.*
 import galilei.*
 import rudiments.*
+import anticipation.*
+
 
 class Flow():
   val sources: Mutex[Map[WorkPath, Bytes]] = Mutex(Map())
