@@ -17,26 +17,27 @@
 package fury
 
 import anticipation.*
-import aviation.*
+import aviation.*, calendars.gregorian
 import cellulose.*
-import symbolism.*
-import galilei.*, filesystemOptions.{createNonexistent, createNonexistentParents, dereferenceSymlinks}
-import gastronomy.*
+import escapade.*
+import exoskeleton.*
 import fulminate.*
-import perforate.*
+import galilei.*, filesystemOptions.{doNotCreateNonexistent, dereferenceSymlinks}, fileApi.galileiApi
+import gastronomy.*
 import gossamer.*
-import turbulence.*
-import serpentine.*
+import hieroglyph.*, charEncoders.utf8, charDecoders.utf8, badEncodingHandlers.strict
+import iridescence.*
 import kaleidoscope.*
 import nettlesome.*
-import punctuation.*
-import hieroglyph.*, charEncoders.utf8, charDecoders.utf8, badEncodingHandlers.strict
-import rudiments.*
-import vacuous.*
-import spectacular.*
 import nonagenarian.*
-
-import calendars.gregorian
+import perforate.*
+import punctuation.*
+import rudiments.*
+import serpentine.*, hierarchies.unix
+import spectacular.*
+import symbolism.*
+import turbulence.*
+import vacuous.*
 
 export gitCommands.environmentDefault
 
@@ -119,10 +120,6 @@ case class Project
 case class Assist(ref: ModuleRef, module: ModuleId)
 
 
-enum Artifact:
-  case Jar(path: WorkPath, main: ClassName)
-
-
 object Module:
   given relabelling: CodlRelabelling[Module] = () => Map(
     t"includes"     -> t"include",
@@ -162,7 +159,8 @@ case class ModuleRef(projectId: ProjectId, moduleId: ModuleId)
 object Action:
   given relabelling: CodlRelabelling[Action] = () => Map(t"actions" -> t"action")
 
-case class Action(name: ActionName, modules: List[ModuleRef])
+case class Action(name: ActionName, modules: List[ModuleRef], description: Optional[Text]):
+  def suggestion: Suggestion = Suggestion(name.show, description.let { text => e"${colors.Khaki}($text)"} )
 
 object WorkPath:
   given reachable: Reachable[WorkPath, GeneralForbidden, Unit] with
@@ -193,6 +191,12 @@ case class Definition
         keywords: List[Keyword], source: Vault | Workspace)
 
 object Workspace:
+  def apply()(using WorkingDirectory): Workspace raises WorkspaceError =
+    mitigate:
+      case IoError(_)   => WorkspaceError()
+      case PathError(_) => WorkspaceError()
+    .within(apply(workingDirectory[Path]))
+
   def apply(path: Path): Workspace raises WorkspaceError =
     mitigate:
       case HostnameError(_)             => WorkspaceError()

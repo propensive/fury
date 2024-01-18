@@ -11,7 +11,13 @@
 ecosystem vent 4 https://github.com/propensive/vent main
 
 command test fury/test
-command build fury/core
+  description Test everything
+
+command debug fury/core
+  description Start the debugger
+
+command launch fury/core
+  description Launch the application
 
 project fury
   name         Fury

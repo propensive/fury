@@ -137,7 +137,6 @@ def main(): Unit =
               ExitStatus.Ok
             
             case Universe() =>
-            
               val offline = Offline().present
               execute:
                 import unsafeExceptions.canThrowAny
@@ -170,9 +169,17 @@ def main(): Unit =
                         ExitStatus.Ok
             
             case subcommand =>
+              safely(Workspace()).let: workspace =>
+                subcommand.let(_.suggest(previous ++ workspace.build.actions.map(_.suggestion)))
+              
               execute:
-                Out.println(t"Unrecognized subcommand: ${subcommand.let(_()).or(t"")}.")
-                ExitStatus.Fail(1)
+                safely(Workspace()).let: workspace =>
+                  Out.println(workspace.debug)
+  
+                  Out.println(t"Unrecognized subcommand: ${subcommand.let(_()).or(t"")}.")
+                  ExitStatus.Fail(1)
+                .or:
+                  ExitStatus.Fail(2)
         catch
           case userError: UserError =>
             execute:
