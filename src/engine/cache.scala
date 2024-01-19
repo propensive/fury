@@ -16,11 +16,12 @@
 
 package fury
 
-import anticipation.*, fileApi.galileiApi
+import anticipation.*, fileApi.galileiApi, timeApi.aviationApi
 import aviation.*
 import cellulose.*
 import eucalyptus.*
-import galilei.*, filesystemOptions.{dereferenceSymlinks, createNonexistent, createNonexistentParents}
+import galilei.*, filesystemOptions.{dereferenceSymlinks, createNonexistent, createNonexistentParents,
+    overwritePreexisting}
 import hieroglyph.*, charDecoders.utf8, badEncodingHandlers.collect
 import nettlesome.*
 import nonagenarian.*
@@ -42,7 +43,7 @@ import scala.collection.mutable as scm
 object Cache:
   private val ecosystems: scm.HashMap[Ecosystem, Async[Vault]] = scm.HashMap()
   private val snapshots: scm.HashMap[Snapshot, Async[Directory]] = scm.HashMap()
-  private val workspaces: scm.HashMap[Path, Async[Workspace]] = scm.HashMap()
+  private val workspaces: scm.HashMap[Path, (Instant, Async[Workspace])] = scm.HashMap()
 
   def gitProgress(stream: LazyList[Progress]): LazyList[Activity] = stream.collect:
     case Progress.Receiving(percent)         => Activity.Progress(t"receiving", percent)
@@ -72,8 +73,7 @@ object Cache:
         
   def apply
       (ecosystem: Ecosystem)
-      (using installation: Installation)
-      (using Internet, Log[Output], Monitor, WorkingDirectory, GitCommand)
+      (using Installation, Internet, Log[Output], Monitor, WorkingDirectory, GitCommand)
       : Async[Vault] raises VaultError =
     ecosystems.synchronized:
       ecosystems.getOrElseUpdate(ecosystem, Async:
@@ -109,13 +109,20 @@ object Cache:
           Codl.read[Vault]((destination / p"vault.codl").as[File])
       )
 
+  // FIXME: No synchronization; should use a mutex instead
   def workspace
       (path: Path)
       (using Installation, Internet, Log[Output], Stdio, Monitor, WorkingDirectory, GitCommand)
       : Async[Workspace] raises WorkspaceError =
-    workspaces.synchronized:
-      workspaces.getOrElseUpdate(path, Async(Workspace(path)))
-
+    mitigate:
+      case IoError(_) => WorkspaceError()
+    .within:
+      val lastModified = path.as[File].lastModified
+      val (cacheTime, workspace) = workspaces.getOrElseUpdate(path, (lastModified, Async(Workspace(path))))
+      
+      if cacheTime == lastModified then workspace else Async(Workspace(path)).tap: async =>
+        workspaces(path) = (lastModified, async)
+      
 case class VaultError() extends Error(msg"the vault file is not valid")
 
 given Realm = realm"fury"
