@@ -87,9 +87,9 @@ object Cache:
           case GitError(_)                => VaultError()
           case IoError(_)                 => VaultError()
           case GitRefError(_)             => VaultError()
-          case HostnameError(_)           => VaultError()
+          case HostnameError(_, _)        => VaultError()
           case UndecodableCharError(_, _) => VaultError()
-          case PathError(_)               => VaultError()
+          case PathError(_, _)            => VaultError()
           case NotFoundError(_)           => VaultError()
           case CodlReadError()            => VaultError()
           case CodlReadError()            => VaultError()
@@ -115,7 +115,7 @@ object Cache:
       (using Installation, Internet, Log[Output], Stdio, Monitor, WorkingDirectory, GitCommand)
       : Async[Workspace] raises WorkspaceError =
     mitigate:
-      case IoError(_) => WorkspaceError()
+      case IoError(path) => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
     .within:
       val lastModified = path.as[File].lastModified
       val (cacheTime, workspace) = workspaces.getOrElseUpdate(path, (lastModified, Async(Workspace(path))))

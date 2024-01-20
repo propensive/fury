@@ -193,24 +193,24 @@ case class Definition
 object Workspace:
   def apply()(using WorkingDirectory): Workspace raises WorkspaceError =
     mitigate:
-      case IoError(_)   => WorkspaceError()
-      case PathError(_) => WorkspaceError()
+      case IoError(path)        => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
+      case pathError: PathError => WorkspaceError(WorkspaceError.Reason.Explanation(pathError.message))
     .within(apply(workingDirectory[Path]))
 
   def apply(path: Path): Workspace raises WorkspaceError =
     mitigate:
-      case HostnameError(_)             => WorkspaceError()
-      case NotFoundError(_)             => WorkspaceError()
-      case CodlReadError()              => WorkspaceError()
-      case GitRefError(_)               => WorkspaceError()
-      case StreamError(_)               => WorkspaceError()
-      case MarkdownError(_)             => WorkspaceError()
-      case IoError(_)                   => WorkspaceError()
-      case UrlError(_, _, _)            => WorkspaceError()
-      case PathError(_)                 => WorkspaceError()
-      case InvalidRefError(_, _)        => WorkspaceError()
-      case NumberError(_, _)            => WorkspaceError()
-      case UndecodableCharError(_, _)   => WorkspaceError()
+      case HostnameError(text, _)       => WorkspaceError(WorkspaceError.Reason.BadData(text))
+      case NotFoundError(path)          => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
+      case CodlReadError()              => WorkspaceError(WorkspaceError.Reason.BadContent)
+      case GitRefError(text)            => WorkspaceError(WorkspaceError.Reason.BadData(text))
+      case StreamError(_)               => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
+      case MarkdownError(text)          => WorkspaceError(WorkspaceError.Reason.BadData(text))
+      case IoError(path)                => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
+      case UrlError(text, _, _)         => WorkspaceError(WorkspaceError.Reason.BadData(text))
+      case pathError: PathError         => WorkspaceError(WorkspaceError.Reason.Explanation(pathError.message))
+      case InvalidRefError(text, _)     => WorkspaceError(WorkspaceError.Reason.BadData(text))
+      case NumberError(text, _)         => WorkspaceError(WorkspaceError.Reason.BadData(text))
+      case UndecodableCharError(_, _)   => WorkspaceError(WorkspaceError.Reason.BadContent)
     .within:
       val dir: Directory = path.as[Directory]
       val buildFile: File = (dir / p".fury").as[File]
@@ -228,4 +228,18 @@ case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, loca
   lazy val projects: Map[ProjectId, Project] = unsafely(build.projects.indexBy(_.id))
   lazy val mounts: Map[WorkPath, Mount] = unsafely(build.mounts.indexBy(_.path))
 
-case class WorkspaceError() extends Error(msg"there was a problem reading the build file")
+object WorkspaceError:
+  enum Reason:
+    case Unreadable(filename: Path)
+    case BadContent
+    case Explanation(message: Message)
+    case BadData(text: Text)
+
+  given Communicable[Reason] =
+    case Reason.Unreadable(path)     => msg"$path could not be read"
+    case Reason.BadContent           => msg"the content was not valid CoDL"
+    case Reason.Explanation(message) => message
+    case Reason.BadData(text)        => msg"the value $text was not in the correct format"
+
+case class WorkspaceError(reason: WorkspaceError.Reason)
+extends Error(msg"the workspace could not be read because $reason")

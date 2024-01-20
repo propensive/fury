@@ -153,14 +153,14 @@ def main(): Unit =
               execute:
                 import unsafeExceptions.canThrowAny
                 mitigate:
-                  case PathError(_)           => UserError(msg"Got a path error")
-                  case SystemPropertyError(_) => UserError(msg"Got a system property error")
-                  case CancelError()          => UserError(msg"Got a cancellation error")
-                  case IoError(_)             => UserError(msg"Got an IO error")
-                  case ConfigError(_)         => UserError(msg"Got a config error")
-                  case WorkspaceError()       => UserError(msg"Got a Workspace error")
-                  case ExecError(_, _, _)     => UserError(msg"Got an Exec error")
-                  case VaultError()           => UserError(msg"Got a Vault error")
+                  case error: PathError            => UserError(error.message)
+                  case error: SystemPropertyError  => UserError(error.message)
+                  case error: CancelError          => UserError(error.message)
+                  case error: IoError              => UserError(error.message)
+                  case error: ConfigError          => UserError(error.message)
+                  case error: WorkspaceError       => UserError(error.message)
+                  case error: ExecError            => UserError(error.message)
+                  case error: VaultError           => UserError(error.message)
                 .within:
                   internet(!offline):
                     val rootWorkspace = Workspace(Properties.user.dir())

@@ -51,7 +51,7 @@ object Installation:
       case EnvironmentError(variable)    => ConfigError(msg"The environment variable $variable could not be accessed")
       case SystemPropertyError(property) => ConfigError(msg"The JVM system property $property could not be accessed")
       case IoError(path)                 => ConfigError(msg"An I/O error occurred while trying to access $path")
-      case PathError(reason)             => ConfigError(msg"The path was not valid because $reason")
+      case PathError(path, reason)       => ConfigError(msg"The path $path was not valid because $reason")
     .within:
       val cache = (Xdg.cacheHome[Path] / p"fury").as[Directory]
       val configPath: Path = Home.Config() / p"fury"
@@ -88,10 +88,10 @@ object Engine:
         mitigate:
           case GitError(_)        => BuildError()
           case ExecError(_, _, _) => BuildError()
-          case PathError(_)       => BuildError()
+          case PathError(_, _)    => BuildError()
           case IoError(_)         => BuildError()
           case UnknownRefError(_) => BuildError()
-          case WorkspaceError()   => BuildError()
+          case WorkspaceError(_)  => BuildError()
           case StreamError(_)     => BuildError()
           case CancelError()      => BuildError()
         .within:
