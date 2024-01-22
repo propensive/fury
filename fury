@@ -22,7 +22,7 @@ repo propensive/hallucination  0000000000000000000000000000000000000000
 project fury
   module model
     compiler  scala
-    include   xylophone/core  acyclicity/core  galilei/core  telekinesis/client  aviation/core  escritoire/core  cellulose/core  punctuation/core  imperial/core  gastronomy/core  acyclicity/core  nettlesome/url  nonagenarian/core  surveillance/core  exoskeleton/core  exoskeleton/completions  spectral/core  eucalyptus/ansi  superlunary/core  hallucination/core
+    include   xylophone/core  acyclicity/core  galilei/core  telekinesis/client  aviation/core  escritoire/core  cellulose/core  punctuation/core  imperial/core  gastronomy/core  acyclicity/core  nettlesome/url  nonagenarian/core  surveillance/core  exoskeleton/core  exoskeleton/completions  spectral/core  eucalyptus/ansi  eucalyptus/syslog  superlunary/core  hallucination/core
     sources   src/model
     lib       scalajs-linker-interface https://repo1.maven.org/maven2/org/scala-js/scalajs-linker-interface_2.13/1.14.0/scalajs-linker-interface_2.13-1.14.0.jar
     lib       scalajs-logging https://repo1.maven.org/maven2/org/scala-js/scalajs-logging_2.13/1.1.1/scalajs-logging_2.13-1.1.1.jar

@@ -49,13 +49,15 @@ object Installation:
     mitigate:
       case StreamError(_)                => ConfigError(msg"The stream was cut while reading a file")
       case EnvironmentError(variable)    => ConfigError(msg"The environment variable $variable could not be accessed")
+      case UndecodableCharError(_, _)    => ConfigError(msg"The configuration file contained bad character data")
       case SystemPropertyError(property) => ConfigError(msg"The JVM system property $property could not be accessed")
       case IoError(path)                 => ConfigError(msg"An I/O error occurred while trying to access $path")
+      case CodlReadError(label)          => ConfigError(msg"The field ${label.or(t"unknown")} could not be read")
       case PathError(path, reason)       => ConfigError(msg"The path $path was not valid because $reason")
     .within:
       val cache = (Xdg.cacheHome[Path] / p"fury").as[Directory]
       val configPath: Path = Home.Config() / p"fury"
-      val config: Optional[Config] = safely(Codl.read[Config]((configPath / p"config.codl").as[File]))
+      val config: Config = Codl.read[Config]((configPath / p"config.codl").as[File])
       val vault: Directory = (cache / p"vault").as[Directory]
       val snapshots: Directory = (cache / p"repos").as[Directory]
       val lib: Directory = (cache / p"lib").as[Directory]
@@ -65,13 +67,12 @@ object Installation:
     
     
 case class Installation
-    (config: Optional[Config], cache: Directory, vault: Directory, lib: Directory, tmp: Directory,
+    (config: Config, cache: Directory, vault: Directory, lib: Directory, tmp: Directory,
         snapshots: Directory)
   
 inline def installation(using inline installation: Installation): Installation = installation
 
 case class Config(log: LogConfig = LogConfig())
-
 case class LogConfig(path: Path = Unix / p"var" / p"log" / p"fury.log")
 
 case class BuildError() extends Error(msg"the build could not run")

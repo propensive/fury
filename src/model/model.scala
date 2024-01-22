@@ -108,8 +108,8 @@ object Project:
   given relabelling: CodlRelabelling[Project] = () => Map(t"modules" -> t"module")
 
 case class Project
-    (id: ProjectId, name: Text, description: InlineMd, modules: List[Module], website: HttpUrl, license: Optional[LicenseId],
-        keywords: List[Keyword]):
+    (id: ProjectId, name: Text, description: InlineMd, modules: List[Module], website: HttpUrl,
+        license: Optional[LicenseId], keywords: List[Keyword]):
   
   // FIXME: Handle not-found
   def apply(module: ModuleId): Module = modules.find(_.id == module).get

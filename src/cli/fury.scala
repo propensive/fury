@@ -29,7 +29,7 @@ import iridescence.*, colors.*
 import fulminate.*
 import rudiments.*, homeDirectories.virtualMachine
 import vacuous.*
-import hieroglyph.*
+import hieroglyph.*, charEncoders.utf8
 import nettlesome.*
 import serpentine.*, hierarchies.unixOrWindows
 import punctuation.*
@@ -84,10 +84,23 @@ given installation(using Raises[ConfigError], Raises[SystemPropertyError]): Inst
 def main(): Unit =
   import userInterface.*
   import unsafeExceptions.canThrowAny
-  
+
   throwErrors[CancelError]:
     supervise:
-      given Log[Output] = logging.silent[Output]
+      given logFormat: LogFormat[File, Output] = logFormats.standardColor[File]
+      given logFormat2: LogFormat[Err.type, Output] = logFormats.standardColor[Err.type]
+      import filesystemOptions.{createNonexistent, createNonexistentParents}
+      
+      given (using Stdio): Log[Output] = throwErrors[UserError]:
+        mitigate:
+          case IoError(_)                    => UserError(msg"An IO error occured when trying to create the log")
+          case StreamError(_)                => UserError(msg"Stream error when logging")
+          case ConfigError(_)                => UserError(msg"The configuration was not valid")
+          case SystemPropertyError(property) => UserError(msg"The system property $property was not valid")
+        .within:
+          Log.route:
+            case _            => installation.config.log.path.as[File]
+            case Level.Warn() => Err
 
       daemon[BusMessage]:
         try throwErrors[UserError]:
@@ -124,7 +137,7 @@ def main(): Unit =
                   case SystemPropertyError(property) => UserError(msg"The system property could not be read: $property")
                   case ConfigError(message) => UserError(msg"The configuration could not be read: $message")
                 .within(Out.println(installation.config.debug))
-
+                
                 ExitStatus.Ok
 
             case Cache() => safely(arguments.tail.head) match
@@ -152,6 +165,7 @@ def main(): Unit =
               val offline = Offline().present
               execute:
                 import unsafeExceptions.canThrowAny
+
                 mitigate:
                   case error: PathError            => UserError(error.message)
                   case error: SystemPropertyError  => UserError(error.message)
