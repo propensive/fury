@@ -148,9 +148,6 @@ object ModuleRef extends RefType(t"module ref"):
     case r"${ProjectId(project)}([^/]+)\/${ModuleId(module)}([^/]+)" =>
       ModuleRef(project, module)
     
-    // case ModuleId(module) =>
-    //   ModuleRef(Unset, module)
-    
     case _ =>
       raise(InvalidRefError(value, this))(ModuleRef(ProjectId(t"unknown"), ModuleId(t"unknown")))
 
@@ -201,7 +198,7 @@ object Workspace:
     mitigate:
       case HostnameError(text, _)       => WorkspaceError(WorkspaceError.Reason.BadData(text))
       case NotFoundError(path)          => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
-      case CodlReadError()              => WorkspaceError(WorkspaceError.Reason.BadContent)
+      case CodlReadError(_)             => WorkspaceError(WorkspaceError.Reason.BadContent)
       case GitRefError(text)            => WorkspaceError(WorkspaceError.Reason.BadData(text))
       case StreamError(_)               => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
       case MarkdownError(text)          => WorkspaceError(WorkspaceError.Reason.BadData(text))

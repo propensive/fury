@@ -30,7 +30,7 @@ import gastronomy.*
 import gossamer.*
 import anticipation.*
 import hellenism.*, classloaders.threadContext
-import hieroglyph.*, charDecoders.utf8, badEncodingHandlers.skip, textWidthCalculation.uniform
+import hieroglyph.*, charDecoders.utf8, badEncodingHandlers.skip, textMetrics.uniform
 import vacuous.*
 import eucalyptus.*
 import serpentine.*

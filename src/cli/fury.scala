@@ -33,7 +33,7 @@ import hieroglyph.*, charEncoders.utf8
 import nettlesome.*
 import serpentine.*, hierarchies.unixOrWindows
 import punctuation.*
-import escritoire.*, tableStyles.horizontal, textWidthCalculation.eastAsianScripts
+import escritoire.*, tableStyles.horizontal, textMetrics.eastAsianScripts
 import spectacular.*
 import exoskeleton.*, executives.completions, unhandledErrors.stackTrace, parameterInterpretation.posix
 import perforate.*
@@ -153,13 +153,13 @@ def main(): Unit =
             case Build() =>
               execute(runBuild())
             
-            case Shutdown() => execute:
-              service.shutdown()
-              ExitStatus.Ok
-            
-            case Graph() => execute:
-              Out.println(t"Show graph")
-              ExitStatus.Ok
+            case Graph() =>
+              val offline = Offline().present
+              execute:
+                internet(!offline):
+                  val rootWorkspace = Workspace(Properties.user.dir())
+                  given universe: Universe = rootWorkspace.universe()
+                ExitStatus.Ok
             
             case Universe() =>
               val offline = Offline().present
@@ -199,6 +199,10 @@ def main(): Unit =
                       ).tabulate(projects, terminal.knownColumns, DelimitRows.SpaceIfMultiline).each(Out.println(_))
 
                       ExitStatus.Ok
+            
+            case Shutdown() => execute:
+              service.shutdown()
+              ExitStatus.Ok
             
             case subcommand =>
               safely(Workspace()).let: workspace =>
