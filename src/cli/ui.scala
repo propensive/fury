@@ -34,7 +34,7 @@ import hieroglyph.*, charDecoders.utf8, badEncodingHandlers.skip, textMetrics.un
 import vacuous.*
 import eucalyptus.*
 import serpentine.*
-import spectral.*
+import ethereal.*
 import escapade.*
 import escritoire.*, tableStyles.minimalist
 import perforate.*

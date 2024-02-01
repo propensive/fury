@@ -37,7 +37,7 @@ import escritoire.*, tableStyles.horizontal, textMetrics.eastAsianScripts
 import spectacular.*
 import exoskeleton.*, executives.completions, unhandledErrors.stackTrace, parameterInterpretation.posix
 import perforate.*
-import spectral.*, daemonConfig.supportStderr
+import ethereal.*, daemonConfig.supportStderr
 import profanity.*, terminalOptions.terminalSizeDetection
 import turbulence.*
 
