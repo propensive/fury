@@ -37,7 +37,7 @@ import serpentine.*
 import ethereal.*
 import escapade.*
 import escritoire.*, tableStyles.minimalist
-import perforate.*
+import contingency.*
 
 case class UserError(userMessage: Message) extends Error(userMessage)
 

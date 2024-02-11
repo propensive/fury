@@ -36,7 +36,7 @@ import punctuation.*
 import escritoire.*, tableStyles.horizontal, textMetrics.eastAsianScripts
 import spectacular.*
 import exoskeleton.*, executives.completions, unhandledErrors.stackTrace, parameterInterpretation.posix
-import perforate.*
+import contingency.*
 import ethereal.*, daemonConfig.supportStderr
 import profanity.*, terminalOptions.terminalSizeDetection
 import turbulence.*

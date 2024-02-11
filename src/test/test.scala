@@ -23,7 +23,7 @@ import rudiments.*
 import anticipation.*
 import galilei.*
 import serpentine.*
-import perforate.*, errorHandlers.throwUnsafely
+import contingency.*, errorHandlers.throwUnsafely
 import cellulose.*
 
 import unsafeExceptions.canThrowAny

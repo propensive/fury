@@ -26,7 +26,7 @@ import hieroglyph.*, charDecoders.utf8, badEncodingHandlers.collect
 import nettlesome.*
 import nonagenarian.*
 import parasite.*
-import perforate.*
+import contingency.*
 import guillotine.*
 import fulminate.*
 import punctuation.*

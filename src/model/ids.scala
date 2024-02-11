@@ -23,7 +23,7 @@ import gossamer.*
 import anticipation.*
 import gastronomy.*
 import galilei.*
-import perforate.*
+import contingency.*
 import spectacular.*
 import kaleidoscope.*
 import hieroglyph.*, charEncoders.utf8

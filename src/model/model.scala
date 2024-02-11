@@ -30,7 +30,7 @@ import iridescence.*
 import kaleidoscope.*
 import nettlesome.*
 import nonagenarian.*
-import perforate.*
+import contingency.*
 import punctuation.*
 import rudiments.*
 import serpentine.*, hierarchies.unixOrWindows
