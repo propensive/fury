@@ -29,7 +29,7 @@ import hieroglyph.*, charEncoders.utf8, charDecoders.utf8, badEncodingHandlers.s
 import iridescence.*
 import kaleidoscope.*
 import nettlesome.*
-import nonagenarian.*
+import octogenarian.*
 import contingency.*
 import punctuation.*
 import rudiments.*
@@ -189,10 +189,13 @@ case class Definition
 
 object Workspace:
   def apply()(using WorkingDirectory): Workspace raises WorkspaceError =
-    mitigate:
+    given (WorkspaceError fixes IoError) =
       case IoError(path)        => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
+    
+    given (WorkspaceError fixes PathError) =
       case pathError: PathError => WorkspaceError(WorkspaceError.Reason.Explanation(pathError.message))
-    .within(apply(workingDirectory[Path]))
+    
+    apply(workingDirectory[Path])
 
   def apply(path: Path): Workspace raises WorkspaceError =
     mitigate:

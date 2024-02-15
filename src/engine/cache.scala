@@ -24,7 +24,7 @@ import galilei.*, filesystemOptions.{dereferenceSymlinks, createNonexistent, cre
     overwritePreexisting}
 import hieroglyph.*, charDecoders.utf8, badEncodingHandlers.collect
 import nettlesome.*
-import nonagenarian.*
+import octogenarian.*
 import parasite.*
 import contingency.*
 import guillotine.*

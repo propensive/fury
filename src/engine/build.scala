@@ -31,7 +31,7 @@ import hypotenuse.*
 import hieroglyph.*, charDecoders.utf8, badEncodingHandlers.strict
 import imperial.*
 import nettlesome.*
-import nonagenarian.*
+import octogenarian.*
 import parasite.*
 import contingency.*
 import rudiments.*
