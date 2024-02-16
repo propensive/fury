@@ -59,7 +59,7 @@ case class Release
         license: LicenseId, date: Date, lifetime: Int, repo: Snapshot, packages: List[Package],
         keywords: List[Keyword]):
   def expiry: Date = date + lifetime.days
-  
+
   def definition(vault: Vault): Definition =
     Definition(name, description, website, license, keywords, vault)
 
@@ -71,7 +71,7 @@ object Vault:
 
 case class Vault(name: Text, version: Int, releases: List[Release]):
   inline def vault: Vault = this
-  
+
   object index:
     lazy val releases: Map[ProjectId, Release] = unsafely(vault.releases.indexBy(_.id))
 
@@ -110,10 +110,10 @@ object Project:
 case class Project
     (id: ProjectId, name: Text, description: InlineMd, modules: List[Module], website: HttpUrl,
         license: Optional[LicenseId], keywords: List[Keyword]):
-  
+
   // FIXME: Handle not-found
   def apply(module: ModuleId): Module = modules.find(_.id == module).get
-  
+
   def definition(workspace: Workspace): Definition =
     Definition(name, description, website, license, keywords, workspace)
 
@@ -129,7 +129,7 @@ object Module:
     t"omissions"    -> t"omit",
     t"assists"      -> t"assist"
   )
-  
+
 case class Module
     (id: ModuleId, includes: List[ModuleRef], requirements: List[ModuleRef], sources: List[WorkPath],
         packages: List[Package], usages: List[ModuleRef], omissions: List[ModuleRef], assists: List[Assist],
@@ -143,11 +143,11 @@ object ModuleRef extends RefType(t"module ref"):
 
   given Show[ModuleRef] = ref =>
     t"${ref.projectId.let { projectId => t"$projectId/" }.or(t"")}${ref.moduleId}"
-  
+
   def apply(value: Text)(using Raises[InvalidRefError]): ModuleRef = value match
     case r"${ProjectId(project)}([^/]+)\/${ModuleId(module)}([^/]+)" =>
       ModuleRef(project, module)
-    
+
     case _ =>
       raise(InvalidRefError(value, this))(ModuleRef(ProjectId(t"unknown"), ModuleId(t"unknown")))
 
@@ -160,25 +160,25 @@ case class Action(name: ActionName, modules: List[ModuleRef], description: Optio
   def suggestion: Suggestion = Suggestion(name.show, description.let { text => e"${colors.Khaki}($text)"} )
 
 object WorkPath:
-  given reachable: Reachable[WorkPath, GeneralForbidden, Unit] with
+  given navigable: Navigable[WorkPath, GeneralForbidden, Unit] with
     def root(path: WorkPath): Unit = ()
     def prefix(root: Unit): Text = t""
     def descent(path: WorkPath): List[PathName[GeneralForbidden]] = path.descent
     def separator(path: WorkPath): Text = t"/"
-  
+
   given rootParser: RootParser[WorkPath, Unit] = text => ((), text)
   given creator: PathCreator[WorkPath, GeneralForbidden, Unit] = (unit, descent) => WorkPath(descent)
   given show: Show[WorkPath] = _.render
   given encoder: Encoder[WorkPath] = _.render
   given debug: Debug[WorkPath] = _.render
   given digestible: Digestible[WorkPath] = (acc, path) => acc.append(path.show.bytes)
-  
+
   given decoder(using path: Raises[PathError]): Decoder[WorkPath] = new Decoder[WorkPath]:
-    def decode(text: Text): WorkPath = Reachable.decode(text)
-  
-  inline given add: Operator["+", Path, WorkPath] with
+    def decode(text: Text): WorkPath = Navigable.decode(text)
+
+  inline given add: AddOperator[Path, WorkPath] with
     type Result = Path
-    def apply(left: Path, right: WorkPath): Path = right.descent.reverse.foldLeft(left)(_ / _)
+    def add(left: Path, right: WorkPath): Path = right.descent.reverse.foldLeft(left)(_ / _)
 
 case class WorkPath(descent: List[PathName[GeneralForbidden]]):
   def link: SafeLink = SafeLink(0, descent)
@@ -191,36 +191,58 @@ object Workspace:
   def apply()(using WorkingDirectory): Workspace raises WorkspaceError =
     given (WorkspaceError fixes IoError) =
       case IoError(path)        => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
-    
+
     given (WorkspaceError fixes PathError) =
       case pathError: PathError => WorkspaceError(WorkspaceError.Reason.Explanation(pathError.message))
-    
+
     apply(workingDirectory[Path])
 
   def apply(path: Path): Workspace raises WorkspaceError =
-    mitigate:
-      case HostnameError(text, _)       => WorkspaceError(WorkspaceError.Reason.BadData(text))
-      case NotFoundError(path)          => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
-      case CodlReadError(_)             => WorkspaceError(WorkspaceError.Reason.BadContent)
-      case GitRefError(text)            => WorkspaceError(WorkspaceError.Reason.BadData(text))
-      case StreamError(_)               => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
-      case MarkdownError(text)          => WorkspaceError(WorkspaceError.Reason.BadData(text))
-      case IoError(path)                => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
-      case UrlError(text, _, _)         => WorkspaceError(WorkspaceError.Reason.BadData(text))
-      case pathError: PathError         => WorkspaceError(WorkspaceError.Reason.Explanation(pathError.message))
-      case InvalidRefError(text, _)     => WorkspaceError(WorkspaceError.Reason.BadData(text))
-      case NumberError(text, _)         => WorkspaceError(WorkspaceError.Reason.BadData(text))
-      case UndecodableCharError(_, _)   => WorkspaceError(WorkspaceError.Reason.BadContent)
-    .within:
-      val dir: Directory = path.as[Directory]
-      val buildFile: File = (dir / p".fury").as[File]
-      val buildDoc: CodlDoc = Codl.parse(buildFile)
-      val build: Build = Codl.read[Build](buildFile)
-      val localPath: Path = dir / p".local"
-      val localFile: Optional[File] = if localPath.exists() then localPath.as[File] else Unset
-      val local: Optional[Local] = localFile.let(Codl.read[Local](_))
-  
-      Workspace(dir, buildDoc, build, local)
+    given (WorkspaceError fixes HostnameError) =
+      case HostnameError(text, _) => WorkspaceError(WorkspaceError.Reason.BadData(text))
+
+    given (WorkspaceError fixes NotFoundError) =
+      case NotFoundError(path) => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
+
+    given (WorkspaceError fixes CodlReadError) =
+      case CodlReadError(_) => WorkspaceError(WorkspaceError.Reason.BadContent)
+
+    given (WorkspaceError fixes GitRefError) =
+      case GitRefError(text) => WorkspaceError(WorkspaceError.Reason.BadData(text))
+
+    given (WorkspaceError fixes StreamError) =
+      case StreamError(_) => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
+
+    given (WorkspaceError fixes MarkdownError) =
+      case MarkdownError(text) => WorkspaceError(WorkspaceError.Reason.BadData(text))
+
+    given (WorkspaceError fixes IoError) =
+      case IoError(path) => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
+
+    given (WorkspaceError fixes UrlError) =
+      case UrlError(text, _, _) => WorkspaceError(WorkspaceError.Reason.BadData(text))
+
+    given (WorkspaceError fixes PathError) =
+      case pathError: PathError => WorkspaceError(WorkspaceError.Reason.Explanation(pathError.message))
+
+    given (WorkspaceError fixes InvalidRefError) =
+      case InvalidRefError(text, _) => WorkspaceError(WorkspaceError.Reason.BadData(text))
+
+    given (WorkspaceError fixes NumberError) =
+      case NumberError(text, _) => WorkspaceError(WorkspaceError.Reason.BadData(text))
+
+    given (WorkspaceError fixes UndecodableCharError) =
+      case UndecodableCharError(_, _) => WorkspaceError(WorkspaceError.Reason.BadContent)
+
+    val dir: Directory = path.as[Directory]
+    val buildFile: File = (dir / p".fury").as[File]
+    val buildDoc: CodlDoc = Codl.parse(buildFile)
+    val build: Build = Codl.read[Build](buildFile)
+    val localPath: Path = dir / p".local"
+    val localFile: Optional[File] = if localPath.exists() then localPath.as[File] else Unset
+    val local: Optional[Local] = localFile.let(Codl.read[Local](_))
+
+    Workspace(dir, buildDoc, build, local)
 
 case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, local: Optional[Local]):
   val ecosystem = build.ecosystem
