@@ -46,24 +46,36 @@ case class ConfigError(msg: Message) extends Error(msg)
 
 object Installation:
   def apply()(using HomeDirectory): Installation raises ConfigError =
-    mitigate:
+    given (ConfigError fixes StreamError) =
       case StreamError(_)                => ConfigError(msg"The stream was cut while reading a file")
-      case EnvironmentError(variable)    => ConfigError(msg"The environment variable $variable could not be accessed")
-      case UndecodableCharError(_, _)    => ConfigError(msg"The configuration file contained bad character data")
-      case SystemPropertyError(property) => ConfigError(msg"The JVM system property $property could not be accessed")
-      case IoError(path)                 => ConfigError(msg"An I/O error occurred while trying to access $path")
-      case CodlReadError(label)          => ConfigError(msg"The field ${label.or(t"unknown")} could not be read")
-      case PathError(path, reason)       => ConfigError(msg"The path $path was not valid because $reason")
-    .within:
-      val cache = (Xdg.cacheHome[Path] / p"fury").as[Directory]
-      val configPath: Path = Home.Config() / p"fury"
-      val config: Config = Codl.read[Config]((configPath / p"config.codl").as[File])
-      val vault: Directory = (cache / p"vault").as[Directory]
-      val snapshots: Directory = (cache / p"repos").as[Directory]
-      val lib: Directory = (cache / p"lib").as[Directory]
-      val tmp: Directory = (cache / p"tmp").as[Directory]
     
-      Installation(config, cache, vault, lib, tmp, snapshots)
+    given (ConfigError fixes EnvironmentError) =
+      case EnvironmentError(variable) => ConfigError(msg"The environment variable $variable could not be accessed")
+    
+    given (ConfigError fixes UndecodableCharError) =
+      case UndecodableCharError(_, _) => ConfigError(msg"The configuration file contained bad character data")
+    
+    given (ConfigError fixes SystemPropertyError) =
+      case SystemPropertyError(property) => ConfigError(msg"The JVM system property $property could not be accessed")
+    
+    given (ConfigError fixes IoError) =
+      case IoError(path) => ConfigError(msg"An I/O error occurred while trying to access $path")
+    
+    given (ConfigError fixes CodlReadError) =
+      case CodlReadError(label) => ConfigError(msg"The field ${label.or(t"unknown")} could not be read")
+    
+    given (ConfigError fixes PathError) =
+      case PathError(path, reason) => ConfigError(msg"The path $path was not valid because $reason")
+    
+    val cache = (Xdg.cacheHome[Path] / p"fury").as[Directory]
+    val configPath: Path = Home.Config() / p"fury"
+    val config: Config = Codl.read[Config]((configPath / p"config.codl").as[File])
+    val vault: Directory = (cache / p"vault").as[Directory]
+    val snapshots: Directory = (cache / p"repos").as[Directory]
+    val lib: Directory = (cache / p"lib").as[Directory]
+    val tmp: Directory = (cache / p"tmp").as[Directory]
+    
+    Installation(config, cache, vault, lib, tmp, snapshots)
     
     
 case class Installation
@@ -86,42 +98,57 @@ object Engine:
     builds.synchronized:
       builds.getOrElseUpdate(moduleRef, Async:
 
-        mitigate:
+        given (BuildError fixes GitError) =
           case GitError(_)        => BuildError()
+
+        given (BuildError fixes ExecError) =
           case ExecError(_, _, _) => BuildError()
+
+        given (BuildError fixes PathError) =
           case PathError(_, _)    => BuildError()
+
+        given (BuildError fixes IoError) =
           case IoError(_)         => BuildError()
+
+        given (BuildError fixes UnknownRefError) =
           case UnknownRefError(_) => BuildError()
+
+        given (BuildError fixes WorkspaceError) =
           case WorkspaceError(_)  => BuildError()
+
+        given (BuildError fixes StreamError) =
           case StreamError(_)     => BuildError()
+
+        given (BuildError fixes CancelError) =
           case CancelError()      => BuildError()
-        .within:
-          val workspace = universe(moduleRef.projectId).source match
-            case vault: Vault         => Workspace(Cache(vault.index.releases(moduleRef.projectId).repo).await().path)
-            case workspace: Workspace => workspace
+
+        
+        val workspace = universe(moduleRef.projectId).source match
+          case vault: Vault         => Workspace(Cache(vault.index.releases(moduleRef.projectId).repo).await().path)
+          case workspace: Workspace => workspace
           
-          val project: Project = workspace(moduleRef.projectId)
-          val module = project(moduleRef.moduleId)
+        val project: Project = workspace(moduleRef.projectId)
+        val module = project(moduleRef.moduleId)
   
-          val sourceFiles: List[File] = module.sources.flatMap: directory =>
-            workspace(directory).descendants.filter(_.is[File]).filter(_.name.ends(t".scala")).map(_.as[File])
+        val sourceFiles: List[File] = module.sources.flatMap: directory =>
+          workspace(directory).descendants.filter(_.is[File]).filter(_.name.ends(t".scala")).map(_.as[File])
   
-          val includes = module.includes.map(Engine.build(_)).map(_.await())
+        val includes = module.includes.map(Engine.build(_)).map(_.await())
           
-          val step = Step(sourceFiles, includes, Nil)
-          Log.info(msg"Digest = ${step.digest.encodeAs[Base32]}")
+        val step = Step(sourceFiles, includes, Nil)
+        Log.info(msg"Digest = ${step.digest.encodeAs[Base32]}")
           
-          val part = (math.random*36).toLong
+        val part = (math.random*36).toLong
           
-          val progress = LazyList.range(0, 100).map: pc =>
-            Thread.sleep(part)
-            Activity.Progress(t"typer", pc/100.0)
+        val progress = LazyList.range(0, 100).map: pc =>
+          Thread.sleep(part)
+          Activity.Progress(t"typer", pc/100.0)
           
-          Log.info(msg"Building $moduleRef")
-          //progress
-          //progress.length
-          module.digest[Sha2[256]]
-      )
+        Log.info(msg"Building $moduleRef")
+        //progress
+        //progress.length
+        module.digest[Sha2[256]]
+    )
 
 extension (workspace: Workspace)
   def locals
