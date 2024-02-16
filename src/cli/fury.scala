@@ -18,7 +18,7 @@ package fury
 
 import ambience.*, systemProperties.virtualMachine, environments.virtualMachine
 import anticipation.*
-import galilei.*, fileApi.galileiApi, filesystemOptions.{doNotCreateNonexistent, dereferenceSymlinks}
+import galilei.*, fileApi.galileiApi, filesystemOptions.dereferenceSymlinks
 import parasite.*
 import gossamer.*
 import escapade.*
@@ -72,10 +72,11 @@ object userInterface:
   val Details = Subcommand(t"info", e"Information about cache usage")
 
 given (using Raises[UserError]): HomeDirectory =
-  mitigate:
+  given (UserError fixes SystemPropertyError) =
     case SystemPropertyError(property) =>
       UserError(msg"Could not access the home directory because the $property system property was not set.")
-  .within(homeDirectories.virtualMachine)
+
+  homeDirectories.virtualMachine
 
 given (using Cli): WorkingDirectory = workingDirectories.daemonClient 
 given installation(using Raises[ConfigError], Raises[SystemPropertyError]): Installation = Installation()
@@ -92,15 +93,21 @@ def main(): Unit =
       import filesystemOptions.{createNonexistent, createNonexistentParents}
       
       given (using Stdio): Log[Output] = throwErrors[UserError]:
-        mitigate:
-          case IoError(_)                    => UserError(msg"An IO error occured when trying to create the log")
-          case StreamError(_)                => UserError(msg"Stream error when logging")
-          case ConfigError(_)                => UserError(msg"The configuration was not valid")
+        given (UserError fixes IoError) =
+          case IoError(_) => UserError(msg"An IO error occured when trying to create the log")
+
+        given (UserError fixes StreamError) =
+          case StreamError(_) => UserError(msg"Stream error when logging")
+        
+        given (UserError fixes ConfigError) =
+          case ConfigError(_) => UserError(msg"The configuration was not valid")
+        
+        given (UserError fixes SystemPropertyError) =
           case SystemPropertyError(property) => UserError(msg"The system property $property was not valid")
-        .within:
-          Log.route:
-            case _            => installation.config.log.path.as[File]
-            case Level.Warn() => Err
+
+        Log.route:
+          case _            => installation.config.log.path.as[File]
+          case Level.Warn() => Err
 
       daemon[BusMessage]:
         try throwErrors[UserError]:
@@ -133,10 +140,13 @@ def main(): Unit =
 
             case Config() =>
               execute:
-                mitigate:
+                given (UserError fixes SystemPropertyError) =
                   case SystemPropertyError(property) => UserError(msg"The system property could not be read: $property")
+                
+                given (UserError fixes ConfigError) =
                   case ConfigError(message) => UserError(msg"The configuration could not be read: $message")
-                .within(Out.println(installation.config.debug))
+                
+                Out.println(installation.config.debug)
                 
                 ExitStatus.Ok
 
@@ -155,50 +165,58 @@ def main(): Unit =
             
             case Graph() =>
               val offline = Offline().present
+
               execute:
+                given (UserError fixes PathError) = error => UserError(error.message)
+                given (UserError fixes SystemPropertyError) = error => UserError(error.message)
+                given (UserError fixes CancelError) = error => UserError(error.message)
+                given (UserError fixes IoError) = error => UserError(error.message)
+                given (UserError fixes ConfigError) = error => UserError(error.message)
+                given (UserError fixes WorkspaceError) = error => UserError(error.message)
+                given (UserError fixes ExecError) = error => UserError(error.message)
+                given (UserError fixes VaultError) = error => UserError(error.message)
+                
                 internet(!offline):
-                  val rootWorkspace = Workspace(Properties.user.dir())
+                  val rootWorkspace = Workspace(workingDirectory)
                   given universe: Universe = rootWorkspace.universe()
+                
                 ExitStatus.Ok
             
             case Universe() =>
               val offline = Offline().present
               execute:
-                import unsafeExceptions.canThrowAny
+                given (UserError fixes PathError) = error => UserError(error.message)
+                given (UserError fixes SystemPropertyError) = error => UserError(error.message)
+                given (UserError fixes CancelError) = error => UserError(error.message)
+                given (UserError fixes IoError) = error => UserError(error.message)
+                given (UserError fixes ConfigError) = error => UserError(error.message)
+                given (UserError fixes WorkspaceError) = error => UserError(error.message)
+                given (UserError fixes ExecError) = error => UserError(error.message)
+                given (UserError fixes VaultError) = error => UserError(error.message)
+                  
+                internet(!offline):
+                  val rootWorkspace = Workspace(workingDirectory)
+                  given universe: Universe = rootWorkspace.universe()
+                  val projects = universe.projects.to(List)
 
-                mitigate:
-                  case error: PathError            => UserError(error.message)
-                  case error: SystemPropertyError  => UserError(error.message)
-                  case error: CancelError          => UserError(error.message)
-                  case error: IoError              => UserError(error.message)
-                  case error: ConfigError          => UserError(error.message)
-                  case error: WorkspaceError       => UserError(error.message)
-                  case error: ExecError            => UserError(error.message)
-                  case error: VaultError           => UserError(error.message)
-                .within:
-                  internet(!offline):
-                    val rootWorkspace = Workspace(Properties.user.dir())
-                    given universe: Universe = rootWorkspace.universe()
-                    val projects = universe.projects.to(List)
+                  // val terminfo = sh"infocmp -0 -L -q -t ${Environment.term}".exec[Text]().cut(t",").
+                  // Out.println(terminfo.debug)
 
-                    // val terminfo = sh"infocmp -0 -L -q -t ${Environment.term}".exec[Text]().cut(t",").
-                    // Out.println(terminfo.debug)
-
-                    terminal:
-                      Async(terminal.events.each(_ => ()))
+                  terminal:
+                    Async(terminal.events.each(_ => ()))
                       
-                      Table[(ProjectId, Definition)](
-                        Column(e"$Bold(Project ID)")(_(0)),
-                        Column(e"$Bold(Name)")(_(1).name),
-                        Column(e"$Bold(Description)")(_(1).description),
-                        Column(e"$Bold(Website)")(_(1).website.let(_.show).or(t"—")),
-                        Column(e"$Bold(Source)"): (_, definition) =>
-                          definition.source match
-                            case workspace: Workspace => e"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
-                            case vault: Vault         => e"$SeaGreen(${vault.name})"
-                      ).tabulate(projects, terminal.knownColumns, DelimitRows.SpaceIfMultiline).each(Out.println(_))
+                    Table[(ProjectId, Definition)](
+                      Column(e"$Bold(Project ID)")(_(0)),
+                      Column(e"$Bold(Name)")(_(1).name),
+                      Column(e"$Bold(Description)")(_(1).description),
+                      Column(e"$Bold(Website)")(_(1).website.let(_.show).or(t"—")),
+                      Column(e"$Bold(Source)"): (_, definition) =>
+                        definition.source match
+                          case workspace: Workspace => e"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
+                          case vault: Vault         => e"$SeaGreen(${vault.name})"
+                    ).tabulate(projects, terminal.knownColumns, DelimitRows.SpaceIfMultiline).each(Out.println(_))
 
-                      ExitStatus.Ok
+                    ExitStatus.Ok
             
             case Shutdown() => execute:
               service.shutdown()
@@ -221,3 +239,4 @@ def main(): Unit =
             execute:
               Out.println(userError.message)
               ExitStatus.Fail(1)
+

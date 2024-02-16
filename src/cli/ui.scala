@@ -46,32 +46,36 @@ def installInteractive
     (using DaemonService[?], Terminal, Log[Output], SystemProperties, Environment, WorkingDirectory,
         HomeDirectory, Effectful)
     : ExitStatus raises UserError =
-  mitigate:
+  given (UserError fixes InstallError) =
     case InstallError(reason) => UserError(msg"Installation was not possible because $reason.")
-    case DismissError()       => UserError(msg"Installation was aborted.")
-  .within:
-    val directories = Installer.candidateTargets().map(_.path)
-    if directories.length <= 1 then Installer.install(force)
-    else
+  
+  given (UserError fixes DismissError) =
+    case DismissError() => UserError(msg"Installation was aborted.")
+
+  val directories = Installer.candidateTargets().map(_.path)
+  
+  if directories.length <= 1 then Installer.install(force) else
     Out.println(e"$Italic(Please choose an install location.)")
     val menu = SelectMenu(directories, directories.head)
     val (target, events2) = menu.ask(terminal.events)
     Out.println(e"Installing to $target/${service.scriptName}")
     Out.println(Installer.install(force = true, target).communicate)
-    if !noTabCompletions then Out.println(TabCompletions.install(force = true).communicate)
-    ExitStatus.Ok
+  
+  if !noTabCompletions then Out.println(TabCompletions.install(force = true).communicate)
+
+  ExitStatus.Ok
 
 def installBatch
     (force: Boolean, noTabCompletions: Boolean)
     (using DaemonService[?], Stdio, Log[Output], SystemProperties, Environment, WorkingDirectory, HomeDirectory,
         Effectful)
     : ExitStatus raises UserError =
-  mitigate:
+  given (UserError fixes InstallError) =
     case InstallError(reason) => UserError(msg"Installation was not possible because $reason.")
-  .within:
-    Out.println(Installer.install(force).communicate)
-    if !noTabCompletions then Out.println(TabCompletions.install(force = true).communicate)
-    ExitStatus.Ok
+
+  Out.println(Installer.install(force).communicate)
+  if !noTabCompletions then Out.println(TabCompletions.install(force = true).communicate)
+  ExitStatus.Ok
 
 def initializeBuild(directory: Path)(using Stdio): ExitStatus raises UserError =
   Out.println(t"Creating a new build in $directory")
