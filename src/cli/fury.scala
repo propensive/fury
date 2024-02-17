@@ -18,7 +18,7 @@ package fury
 
 import ambience.*, systemProperties.virtualMachine, environments.virtualMachine
 import anticipation.*
-import galilei.*, fileApi.galileiApi, filesystemOptions.dereferenceSymlinks
+import galilei.*, filesystemInterfaces.galileiApi, filesystemOptions.dereferenceSymlinks
 import parasite.*
 import gossamer.*
 import escapade.*

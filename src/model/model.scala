@@ -22,7 +22,7 @@ import cellulose.*
 import escapade.*
 import exoskeleton.*
 import fulminate.*
-import galilei.*, filesystemOptions.{doNotCreateNonexistent, dereferenceSymlinks}, fileApi.galileiApi
+import galilei.*, filesystemOptions.{doNotCreateNonexistent, dereferenceSymlinks}, filesystemInterfaces.galileiApi
 import gastronomy.*
 import gossamer.*
 import hieroglyph.*, charEncoders.utf8, charDecoders.utf8, badEncodingHandlers.strict

@@ -17,7 +17,7 @@
 package fury
 
 import ambience.*, environments.virtualMachine, systemProperties.virtualMachine
-import anticipation.*, fileApi.galileiApi
+import anticipation.*, filesystemInterfaces.galileiApi
 import aviation.*, calendars.gregorian
 import cellulose.*
 import escapade.*
