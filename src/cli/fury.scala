@@ -19,7 +19,7 @@ package fury
 import ambience.*, systemProperties.virtualMachine, environments.virtualMachine
 import anticipation.*
 import galilei.*, filesystemInterfaces.galileiApi, filesystemOptions.dereferenceSymlinks
-import parasite.*
+import parasite.*, threadModels.virtual
 import gossamer.*
 import escapade.*
 import guillotine.*
@@ -239,7 +239,5 @@ def main(): Unit =
             execute:
               Out.println(userError.message)
               ExitStatus.Fail(1)
-
-
 
 
