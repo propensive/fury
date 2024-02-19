@@ -158,7 +158,7 @@ def main(): Unit =
             case About() =>
               execute:
                 about()
-                ExitStatus.Fail(1)
+                ExitStatus.Ok
             
             case Build() =>
               execute(runBuild())
@@ -239,4 +239,7 @@ def main(): Unit =
             execute:
               Out.println(userError.message)
               ExitStatus.Fail(1)
+
+
+
 
