@@ -16,7 +16,7 @@
 
 package fury
 
-import anticipation.*, filesystemInterfaces.galileiApi, timeApi.aviationApi
+import anticipation.*, filesystemInterfaces.galileiApi, timeInterfaces.aviationApi
 import aviation.*
 import cellulose.*
 import eucalyptus.*
