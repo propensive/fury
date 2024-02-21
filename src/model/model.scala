@@ -151,7 +151,8 @@ object ModuleRef extends RefType(t"module ref"):
     case _ =>
       raise(InvalidRefError(value, this))(ModuleRef(ProjectId(t"unknown"), ModuleId(t"unknown")))
 
-case class ModuleRef(projectId: ProjectId, moduleId: ModuleId)
+case class ModuleRef(projectId: ProjectId, moduleId: ModuleId):
+  def suggestion: Suggestion = Suggestion(this.show, Unset)
 
 object Action:
   given relabelling: CodlRelabelling[Action] = () => Map(t"actions" -> t"action")

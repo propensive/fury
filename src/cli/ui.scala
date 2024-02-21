@@ -18,6 +18,7 @@ package fury
 
 import rudiments.*
 import profanity.*
+import nettlesome.*
 import turbulence.*
 import kaleidoscope.*
 import spectacular.*
@@ -29,6 +30,7 @@ import galilei.*
 import gastronomy.*
 import gossamer.*
 import anticipation.*
+import parasite.*
 import hellenism.*, classloaders.threadContext
 import hieroglyph.*, charDecoders.utf8, badEncodingHandlers.skip, textMetrics.uniform
 import vacuous.*
@@ -36,6 +38,7 @@ import eucalyptus.*
 import serpentine.*
 import ethereal.*
 import escapade.*
+import octogenarian.*
 import escritoire.*, tableStyles.minimalist
 import contingency.*
 
@@ -89,8 +92,17 @@ def cacheDetails()(using Stdio): ExitStatus raises UserError =
   Out.println(t"Details of the cache")
   ExitStatus.Ok
 
-def runBuild()(using Stdio): ExitStatus raises UserError =
-  Out.println(t"Running the build...")
+def runBuild(ref: ModuleRef)
+    (using Stdio, WorkingDirectory, Monitor, Log[Output], Internet, Installation, GitCommand)
+    : ExitStatus raises UserError =
+  given (UserError fixes WorkspaceError) = error => UserError(error.message)
+  given (UserError fixes BuildError)     = error => UserError(error.message)
+  given (UserError fixes VaultError)     = error => UserError(error.message)
+  given (UserError fixes CancelError)    = error => UserError(error.message)
+
+  val workspace = Workspace()
+  given universe: Universe = workspace.universe()
+  Engine.build(ref)
   ExitStatus.Ok
 
 def invalidSubcommand(command: Argument)(using Stdio): ExitStatus raises UserError =
@@ -101,7 +113,8 @@ def missingSubcommand()(using Stdio): ExitStatus raises UserError =
 
 def about()(using Stdio): ExitStatus =
   safely(Out.println(Image((Classpath / p"logo.png")()).render))
-  val asciiArt = t"H4sIAAAAAAAA/31Ryw3AIAi9O8UbtfHcQw8wRrUzMUmTKlSx1HgA3ocXFT6FtulySUIZEIO49gllLcjIA62MmgkY3UOBeu+2VrdCCxfsm2RhAQQOD7aCq5KvtiTQTnDqbZ/gbf0LV8dcqUdzxN+x1CHBfa7mjPlh4HQDGOnRlikCAAA="
+  val asciiArt = t"H4sIAAAAAAAA/31Ryw3AIAi9O8UbtfHcQw8wRrUzMUmTKlSx1HgA3ocXFT6FtulySUIZEIO49gllLcjIA62MmgkY3UO"+
+      t"Beu+2VrdCCxfsm2RhAQQOD7aCq5KvtiTQTnDqbZ/gbf0LV8dcqUdzxN+x1CHBfa7mjPlh4HQDGOnRlikCAAA="
 
   unsafely(asciiArt.decode[Base64]).gunzip.utf8.cut(t"\n").each: line =>
     Out.print(t" "*19)

@@ -139,7 +139,7 @@ object Cache:
   // FIXME: No synchronization; should use a mutex instead
   def workspace
       (path: Path)
-      (using Installation, Internet, Log[Output], Stdio, Monitor, WorkingDirectory, GitCommand)
+      (using Installation, Internet, Log[Output], Monitor, WorkingDirectory, GitCommand)
       : Async[Workspace] raises WorkspaceError =
     given (WorkspaceError fixes IoError) =
       case IoError(path) => WorkspaceError(WorkspaceError.Reason.Unreadable(path))

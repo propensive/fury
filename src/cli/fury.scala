@@ -96,22 +96,19 @@ def main(): Unit =
       given logFormat2: LogFormat[Err.type, Output] = logFormats.standardColor[Err.type]
       import filesystemOptions.{createNonexistent, createNonexistentParents}
       
-      given (using Stdio): Log[Output] = throwErrors[UserError]:
-        given (UserError fixes IoError) =
-          case IoError(_) => UserError(msg"An IO error occured when trying to create the log")
-
-        given (UserError fixes StreamError) =
-          case StreamError(_) => UserError(msg"Stream error when logging")
-        
-        given (UserError fixes ConfigError) =
-          case ConfigError(_) => UserError(msg"The configuration was not valid")
-        
-        given (UserError fixes SystemPropertyError) =
-          case SystemPropertyError(property) => UserError(msg"The system property $property was not valid")
-
-        Log.route:
-          case _            => installation.config.log.path.as[File]
-          case Level.Warn() => Err
+      inline given Log[Output] = throwErrors[UserError]:
+        given (UserError fixes IoError)             = error => UserError(msg"An IO error occured when trying to create the log")
+        given (UserError fixes StreamError)         = error => UserError(msg"Stream error when logging")
+        given (UserError fixes ConfigError)         = error => UserError(msg"The configuration was not valid")
+        given (UserError fixes SystemPropertyError) = error => UserError(msg"The system property ${error.property} was not valid")
+      
+        compiletime.summonFrom:
+          case given Stdio => Log.route:
+            case _            => installation.config.log.path.as[File]
+            case Level.Warn() => Err
+          
+          case _ => Log.route:
+            case _ => installation.config.log.path.as[File]
 
       daemon[BusMessage]:
         try throwErrors[UserError]:
@@ -165,8 +162,25 @@ def main(): Unit =
                 ExitStatus.Ok
             
             case Build() =>
-              execute(runBuild())
-            
+              safely(arguments.tail.head) match
+                case Unset =>
+                  execute:
+                    Out.println(t"Module has not been specified")
+                    ExitStatus.Fail(1)
+
+                case target =>
+                  safely(internet(false)(Workspace().locals())).let: map =>
+                    val refs = map.values.map(_.source).flatMap:
+                      case workspace: Workspace => workspace.build.projects.flatMap: project =>
+                        project.modules.map: module =>
+                          ModuleRef(project.id, module.id)
+
+                    target.let(_.suggest(previous ++ refs.map(_.suggestion)))
+                  
+                  execute:
+                    Out.println(t"TODO: Build ${target.let(_()).or(t"?")}")
+                    ExitStatus.Fail(1)
+                
             case Graph() =>
               val online = Offline().absent
 
@@ -182,7 +196,7 @@ def main(): Unit =
                 given (UserError fixes VaultError)          = error => UserError(error.message)
                 
                 internet(online):
-                  val rootWorkspace = Workspace(workingDirectory)
+                  val rootWorkspace = Workspace()
                   given universe: Universe = rootWorkspace.universe()
                 
                 ExitStatus.Ok
@@ -190,6 +204,7 @@ def main(): Unit =
             case Universe() =>
               val online = Offline().absent
               val generation: Optional[Int] = safely(Generation())
+              
               safely(arguments.tail.head) match
                 case UniverseSearch() =>
                   execute:
@@ -230,7 +245,7 @@ def main(): Unit =
                           Column(e"$Bold(Source)"): (_, definition) =>
                             definition.source match
                               case workspace: Workspace => e"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
-                              case vault: Vault         => e"$SeaGreen(${vault.name})"
+                              case vault: Vault         => e"$DeepSkyBlue(${vault.name})"
                         )
                         
                         table.tabulate(projects, terminal.knownColumns, DelimitRows.SpaceIfMultiline)

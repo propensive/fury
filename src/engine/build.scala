@@ -24,7 +24,7 @@ import escapade.*
 import eucalyptus.*
 import fulminate.*
 import galilei.*, filesystemOptions.{createNonexistent, createNonexistentParents, dereferenceSymlinks}
-import gastronomy.*, alphabets.base32.zBase32
+import gastronomy.*
 import gossamer.*
 import guillotine.*
 import hypotenuse.*
@@ -126,15 +126,12 @@ object Engine:
           Activity.Progress(t"typer", pc/100.0)
           
         Log.info(msg"Building $moduleRef")
-        //progress
-        //progress.length
         module.digest[Sha2[256]]
     )
 
 extension (workspace: Workspace)
-  def locals
-      (ancestors: Set[Path] = Set())
-      (using Monitor, Log[Output], Stdio, WorkingDirectory, Internet, Installation, GitCommand)
+  def locals(ancestors: Set[Path] = Set())
+      (using Monitor, Log[Output], WorkingDirectory, Internet, Installation, GitCommand)
       : Map[ProjectId, Definition] raises CancelError raises WorkspaceError =
     workspace.local.let: local =>
       local.forks.map: fork =>
@@ -144,9 +141,8 @@ extension (workspace: Workspace)
         
     .or(Nil).foldRight(workspace.projects.view.mapValues(_.definition(workspace)).to(Map))(_ ++ _)
   
-  def universe
-      ()
-      (using Monitor, Clock, Log[Output], Stdio, WorkingDirectory, Internet, Installation, GitCommand)
+  def universe()
+      (using Monitor, Clock, Log[Output], WorkingDirectory, Internet, Installation, GitCommand)
       : Universe raises CancelError raises VaultError raises WorkspaceError =
     given Timezone = tz"Etc/UTC"
     val vaultProjects = Cache(workspace.ecosystem).await()
@@ -163,7 +159,7 @@ extension (workspace: Workspace)
 
   def apply
       (path: WorkPath)
-      (using Installation, Internet, Stdio, Monitor, WorkingDirectory, Log[Output],
+      (using Installation, Internet, Monitor, WorkingDirectory, Log[Output],
           Raises[CancelError], Raises[GitError], Raises[PathError], Raises[ExecError], Raises[IoError])
       : Directory =
     workspace.mounts.keys.find(_.precedes(path)).match
