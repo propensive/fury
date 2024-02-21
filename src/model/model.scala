@@ -214,7 +214,7 @@ object Workspace:
       case StreamError(_) => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
 
     given (WorkspaceError fixes MarkdownError) =
-      case MarkdownError(text) => WorkspaceError(WorkspaceError.Reason.BadData(text))
+      case MarkdownError(reason) => WorkspaceError(WorkspaceError.Reason.Explanation(reason.communicate))
 
     given (WorkspaceError fixes IoError) =
       case IoError(path) => WorkspaceError(WorkspaceError.Reason.Unreadable(path))

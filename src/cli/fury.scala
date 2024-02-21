@@ -56,6 +56,7 @@ object userInterface:
   val Force = Switch(t"force", false, List('F'), t"Overwrite existing files if necessary")
   def Dir(using Raises[PathError]) = Flag[Path](t"dir", false, List('d'), t"Specify the working directory")
   val Offline = Switch(t"offline", false, List('o'), t"Work offline, if possible")
+  def Generation(using Raises[NumberError]) = Flag[Int](t"generation", false, List('g'), t"Use universe generation number")
 
   val About = Subcommand(t"about", e"About Fury")
   val Build = Subcommand(t"build", e"Start a new build (default)")
@@ -64,6 +65,9 @@ object userInterface:
   val Shutdown = Subcommand(t"shutdown", e"Shutdown the Fury daemon")
   val Init = Subcommand(t"init", e"Initialize a new project")
   val Universe = Subcommand(t"universe", e"Universe actions")
+  val UniverseSearch = Subcommand(t"search", e"Search for a release")
+  val UniverseShow = Subcommand(t"show", e"Show details of the current universe")
+  val UniverseUpdate = Subcommand(t"update", e"Check for universe updates")
   val Graph = Subcommand(t"graph", e"Show a build graph")
   val Update = Subcommand(t"update", e"Update Fury")
   val Install = Subcommand(t"install", e"Install Fury")
@@ -164,60 +168,80 @@ def main(): Unit =
               execute(runBuild())
             
             case Graph() =>
-              val offline = Offline().present
+              val online = Offline().absent
 
               execute:
-                given (UserError fixes PathError) = error => UserError(error.message)
+                given (UserError fixes PathError)           = error => UserError(error.message)
                 given (UserError fixes SystemPropertyError) = error => UserError(error.message)
-                given (UserError fixes CancelError) = error => UserError(error.message)
-                given (UserError fixes IoError) = error => UserError(error.message)
-                given (UserError fixes ConfigError) = error => UserError(error.message)
-                given (UserError fixes WorkspaceError) = error => UserError(error.message)
-                given (UserError fixes ExecError) = error => UserError(error.message)
-                given (UserError fixes VaultError) = error => UserError(error.message)
+                given (UserError fixes CancelError)         = error => UserError(error.message)
+                given (UserError fixes IoError)             = error => UserError(error.message)
+                given (UserError fixes NumberError)         = error => UserError(error.message)
+                given (UserError fixes ConfigError)         = error => UserError(error.message)
+                given (UserError fixes WorkspaceError)      = error => UserError(error.message)
+                given (UserError fixes ExecError)           = error => UserError(error.message)
+                given (UserError fixes VaultError)          = error => UserError(error.message)
                 
-                internet(!offline):
+                internet(online):
                   val rootWorkspace = Workspace(workingDirectory)
                   given universe: Universe = rootWorkspace.universe()
                 
                 ExitStatus.Ok
             
             case Universe() =>
-              val offline = Offline().present
-              execute:
-                given (UserError fixes PathError) = error => UserError(error.message)
-                given (UserError fixes SystemPropertyError) = error => UserError(error.message)
-                given (UserError fixes CancelError) = error => UserError(error.message)
-                given (UserError fixes IoError) = error => UserError(error.message)
-                given (UserError fixes ConfigError) = error => UserError(error.message)
-                given (UserError fixes WorkspaceError) = error => UserError(error.message)
-                given (UserError fixes ExecError) = error => UserError(error.message)
-                given (UserError fixes VaultError) = error => UserError(error.message)
-                  
-                internet(!offline):
-                  val rootWorkspace = Workspace(workingDirectory)
-                  given universe: Universe = rootWorkspace.universe()
-                  val projects = universe.projects.to(List)
-
-                  // val terminfo = sh"infocmp -0 -L -q -t ${Environment.term}".exec[Text]().cut(t",").
-                  // Out.println(terminfo.debug)
-
-                  terminal:
-                    Async(terminal.events.each(_ => ()))
-                      
-                    Table[(ProjectId, Definition)](
-                      Column(e"$Bold(Project ID)")(_(0)),
-                      Column(e"$Bold(Name)")(_(1).name),
-                      Column(e"$Bold(Description)")(_(1).description),
-                      Column(e"$Bold(Website)")(_(1).website.let(_.show).or(t"—")),
-                      Column(e"$Bold(Source)"): (_, definition) =>
-                        definition.source match
-                          case workspace: Workspace => e"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
-                          case vault: Vault         => e"$SeaGreen(${vault.name})"
-                    ).tabulate(projects, terminal.knownColumns, DelimitRows.SpaceIfMultiline).each(Out.println(_))
-
+              val online = Offline().absent
+              val generation: Optional[Int] = safely(Generation())
+              safely(arguments.tail.head) match
+                case UniverseSearch() =>
+                  execute:
+                    Out.println(t"TODO: Search the universe")
                     ExitStatus.Ok
-            
+                
+                case UniverseUpdate() =>
+                  execute:
+                    Out.println(t"TODO: Update the universe")
+                    ExitStatus.Fail(1)
+
+                case UniverseShow() | Unset =>
+                  execute:
+                    given (UserError fixes PathError)           = error => UserError(error.message)
+                    given (UserError fixes SystemPropertyError) = error => UserError(error.message)
+                    given (UserError fixes CancelError)         = error => UserError(error.message)
+                    given (UserError fixes IoError)             = error => UserError(error.message)
+                    given (UserError fixes ConfigError)         = error => UserError(error.message)
+                    given (UserError fixes WorkspaceError)      = error => UserError(error.message)
+                    given (UserError fixes ExecError)           = error => UserError(error.message)
+                    given (UserError fixes VaultError)          = error => UserError(error.message)
+                      
+                    internet(online):
+                      val rootWorkspace = Workspace(workingDirectory)
+                      given universe: Universe = rootWorkspace.universe()
+                      val projects = universe.projects.to(List)
+    
+                      terminal:
+                        Async(terminal.events.each(_ => ()))
+                          
+                        val table = Table[(ProjectId, Definition)](
+                          Column(e"$Bold(Project)"): (project, definition) =>
+                            e"${definition.name}",
+                            // definition.website.lay(e"${definition.name}"): website =>
+                            //   e"${escapes.link(website, definition.name)}",
+                          Column(e"$Bold(ID)")(_(0)),
+                          Column(e"$Bold(Description)")(_(1).description),
+                          Column(e"$Bold(Source)"): (_, definition) =>
+                            definition.source match
+                              case workspace: Workspace => e"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
+                              case vault: Vault         => e"$SeaGreen(${vault.name})"
+                        )
+                        
+                        table.tabulate(projects, terminal.knownColumns, DelimitRows.SpaceIfMultiline)
+                          .each(Out.println(_))
+    
+                        ExitStatus.Ok
+
+                case command => execute:
+                  Out.println(e"Command $Italic(${command.vouch(using Unsafe)()}) was not recognized.")
+                  ExitStatus.Fail(1)
+                
             case Shutdown() => execute:
               service.shutdown()
               ExitStatus.Ok
@@ -239,5 +263,4 @@ def main(): Unit =
             execute:
               Out.println(userError.message)
               ExitStatus.Fail(1)
-
 

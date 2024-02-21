@@ -100,10 +100,10 @@ def missingSubcommand()(using Stdio): ExitStatus raises UserError =
   abort(UserError(msg"No subcommand was specified."))
 
 def about()(using Stdio): ExitStatus =
-  safely:
-    Out.println(Image((Classpath / p"logo.png")()).render)
+  safely(Out.println(Image((Classpath / p"logo.png")()).render))
+  val asciiArt = t"H4sIAAAAAAAA/31Ryw3AIAi9O8UbtfHcQw8wRrUzMUmTKlSx1HgA3ocXFT6FtulySUIZEIO49gllLcjIA62MmgkY3UOBeu+2VrdCCxfsm2RhAQQOD7aCq5KvtiTQTnDqbZ/gbf0LV8dcqUdzxN+x1CHBfa7mjPlh4HQDGOnRlikCAAA="
 
-  t"4pWt4pSA4pSA4pSA4pSA4pSA4pWuCuKUgiAg4pWt4pSA4pSA4pWvCuKUgiAg4pSCCuKUgiAg4pSU4pSA4pSA4pWu4pWt4pSA4pSA4pWuIOKVreKUgOKUgOKVruKVreKUgOKUgOKVruKUgOKUgOKUgOKVruKVreKUgOKUgOKVriDila3ilIDilIDila4K4pSCICDilIzilIDilIDila/ilIIgIOKUgiDilIIgIOKUguKUgiAg4pWt4pSA4pSA4pSA4pWv4pSCICDilIIg4pSCICDilIIK4pSCICDilIIgICDilIIgIOKUgiDilIIgIOKUguKUgiAg4pSCICAgIOKUgiAg4pSCIOKUgiAg4pSCCuKUgiAg4pSCICAg4pSCICDilbDilIDila8gIOKUguKUgiAg4pSCICAgIOKUgiAg4pWw4pSA4pWvICDilIIK4pWw4pSA4pSA4pWvICAg4pWw4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pWv4pWw4pSA4pSA4pWvICAgIOKVsOKUgOKUgOKUgOKUgOKUkCAg4pSCCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAg4pSCICDilIIKICAgICAgICAgICAgICAgICAgICAgICAg4pWt4pSA4pSA4pSA4pSA4pWvICDilIIKICAgICAgICAgICAgICAgICAgICAgICAg4pWw4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pWvCg==".decode[Base64].uString.cut(t"\n").each: line =>
+  unsafely(asciiArt.decode[Base64]).gunzip.utf8.cut(t"\n").each: line =>
     Out.print(t" "*19)
     Out.println(line)
   
@@ -118,7 +118,6 @@ def about()(using Stdio): ExitStatus =
       case r"$key([^=]*)=$value(.*)" => List(key -> value)
       case _                         => Nil
     .to(Map)
-
 
   case class Software(name: Text, version: Text, copyright: Text)
 
@@ -141,5 +140,4 @@ def about()(using Stdio): ExitStatus =
 def versionInfo()(using Stdio): ExitStatus = 
   Out.println(t"Fury version 1.0")
   ExitStatus.Ok
-
 

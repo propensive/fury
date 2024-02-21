@@ -98,30 +98,14 @@ object Engine:
     builds.synchronized:
       builds.getOrElseUpdate(moduleRef, Async:
 
-        given (BuildError fixes GitError) =
-          case GitError(_)        => BuildError()
-
-        given (BuildError fixes ExecError) =
-          case ExecError(_, _, _) => BuildError()
-
-        given (BuildError fixes PathError) =
-          case PathError(_, _)    => BuildError()
-
-        given (BuildError fixes IoError) =
-          case IoError(_)         => BuildError()
-
-        given (BuildError fixes UnknownRefError) =
-          case UnknownRefError(_) => BuildError()
-
-        given (BuildError fixes WorkspaceError) =
-          case WorkspaceError(_)  => BuildError()
-
-        given (BuildError fixes StreamError) =
-          case StreamError(_)     => BuildError()
-
-        given (BuildError fixes CancelError) =
-          case CancelError()      => BuildError()
-
+        given (BuildError fixes GitError)        = error => BuildError()
+        given (BuildError fixes ExecError)       = error => BuildError()
+        given (BuildError fixes PathError)       = error => BuildError()
+        given (BuildError fixes IoError)         = error => BuildError()
+        given (BuildError fixes UnknownRefError) = error => BuildError()
+        given (BuildError fixes WorkspaceError)  = error => BuildError()
+        given (BuildError fixes StreamError)     = error => BuildError()
+        given (BuildError fixes CancelError)     = error => BuildError()
         
         val workspace = universe(moduleRef.projectId).source match
           case vault: Vault         => Workspace(Cache(vault.index.releases(moduleRef.projectId).repo).await().path)
@@ -134,10 +118,7 @@ object Engine:
           workspace(directory).descendants.filter(_.is[File]).filter(_.name.ends(t".scala")).map(_.as[File])
   
         val includes = module.includes.map(Engine.build(_)).map(_.await())
-          
         val step = Step(sourceFiles, includes, Nil)
-        Log.info(msg"Digest = ${step.digest.encodeAs[Base32]}")
-          
         val part = (math.random*36).toLong
           
         val progress = LazyList.range(0, 100).map: pc =>

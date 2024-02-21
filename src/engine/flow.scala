@@ -21,6 +21,6 @@ import galilei.*
 import rudiments.*
 
 
-class Flow():
+class Workflow():
   val classes: Mutex[List[Directory]] = Mutex(Nil)
   val files: Mutex[Map[WorkPath, Bytes]] = Mutex(Map())
