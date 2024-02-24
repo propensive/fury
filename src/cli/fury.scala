@@ -83,7 +83,9 @@ given (using Raises[UserError]): HomeDirectory =
   homeDirectories.virtualMachine
 
 given (using Cli): WorkingDirectory = workingDirectories.daemonClient 
-given installation(using Raises[ConfigError], Raises[SystemPropertyError]): Installation = Installation()
+given installation(using Raises[UserError]): Installation =
+  given (UserError fixes ConfigError) = error => UserError(msg"The configuration file could not be read.")
+  Installation()
 
 @main
 def main(): Unit =
@@ -92,29 +94,21 @@ def main(): Unit =
 
   throwErrors[CancelError]:
     supervise:
-      given logFormat: LogFormat[File, Output] = logFormats.standardColor[File]
-      given logFormat2: LogFormat[Err.type, Output] = logFormats.standardColor[Err.type]
+      given logFormat: LogFormat[File, Display] = logFormats.standardColor[File]
+      given logFormat2: LogFormat[Err.type, Display] = logFormats.standardColor[Err.type]
       import filesystemOptions.{createNonexistent, createNonexistentParents}
       
-      inline given Log[Output] = throwErrors[UserError]:
+      given Log[Display] = throwErrors[UserError]:
         given (UserError fixes IoError)             = error => UserError(msg"An IO error occured when trying to create the log")
         given (UserError fixes StreamError)         = error => UserError(msg"Stream error when logging")
-        given (UserError fixes ConfigError)         = error => UserError(msg"The configuration was not valid")
-        given (UserError fixes SystemPropertyError) = error => UserError(msg"The system property ${error.property} was not valid")
-      
-        compiletime.summonFrom:
-          case given Stdio => Log.route:
-            case _            => installation.config.log.path.as[File]
-            case Level.Warn() => Err
-          
-          case _ => Log.route:
-            case _ => installation.config.log.path.as[File]
+        
+        Log.route: 
+          case _ => installation.config.log.path.as[File]
 
       daemon[BusMessage]:
         try throwErrors[UserError]:
-          if Version().present then execute(versionInfo())
-          else safely(arguments.head) match
-            case Install() =>
+          if Version().present then execute(versionInfo()) else arguments match
+            case Install() :: _ =>
               val interactive = Interactive().present
               val force = Force().present
               val noTabCompletions = NoTabCompletions().present
@@ -132,68 +126,70 @@ def main(): Unit =
                     Out.println(userError.message)
                     ExitStatus.Fail(1)
 
-            case Init() =>
+            case Init() :: Nil =>
               val dir: Optional[Path] = safely(Dir()).or(safely(workingDirectory))
               val discover = Discover()
               execute:
                 dir.let(initializeBuild(_)).or:
                   abort(UserError(msg"The working directory could not be determined."))
 
-            case Config() =>
+            case Config() :: Nil =>
               execute:
-                given (UserError fixes SystemPropertyError) =
-                  case SystemPropertyError(property) => UserError(msg"The system property could not be read: $property")
-                
-                given (UserError fixes ConfigError) =
-                  case ConfigError(message) => UserError(msg"The configuration could not be read: $message")
-                
                 Out.println(installation.config.debug)
-                
                 ExitStatus.Ok
 
-            case Cache() => safely(arguments.tail.head) match
-              case Clean()   => execute(cleanCache())
-              case Details() => execute(cacheDetails())
-              case other     => execute(other.let(invalidSubcommand(_)).or(missingSubcommand()))
+            case Cache() :: subcommands => subcommands match
+              case Clean() :: Nil   => execute(cleanCache())
+              case Details() :: Nil => execute(cacheDetails())
+              case other :: _       => execute(other.let(invalidSubcommand(_)).or(missingSubcommand()))
+              case Nil              => execute:
+                Out.println(msg"Please specify a subcommand.")
+                ExitStatus.Fail(1)
 
-            case About() =>
+            case About() :: _ =>
               execute:
                 about()
                 ExitStatus.Ok
             
-            case Build() =>
-              safely(arguments.tail.head) match
-                case Unset =>
-                  execute:
-                    Out.println(t"Module has not been specified")
-                    ExitStatus.Fail(1)
+            case Build() :: subcommands => subcommands match
+              case Nil =>
+                execute:
+                  Out.println(t"Module has not been specified")
+                  ExitStatus.Fail(1)
 
-                case target =>
-                  safely(internet(false)(Workspace().locals())).let: map =>
-                    val refs = map.values.map(_.source).flatMap:
-                      case workspace: Workspace => workspace.build.projects.flatMap: project =>
-                        project.modules.map: module =>
-                          ModuleRef(project.id, module.id)
+              case target :: _ =>
+                val online = Offline().absent
+                given (UserError fixes IoError)   = accede
+                given (UserError fixes PathError) = accede
+                given (UserError fixes ExecError) = accede
+                
+                safely(internet(false)(Workspace().locals())).let: map =>
+                  val refs = map.values.map(_.source).flatMap:
+                    case workspace: Workspace => workspace.build.projects.flatMap: project =>
+                      project.modules.map: module =>
+                        ModuleRef(project.id, module.id)
 
-                    target.let(_.suggest(previous ++ refs.map(_.suggestion)))
+                  target.let(_.suggest(previous ++ refs.map(_.suggestion)))
+                
+                execute:
+                  given (UserError fixes InvalidRefError) = error => UserError(error.message)
                   
-                  execute:
+                  internet(online):
+                    runBuild(target().decodeAs[ModuleRef])
                     Out.println(t"TODO: Build ${target.let(_()).or(t"?")}")
                     ExitStatus.Fail(1)
                 
-            case Graph() =>
+            case Graph() :: Nil =>
               val online = Offline().absent
 
               execute:
-                given (UserError fixes PathError)           = error => UserError(error.message)
-                given (UserError fixes SystemPropertyError) = error => UserError(error.message)
-                given (UserError fixes CancelError)         = error => UserError(error.message)
-                given (UserError fixes IoError)             = error => UserError(error.message)
-                given (UserError fixes NumberError)         = error => UserError(error.message)
-                given (UserError fixes ConfigError)         = error => UserError(error.message)
-                given (UserError fixes WorkspaceError)      = error => UserError(error.message)
-                given (UserError fixes ExecError)           = error => UserError(error.message)
-                given (UserError fixes VaultError)          = error => UserError(error.message)
+                given (UserError fixes PathError)      = accede
+                given (UserError fixes CancelError)    = accede
+                given (UserError fixes IoError)        = accede
+                given (UserError fixes NumberError)    = accede
+                given (UserError fixes WorkspaceError) = accede
+                given (UserError fixes ExecError)      = accede
+                given (UserError fixes VaultError)     = accede
                 
                 internet(online):
                   val rootWorkspace = Workspace()
@@ -201,34 +197,32 @@ def main(): Unit =
                 
                 ExitStatus.Ok
             
-            case Universe() =>
+            case Universe() :: subcommands =>
               val online = Offline().absent
               val generation: Optional[Int] = safely(Generation())
               
-              safely(arguments.tail.head) match
-                case UniverseSearch() =>
+              subcommands match
+                case UniverseSearch() :: _ =>
                   execute:
                     Out.println(t"TODO: Search the universe")
                     ExitStatus.Ok
                 
-                case UniverseUpdate() =>
+                case UniverseUpdate() :: _ =>
                   execute:
                     Out.println(t"TODO: Update the universe")
                     ExitStatus.Fail(1)
 
-                case UniverseShow() | Unset =>
+                case Nil | (UniverseShow() :: _) =>
                   execute:
-                    given (UserError fixes PathError)           = error => UserError(error.message)
-                    given (UserError fixes SystemPropertyError) = error => UserError(error.message)
-                    given (UserError fixes CancelError)         = error => UserError(error.message)
-                    given (UserError fixes IoError)             = error => UserError(error.message)
-                    given (UserError fixes ConfigError)         = error => UserError(error.message)
-                    given (UserError fixes WorkspaceError)      = error => UserError(error.message)
-                    given (UserError fixes ExecError)           = error => UserError(error.message)
-                    given (UserError fixes VaultError)          = error => UserError(error.message)
+                    given (UserError fixes PathError)      = accede
+                    given (UserError fixes CancelError)    = accede
+                    given (UserError fixes IoError)        = accede
+                    given (UserError fixes WorkspaceError) = accede
+                    given (UserError fixes ExecError)      = accede
+                    given (UserError fixes VaultError)     = accede
                       
                     internet(online):
-                      val rootWorkspace = Workspace(workingDirectory)
+                      val rootWorkspace = Workspace()
                       given universe: Universe = rootWorkspace.universe()
                       val projects = universe.projects.to(List)
     
@@ -253,15 +247,22 @@ def main(): Unit =
     
                         ExitStatus.Ok
 
-                case command => execute:
+                case command :: _ => execute:
                   Out.println(e"Command $Italic(${command.vouch(using Unsafe)()}) was not recognized.")
                   ExitStatus.Fail(1)
                 
-            case Shutdown() => execute:
+            case Shutdown() :: Nil => execute:
               service.shutdown()
               ExitStatus.Ok
             
-            case subcommand =>
+            case Nil =>
+              given (UserError fixes WorkspaceError) = error => UserError(error.message)
+              execute:
+                Out.println(Workspace().build.actions.headOption.optional.debug)
+                ExitStatus.Fail(1)
+              
+
+            case subcommand :: _ =>
               safely(Workspace()).let: workspace =>
                 subcommand.let(_.suggest(previous ++ workspace.build.actions.map(_.suggestion)))
               
@@ -278,4 +279,5 @@ def main(): Unit =
             execute:
               Out.println(userError.message)
               ExitStatus.Fail(1)
+
 

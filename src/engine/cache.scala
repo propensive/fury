@@ -37,12 +37,17 @@ import serpentine.*, hierarchies.unixOrWindows
 import spectacular.*
 import turbulence.*
 
-import scala.collection.mutable as scm
+import scala.collection.concurrent as scc
 
 object Cache:
-  private val ecosystems: scm.HashMap[Ecosystem, Async[Vault]] = scm.HashMap()
-  private val snapshots: scm.HashMap[Snapshot, Async[Directory]] = scm.HashMap()
-  private val workspaces: scm.HashMap[Path, (Instant, Async[Workspace])] = scm.HashMap()
+  private val ecosystems: scc.TrieMap[Ecosystem, Async[Vault]] = scc.TrieMap()
+  private val snapshots: scc.TrieMap[Snapshot, Async[Directory]] = scc.TrieMap()
+  private val workspaces: scc.TrieMap[Path, (Instant, Async[Workspace])] = scc.TrieMap()
+
+  def clear(): Unit =
+    ecosystems.clear()
+    snapshots.clear()
+    workspaces.clear()
 
   def gitProgress(stream: LazyList[Progress]): LazyList[Activity] = stream.collect:
     case Progress.Receiving(percent)         => Activity.Progress(t"receiving", percent)
@@ -53,93 +58,59 @@ object Cache:
 
   def apply
       (snapshot: Snapshot)
-      (using Installation, Internet, Log[Output], Monitor, WorkingDirectory, GitCommand,
+      (using Installation, Internet, Log[Display], Monitor, WorkingDirectory, GitCommand,
           Raises[ExecError], Raises[PathError], Raises[IoError], Raises[GitError])
       : Async[Directory] =
-    snapshots.synchronized:
-      snapshots.getOrElseUpdate(snapshot, Async:
-        val destination = summon[Installation].snapshots.path / PathName(snapshot.commit.show)
+    snapshots.getOrElseUpdate(snapshot, Async:
+      val destination = summon[Installation].snapshots.path / PathName(snapshot.commit.show)
+      
+      if destination.exists() then destination.as[Directory] else
+        Log.info(msg"Cloning ${snapshot.url}")
+        val process = Git.cloneCommit(snapshot.url, destination, snapshot.commit)
+        gitProgress(process.progress).map(_.debug).each(Log.info(_))
         
-        if destination.exists() then destination.as[Directory] else
-          Log.info(msg"Cloning ${snapshot.url}")
-          val process = Git.cloneCommit(snapshot.url, destination, snapshot.commit)
-          Log.info(msg"Cloning ${snapshot.url}")
-          gitProgress(process.progress)
-          
-          process.complete().workTree.vouch(using Unsafe).also:
-            Log.info(msg"Finished cloning ${snapshot.url}")
-      )
+        process.complete().workTree.vouch(using Unsafe).also:
+          Log.info(msg"Finished cloning ${snapshot.url}")
+    )
         
   def apply
       (ecosystem: Ecosystem)
-      (using Installation, Internet, Log[Output], Monitor, WorkingDirectory, GitCommand)
+      (using Installation, Internet, Log[Display], Monitor, WorkingDirectory, GitCommand)
       : Async[Vault] raises VaultError =
-    ecosystems.synchronized:
-      ecosystems.getOrElseUpdate(ecosystem, Async:
+    ecosystems.getOrElseUpdate(ecosystem, Async:
 
-        given (VaultError fixes UrlError) =
-          case UrlError(_, _, _) => VaultError()
+      given (VaultError fixes UrlError)             = error => VaultError()
+      given (VaultError fixes InvalidRefError)      = error => VaultError()
+      given (VaultError fixes ExecError)            = error => VaultError()
+      given (VaultError fixes StreamError)          = error => VaultError()
+      given (VaultError fixes NumberError)          = error => VaultError()
+      given (VaultError fixes DateError)            = error => VaultError()
+      given (VaultError fixes GitError)             = error => VaultError()
+      given (VaultError fixes IoError)              = error => VaultError()
+      given (VaultError fixes GitRefError)          = error => VaultError()
+      given (VaultError fixes HostnameError)        = error => VaultError()
+      given (VaultError fixes UndecodableCharError) = error => VaultError()
+      given (VaultError fixes PathError)            = error => VaultError()
+      given (VaultError fixes NotFoundError)        = error => VaultError()
+      given (VaultError fixes CodlReadError)        = error => VaultError()
+      given (VaultError fixes MarkdownError)        = error => VaultError()
 
-        given (VaultError fixes InvalidRefError) =
-          case InvalidRefError(_, _) => VaultError()
+      val destination = installation.vault.path / PathName(ecosystem.id.show) / PathName(ecosystem.branch.show)
+      if !destination.exists() then
+        Log.info(msg"Cloning ${ecosystem.url}")
+        val process = Git.clone(ecosystem.url, destination, branch = ecosystem.branch)
+          
+        gitProgress(process.progress).map(_.debug).each(Log.info(_))
+          
+        process.complete().also:
+          Log.info(msg"Finished cloning ${ecosystem.url}")            
 
-        given (VaultError fixes ExecError) =
-          case ExecError(_, _, _) => VaultError()
+      Codl.read[Vault]((destination / p"vault.codl").as[File])
+    )
 
-        given (VaultError fixes StreamError) =
-          case StreamError(bytes) => VaultError()
-
-        given (VaultError fixes NumberError) =
-          case NumberError(_, _) => VaultError()
-
-        given (VaultError fixes DateError) =
-          case DateError(_) => VaultError()
-
-        given (VaultError fixes GitError) =
-          case GitError(_) => VaultError()
-
-        given (VaultError fixes IoError) =
-          case IoError(_) => VaultError()
-
-        given (VaultError fixes GitRefError) =
-          case GitRefError(_) => VaultError()
-
-        given (VaultError fixes HostnameError) =
-          case HostnameError(_, _) => VaultError()
-
-        given (VaultError fixes UndecodableCharError) =
-          case UndecodableCharError(_, _) => VaultError()
-
-        given (VaultError fixes PathError) =
-          case PathError(_, _) => VaultError()
-
-        given (VaultError fixes NotFoundError) =
-          case NotFoundError(_) => VaultError()
-
-        given (VaultError fixes CodlReadError) =
-          case CodlReadError(_) => VaultError()
-        
-        given (VaultError fixes MarkdownError) =
-          case MarkdownError(_) => VaultError()
-
-        val destination = installation.vault.path / PathName(ecosystem.id.show) / PathName(ecosystem.branch.show)
-        if !destination.exists() then
-          Log.info(msg"Cloning ${ecosystem.url}")
-          val process = Git.clone(ecosystem.url, destination, branch = ecosystem.branch)
-            
-          Log.info(msg"Cloning ${ecosystem.url}")
-          gitProgress(process.progress)
-            
-          process.complete().also:
-            Log.info(msg"Finished cloning ${ecosystem.url}")            
-
-        Codl.read[Vault]((destination / p"vault.codl").as[File])
-      )
-
-  // FIXME: No synchronization; should use a mutex instead
   def workspace
       (path: Path)
-      (using Installation, Internet, Log[Output], Monitor, WorkingDirectory, GitCommand)
+      (using Installation, Internet, Log[Display], Monitor, WorkingDirectory, GitCommand)
       : Async[Workspace] raises WorkspaceError =
     given (WorkspaceError fixes IoError) =
       case IoError(path) => WorkspaceError(WorkspaceError.Reason.Unreadable(path))

@@ -26,6 +26,7 @@ import ambience.*, systemProperties.virtualMachine
 import exoskeleton.*
 import fulminate.*
 import hallucination.*
+import iridescence.*
 import galilei.*
 import gastronomy.*
 import gossamer.*
@@ -35,6 +36,7 @@ import hellenism.*, classloaders.threadContext
 import hieroglyph.*, charDecoders.utf8, badEncodingHandlers.skip, textMetrics.uniform
 import vacuous.*
 import eucalyptus.*
+import dendrology.*, dagStyles.default
 import serpentine.*
 import ethereal.*
 import escapade.*
@@ -42,11 +44,13 @@ import octogenarian.*
 import escritoire.*, tableStyles.minimalist
 import contingency.*
 
+def accede(error: Error): UserError = UserError(error.message)
+  
 case class UserError(userMessage: Message) extends Error(userMessage)
 
 def installInteractive
     (force: Boolean, noTabCompletions: Boolean)
-    (using DaemonService[?], Terminal, Log[Output], SystemProperties, Environment, WorkingDirectory,
+    (using DaemonService[?], Terminal, Log[Display], SystemProperties, Environment, WorkingDirectory,
         HomeDirectory, Effectful)
     : ExitStatus raises UserError =
   given (UserError fixes InstallError) =
@@ -70,7 +74,7 @@ def installInteractive
 
 def installBatch
     (force: Boolean, noTabCompletions: Boolean)
-    (using DaemonService[?], Stdio, Log[Output], SystemProperties, Environment, WorkingDirectory, HomeDirectory,
+    (using DaemonService[?], Stdio, Log[Display], SystemProperties, Environment, WorkingDirectory, HomeDirectory,
         Effectful)
     : ExitStatus raises UserError =
   given (UserError fixes InstallError) =
@@ -93,7 +97,7 @@ def cacheDetails()(using Stdio): ExitStatus raises UserError =
   ExitStatus.Ok
 
 def runBuild(ref: ModuleRef)
-    (using Stdio, WorkingDirectory, Monitor, Log[Output], Internet, Installation, GitCommand)
+    (using Stdio, WorkingDirectory, Monitor, Log[Display], Internet, Installation, GitCommand)
     : ExitStatus raises UserError =
   given (UserError fixes WorkspaceError) = error => UserError(error.message)
   given (UserError fixes BuildError)     = error => UserError(error.message)
@@ -102,7 +106,11 @@ def runBuild(ref: ModuleRef)
 
   val workspace = Workspace()
   given universe: Universe = workspace.universe()
-  Engine.build(ref)
+  
+  Engine.buildGraph(Engine.build(ref).await()).render: step =>
+    e"▪ ${colors.Khaki}(${step.ref.projectId})${colors.Gray}(/)${colors.MediumAquamarine}(${step.ref.moduleId})"
+  .each(Out.println(_))
+  
   ExitStatus.Ok
 
 def invalidSubcommand(command: Argument)(using Stdio): ExitStatus raises UserError =
@@ -140,7 +148,7 @@ def about()(using Stdio): ExitStatus =
     Column(e"$Bold(Version)")(_.version.display),
     Column(e"$Bold(Copyright)")(_.copyright.display)
   ).tabulate(List(
-    Software(t"Fury", t"0.0${buildId.lay(t"") { id => t", build $id"}}", t"2017-2023, Propensive"),
+    Software(t"Fury", t"1.0${buildId.lay(t"") { id => t", build $id"}}", t"2017-2024, Propensive"),
     Software(t"Scala", scalaProperties(t"version.number"), scalaProperties(t"copyright.string").sub(t"Copyright ", t"")),
     unsafely(Software(t"Java distribution", Properties.java.version(), Properties.java.vendor())),
     unsafely(Software(t"Java specification", Properties.java.vm.specification.version(), Properties.java.vm.specification.vendor()))

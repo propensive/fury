@@ -29,7 +29,7 @@ project fury
 
   module engine
     compiler  scala
-    include   fury/model  feudalism/core  anthology/scala
+    include   fury/model  feudalism/core  anthology/scala  dendrology/dag
     sources   src/engine
 
   module cli
