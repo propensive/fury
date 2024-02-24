@@ -93,17 +93,17 @@ case class LogConfig(path: Path = Unix / p"var" / p"log" / p"fury.log")
 case class BuildError() extends Error(msg"the build could not run")
 
 object Engine:
-  private val steps: scc.TrieMap[Digest[Sha2[256]], Step] = scc.TrieMap()
-  private val builds: scc.TrieMap[ModuleRef, Async[Digest[Sha2[256]]]] = scc.TrieMap()
+  private val steps: scc.TrieMap[Hash, Step] = scc.TrieMap()
+  private val builds: scc.TrieMap[ModuleRef, Async[Hash]] = scc.TrieMap()
 
   given expandable: Expandable[Step] = _.dependencies.map(steps(_))
 
-  def buildGraph(digest: Digest[Sha2[256]]): DagDiagram[Step] =
+  def buildGraph(digest: Hash): DagDiagram[Step] =
     DagDiagram(Dag.create(steps(digest))(_.dependencies.to(Set).map(steps(_))))
 
   def build(moduleRef: ModuleRef)(using universe: Universe)
-      (using Monitor, Clock, Log[Display], Stdio, WorkingDirectory, Internet, Installation, GitCommand)
-      : Async[Digest[Sha2[256]]] raises BuildError =
+      (using Monitor, Clock, Log[Display], WorkingDirectory, Internet, Installation, GitCommand)
+      : Async[Hash] raises BuildError =
     builds.getOrElseUpdate(moduleRef, Async:
       Log.info(msg"Starting computation of $moduleRef")
 
@@ -189,7 +189,7 @@ enum Compiler:
 
 object Step:
   def apply
-      (ref: ModuleRef, sources: List[File], dependencies: List[Digest[Sha2[256]]], binaries: List[Digest[Sha2[256]]])
+      (ref: ModuleRef, sources: List[File], dependencies: List[Hash], binaries: List[Hash])
       (using Raises[StreamError], Raises[IoError]): Step =
     import badEncodingHandlers.skip
     
@@ -199,5 +199,5 @@ object Step:
     Step(ref, sourceMap, dependencies, binaries, digest)
 
 case class Step
-    (ref: ModuleRef, sources: Map[Path, Text], dependencies: List[Digest[Sha2[256]]],
-        binaries: List[Digest[Sha2[256]]], digest: Digest[Sha2[256]])
+    (ref: ModuleRef, sources: Map[Path, Text], dependencies: List[Hash],
+        binaries: List[Hash], digest: Hash)

@@ -18,34 +18,39 @@ package fury
 
 import ambience.*, systemProperties.virtualMachine, environments.virtualMachine
 import anticipation.*
-import galilei.*, filesystemInterfaces.galileiApi, filesystemOptions.dereferenceSymlinks
-import parasite.*, threadModels.platform
-import gossamer.*
-import escapade.*
-import guillotine.*
-import eucalyptus.*
 import aviation.*
-import iridescence.*, colors.*
-import fulminate.*
-import rudiments.*, homeDirectories.virtualMachine
-import vacuous.*
-import hieroglyph.*, charEncoders.utf8
-import nettlesome.*
-import serpentine.*, hierarchies.unixOrWindows
-import punctuation.*
-import spectacular.*
-import exoskeleton.*, executives.completions, unhandledErrors.stackTrace, parameterInterpretation.posix
 import contingency.*
+import escapade.*
+import escritoire.*, tableStyles.default
 import ethereal.*, daemonConfig.supportStderr
+import eucalyptus.*
+import exoskeleton.*, executives.completions, unhandledErrors.stackTrace, parameterInterpretation.posix
+import fulminate.*
+import galilei.*, filesystemInterfaces.galileiApi, filesystemOptions.dereferenceSymlinks
+import gastronomy.*
+import gossamer.*
+import guillotine.*
+import hallucination.*
+import hellenism.*, classloaders.threadContext
+import hieroglyph.*, charDecoders.utf8, charEncoders.utf8, badEncodingHandlers.strict, textMetrics.uniform
+import iridescence.*, colors.*
+import kaleidoscope.*
+import nettlesome.*
+import parasite.*, threadModels.platform
 import profanity.*, terminalOptions.terminalSizeDetection
+import punctuation.*
+import rudiments.*, homeDirectories.virtualMachine
+import serpentine.*, hierarchies.unixOrWindows
+import spectacular.*
 import turbulence.*
+import vacuous.*
 
 enum BusMessage:
   case Ping
 
 given Realm = realm"fury"
 
-object userInterface:
+object cli:
   val Version = Switch(t"version", false, List('v'), t"Show information about the current version of Fury")
   val Interactive = Switch(t"interactive", false, List('i'), t"Run the command interactively")
   val NoTabCompletions = Switch(t"no-tab-completions", false, Nil, t"Do not install tab completions")
@@ -88,7 +93,7 @@ given installation(using Raises[UserError]): Installation =
 
 @main
 def main(): Unit =
-  import userInterface.*
+  import cli.*
   import unsafeExceptions.canThrowAny
 
   throwErrors[CancelError]:
@@ -106,7 +111,10 @@ def main(): Unit =
 
       daemon[BusMessage]:
         try throwErrors[UserError]:
-          if Version().present then execute(versionInfo()) else arguments match
+          
+          given frontEnd: FrontEnd = terminal(CliFrontEnd())
+          
+          if Version().present then execute(actions.versionInfo()) else arguments match
             case Install() :: _ =>
               val interactive = Interactive().present
               val force = Force().present
@@ -114,8 +122,8 @@ def main(): Unit =
               
               execute:
                 try throwErrors[UserError]:
-                  if interactive then terminal(installInteractive(force, noTabCompletions))
-                  else installBatch(force, noTabCompletions)
+                  if interactive then terminal(actions.install.interactive(force, noTabCompletions))
+                  else actions.install.batch(force, noTabCompletions)
                   
                   service.shutdown()
                   ExitStatus.Ok
@@ -129,7 +137,7 @@ def main(): Unit =
               val dir: Optional[Path] = safely(Dir()).or(safely(workingDirectory))
               val discover = Discover()
               execute:
-                dir.let(initializeBuild(_)).or:
+                dir.let(actions.build.initialize(_)).or:
                   abort(UserError(msg"The working directory could not be determined."))
 
             case Config() :: Nil =>
@@ -138,18 +146,14 @@ def main(): Unit =
                 ExitStatus.Ok
 
             case Cache() :: subcommands => subcommands match
-              case Clean() :: Nil   => execute(cleanCache())
-              case Details() :: Nil => execute(cacheDetails())
-              case other :: _       => execute(other.let(invalidSubcommand(_)).or(missingSubcommand()))
+              case Clean() :: Nil   => execute(actions.cache.clean())
+              case Details() :: Nil => execute(actions.cache.info())
+              case other :: _       => execute(other.let(actions.invalidSubcommand(_)).or(actions.missingSubcommand()))
               case Nil              => execute:
                 Out.println(msg"Please specify a subcommand.")
                 ExitStatus.Fail(1)
 
-            case About() :: _ =>
-              execute:
-                about()
-                ExitStatus.Ok
-            
+            case About() :: _ => execute(about())
             case Build() :: subcommands => subcommands match
               case Nil =>
                 execute:
@@ -174,7 +178,7 @@ def main(): Unit =
                   given (UserError fixes InvalidRefError) = error => UserError(error.message)
                   
                   internet(online):
-                    runBuild(target().decodeAs[ModuleRef])
+                    actions.build.run(target().decodeAs[ModuleRef])
                     Out.println(t"TODO: Build ${target.let(_()).or(t"?")}")
                     ExitStatus.Fail(1)
                 
@@ -210,9 +214,8 @@ def main(): Unit =
                   ExitStatus.Fail(1)
 
                 case Nil | (UniverseShow() :: _) => execute:
-                  terminal:
-                    internet(online):
-                      showUniverse()
+                  internet(online):
+                    actions.universe.show()
 
                 case command :: _ => execute:
                   Out.println(e"Command $Italic(${command.vouch(using Unsafe)()}) was not recognized.")
@@ -247,4 +250,41 @@ def main(): Unit =
               Out.println(userError.message)
               ExitStatus.Fail(1)
 
+def about()(using Stdio): ExitStatus =
+  safely(Out.println(Image((Classpath / p"logo.png")()).render))
+  val asciiArt = t"H4sIAAAAAAAA/31Ryw3AIAi9O8UbtfHcQw8wRrUzMUmTKlSx1HgA3ocXFT6FtulySUIZEIO49gllLcjIA62MmgkY3"+
+      t"UOBeu+2VrdCCxfsm2RhAQQOD7aCq5KvtiTQTnDqbZ/gbf0LV8dcqUdzxN+x1CHBfa7mjPlh4HQDGOnRlikCAAA="
 
+  unsafely(asciiArt.decode[Base64]).gunzip.utf8.cut(t"\n").each: line =>
+    Out.print(t" "*19)
+    Out.println(line)
+  
+  val buildId = safely:
+    val resource = Classpath / p"build.id"
+    resource().readAs[Text].trim
+  
+  val scalaProperties = unsafely:
+    val resource = Classpath / p"compiler.properties"
+
+    resource().readAs[Text].cut(t"\n").flatMap:
+      case r"$key([^=]*)=$value(.*)" => List(key -> value)
+      case _                         => Nil
+    .to(Map)
+
+  case class Software(name: Text, version: Text, copyright: Text)
+
+  Table[Software](
+    Column(e"$Bold(Component)", align = Alignment.Right): software =>
+      e"$Bold(${software.name})",
+    Column(e"$Bold(Version)")(_.version.display),
+    Column(e"$Bold(Copyright)")(_.copyright.display)
+  ).tabulate(List(
+    Software(t"Fury", t"1.0${buildId.lay(t"") { id => t", build $id"}}", t"2017-2024, Propensive"),
+    Software(t"Scala", scalaProperties(t"version.number"), scalaProperties(t"copyright.string").sub(t"Copyright ", t"")),
+    unsafely(Software(t"Java distribution", Properties.java.version(), Properties.java.vendor())),
+    unsafely(Software(t"Java specification", Properties.java.vm.specification.version(), Properties.java.vm.specification.vendor()))
+  ))(72).each(Out.println(_))
+
+  safely(Out.println(e"  ${Italic}(${Properties.os.name()} ${Properties.os.version()}, ${Properties.os.arch()})\n"))
+  
+  ExitStatus.Ok

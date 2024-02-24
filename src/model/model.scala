@@ -43,6 +43,8 @@ export gitCommands.environmentDefault
 
 erased given CanThrow[AppError] = ###
 
+type Hash = Digest[Sha2[256]]
+
 // FIXME: This shouldn't need to exist. AggregateError needs to be replaced.
 given (using CanThrow[AppError]): Raises[AggregateError[Error]] =
   new Raises[AggregateError[Error]]:

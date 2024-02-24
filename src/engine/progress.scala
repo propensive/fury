@@ -18,6 +18,19 @@ package fury
 
 import anticipation.*
 
+enum Task:
+  case Download(digest: Hash)
+  case Compile(digest: Hash)
+  case Clone(digest: Hash)
+
+def inform[InfoType](info: InfoType)(using frontEnd: FrontEnd): Unit = frontEnd.inform(info)
+
+trait FrontEnd:
+  def schedule(task: Task): Unit
+  def update(task: Task): Unit
+  def complete(task: Task): Unit
+  def inform[InfoType](info: InfoType): Unit
+
 enum Activity:
   case Progress(stage: Text, progress: Double)
   case Complete
