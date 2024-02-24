@@ -16,33 +16,34 @@
 
 package fury
 
-import rudiments.*
-import profanity.*
-import nettlesome.*
-import turbulence.*
-import kaleidoscope.*
-import spectacular.*
 import ambience.*, systemProperties.virtualMachine
+import anticipation.*
+import contingency.*
+import dendrology.*, dagStyles.default
+import escapade.*
+import escritoire.*, tableStyles.minimalist
+import ethereal.*
+import eucalyptus.*
 import exoskeleton.*
 import fulminate.*
-import hallucination.*
-import iridescence.*
 import galilei.*
 import gastronomy.*
 import gossamer.*
-import anticipation.*
-import parasite.*
+import guillotine.*
+import hallucination.*
 import hellenism.*, classloaders.threadContext
 import hieroglyph.*, charDecoders.utf8, badEncodingHandlers.skip, textMetrics.uniform
-import vacuous.*
-import eucalyptus.*
-import dendrology.*, dagStyles.default
-import serpentine.*
-import ethereal.*
-import escapade.*
+import iridescence.*, colors.*
+import kaleidoscope.*
+import nettlesome.*
 import octogenarian.*
-import escritoire.*, tableStyles.minimalist
-import contingency.*
+import parasite.*
+import profanity.*
+import rudiments.*
+import serpentine.*, hierarchies.unixOrWindows
+import spectacular.*
+import turbulence.*
+import vacuous.*
 
 def accede(error: Error): UserError = UserError(error.message)
   
@@ -96,6 +97,39 @@ def cacheDetails()(using Stdio): ExitStatus raises UserError =
   Out.println(t"Details of the cache")
   ExitStatus.Ok
 
+def showUniverse()(using Internet, Terminal, WorkingDirectory, Monitor, Log[Display]): ExitStatus raises UserError =
+  given (UserError fixes PathError)      = accede
+  given (UserError fixes CancelError)    = accede
+  given (UserError fixes IoError)        = accede
+  given (UserError fixes WorkspaceError) = accede
+  given (UserError fixes ExecError)      = accede
+  given (UserError fixes VaultError)     = accede
+    
+  internet(online):
+    val rootWorkspace = Workspace()
+    given universe: Universe = rootWorkspace.universe()
+    val projects = universe.projects.to(List)
+
+    Async(terminal.events.each(_ => ()))
+      
+    val table = Table[(ProjectId, Definition)](
+      Column(e"$Bold(Project)"): (project, definition) =>
+        e"${definition.name}",
+        // definition.website.lay(e"${definition.name}"): website =>
+        //   e"${escapes.link(website, definition.name)}",
+      Column(e"$Bold(ID)")(_(0)),
+      Column(e"$Bold(Description)")(_(1).description),
+      Column(e"$Bold(Source)"): (_, definition) =>
+        definition.source match
+          case workspace: Workspace => e"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
+          case vault: Vault         => e"$DeepSkyBlue(${vault.name})"
+    )
+    
+    table.tabulate(projects, terminal.knownColumns, DelimitRows.SpaceIfMultiline)
+      .each(Out.println(_))
+
+    ExitStatus.Ok
+
 def runBuild(ref: ModuleRef)
     (using Stdio, WorkingDirectory, Monitor, Log[Display], Internet, Installation, GitCommand)
     : ExitStatus raises UserError =
@@ -108,7 +142,7 @@ def runBuild(ref: ModuleRef)
   given universe: Universe = workspace.universe()
   
   Engine.buildGraph(Engine.build(ref).await()).render: step =>
-    e"▪ ${colors.Khaki}(${step.ref.projectId})${colors.Gray}(/)${colors.MediumAquamarine}(${step.ref.moduleId})"
+    e"▪ ${Khaki}(${step.ref.projectId})${Gray}(/)${MediumAquamarine}(${step.ref.moduleId})"
   .each(Out.println(_))
   
   ExitStatus.Ok

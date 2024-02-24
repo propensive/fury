@@ -33,7 +33,6 @@ import hieroglyph.*, charEncoders.utf8
 import nettlesome.*
 import serpentine.*, hierarchies.unixOrWindows
 import punctuation.*
-import escritoire.*, tableStyles.horizontal, textMetrics.eastAsianScripts
 import spectacular.*
 import exoskeleton.*, executives.completions, unhandledErrors.stackTrace, parameterInterpretation.posix
 import contingency.*
@@ -202,50 +201,18 @@ def main(): Unit =
               val generation: Optional[Int] = safely(Generation())
               
               subcommands match
-                case UniverseSearch() :: _ =>
-                  execute:
-                    Out.println(t"TODO: Search the universe")
-                    ExitStatus.Ok
+                case UniverseSearch() :: _ => execute:
+                  Out.println(t"TODO: Search the universe")
+                  ExitStatus.Ok
                 
-                case UniverseUpdate() :: _ =>
-                  execute:
-                    Out.println(t"TODO: Update the universe")
-                    ExitStatus.Fail(1)
+                case UniverseUpdate() :: _ => execute:
+                  Out.println(t"TODO: Update the universe")
+                  ExitStatus.Fail(1)
 
-                case Nil | (UniverseShow() :: _) =>
-                  execute:
-                    given (UserError fixes PathError)      = accede
-                    given (UserError fixes CancelError)    = accede
-                    given (UserError fixes IoError)        = accede
-                    given (UserError fixes WorkspaceError) = accede
-                    given (UserError fixes ExecError)      = accede
-                    given (UserError fixes VaultError)     = accede
-                      
+                case Nil | (UniverseShow() :: _) => execute:
+                  terminal:
                     internet(online):
-                      val rootWorkspace = Workspace()
-                      given universe: Universe = rootWorkspace.universe()
-                      val projects = universe.projects.to(List)
-    
-                      terminal:
-                        Async(terminal.events.each(_ => ()))
-                          
-                        val table = Table[(ProjectId, Definition)](
-                          Column(e"$Bold(Project)"): (project, definition) =>
-                            e"${definition.name}",
-                            // definition.website.lay(e"${definition.name}"): website =>
-                            //   e"${escapes.link(website, definition.name)}",
-                          Column(e"$Bold(ID)")(_(0)),
-                          Column(e"$Bold(Description)")(_(1).description),
-                          Column(e"$Bold(Source)"): (_, definition) =>
-                            definition.source match
-                              case workspace: Workspace => e"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
-                              case vault: Vault         => e"$DeepSkyBlue(${vault.name})"
-                        )
-                        
-                        table.tabulate(projects, terminal.knownColumns, DelimitRows.SpaceIfMultiline)
-                          .each(Out.println(_))
-    
-                        ExitStatus.Ok
+                      showUniverse()
 
                 case command :: _ => execute:
                   Out.println(e"Command $Italic(${command.vouch(using Unsafe)()}) was not recognized.")
@@ -263,17 +230,17 @@ def main(): Unit =
               
 
             case subcommand :: _ =>
-              safely(Workspace()).let: workspace =>
+              val workspace = safely(Workspace())
+              
+              workspace.let: workspace =>
                 subcommand.let(_.suggest(previous ++ workspace.build.actions.map(_.suggestion)))
               
               execute:
-                safely(Workspace()).let: workspace =>
+                workspace.lay(ExitStatus.Fail(2)): workspace =>
                   Out.println(workspace.debug)
   
                   Out.println(t"Unrecognized subcommand: ${subcommand.let(_()).or(t"")}.")
                   ExitStatus.Fail(1)
-                .or:
-                  ExitStatus.Fail(2)
         catch
           case userError: UserError =>
             execute:
