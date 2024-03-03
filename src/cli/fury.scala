@@ -21,7 +21,7 @@ import anticipation.*
 import aviation.*
 import contingency.*
 import escapade.*
-import escritoire.*, tableStyles.default, insufficientSpaceHandling.ignore
+import escritoire.*, tableStyles.minimal, insufficientSpaceHandling.ignore
 import ethereal.*, daemonConfig.supportStderr
 import eucalyptus.*
 import exoskeleton.*, executives.completions, unhandledErrors.stackTrace, parameterInterpretation.posix
@@ -59,7 +59,9 @@ object cli:
   val Force = Switch(t"force", false, List('F'), t"Overwrite existing files if necessary")
   def Dir(using Raises[PathError]) = Flag[Path](t"dir", false, List('d'), t"Specify the working directory")
   val Offline = Switch(t"offline", false, List('o'), t"Work offline, if possible")
-  def Generation(using Raises[NumberError]) = Flag[Int](t"generation", false, List('g'), t"Use universe generation number")
+  
+  def Generation(using Raises[NumberError]) =
+    Flag[Int](t"generation", false, List('g'), t"Use universe generation number")
 
   val About = Subcommand(t"about", e"About Fury")
   val Build = Subcommand(t"build", e"Start a new build (default)")
@@ -102,8 +104,11 @@ def main(): Unit =
       import filesystemOptions.{createNonexistent, createNonexistentParents}
       
       given Log[Display] = throwErrors[UserError]:
-        given (UserError fixes IoError)             = error => UserError(msg"An IO error occured when trying to create the log")
-        given (UserError fixes StreamError)         = error => UserError(msg"Stream error when logging")
+        given (UserError fixes IoError) =
+          error => UserError(msg"An IO error occured when trying to create the log")
+        
+        given (UserError fixes StreamError) =
+          error => UserError(msg"Stream error when logging")
         
         Log.route: 
           case _ => installation.config.log.path.as[File]
@@ -148,10 +153,14 @@ def main(): Unit =
             case Cache() :: subcommands => subcommands match
               case Clean() :: Nil   => execute(actions.cache.clean())
               case Details() :: Nil => execute(actions.cache.info())
-              case other :: _       => execute(other.let(actions.invalidSubcommand(_)).or(actions.missingSubcommand()))
-              case Nil              => execute:
-                Out.println(msg"Please specify a subcommand.")
-                ExitStatus.Fail(1)
+              
+              case other :: _ =>
+                execute(other.let(actions.invalidSubcommand(_)).or(actions.missingSubcommand()))
+              
+              case Nil =>
+                execute:
+                  Out.println(msg"Please specify a subcommand.")
+                  ExitStatus.Fail(1)
 
             case About() :: _ => execute(about())
             case Build() :: subcommands => subcommands match
@@ -244,6 +253,7 @@ def main(): Unit =
   
                   Out.println(t"Unrecognized subcommand: ${subcommand.let(_()).or(t"")}.")
                   ExitStatus.Fail(1)
+
         catch
           case userError: UserError =>
             execute:
@@ -278,6 +288,13 @@ def about()(using Stdio): ExitStatus =
   val scalaCopyright = scalaProperties(t"copyright.string").sub(t"Copyright ", t"")
   val jvmVersion = unsafely(Properties.java.vm.specification.version())
   val jvmVendor = unsafely(Properties.java.vm.specification.vendor())
+  
+  val software =
+    List
+      (Software(t"Fury", t"1.0${buildId.lay(t"") { id => t", build $id"}}", t"2017-2024, Propensive"),
+       Software(t"Scala", scalaProperties(t"version.number"), scalaCopyright),
+       unsafely(Software(t"Java distribution", Properties.java.version(), Properties.java.vendor())),
+       Software(t"Java specification", jvmVersion, jvmVendor))
 
   Out.println:
     Table[Software]
@@ -285,12 +302,9 @@ def about()(using Stdio): ExitStatus =
         e"$Bold(${software.name})",
        Column(e"$Bold(Version)")(_.version.display),
        Column(e"$Bold(Copyright)")(_.copyright.display))
-    .tabulate(List(
-      Software(t"Fury", t"1.0${buildId.lay(t"") { id => t", build $id"}}", t"2017-2024, Propensive"),
-      Software(t"Scala", scalaProperties(t"version.number"), scalaCopyright),
-      unsafely(Software(t"Java distribution", Properties.java.version(), Properties.java.vendor())),
-      Software(t"Java specification", jvmVersion, jvmVendor)
-    )).layout(72)
+    .tabulate(software).layout(72)
+  
+  Out.println()
 
   safely:
     Out.println:

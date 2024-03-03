@@ -53,7 +53,8 @@ object Installation:
     given (ConfigError fixes StreamError) = error => ConfigError(msg"The stream was cut while reading a file")
     
     given (ConfigError fixes EnvironmentError) =
-      case EnvironmentError(variable) => ConfigError(msg"The environment variable $variable could not be accessed")
+      case EnvironmentError(variable) =>
+        ConfigError(msg"The environment variable $variable could not be accessed")
     
     given (ConfigError fixes UndecodableCharError) = error =>
       ConfigError(msg"The configuration file contained bad character data")
@@ -117,8 +118,11 @@ object Engine:
       given (BuildError fixes CancelError)     = error => BuildError()
       
       val workspace = universe(moduleRef.projectId).source match
-        case vault: Vault         => Workspace(Cache(vault.index.releases(moduleRef.projectId).repo).await().path)
-        case workspace: Workspace => workspace
+        case vault: Vault =>
+          Workspace(Cache(vault.index.releases(moduleRef.projectId).repo).await().path)
+        
+        case workspace: Workspace =>
+          workspace
         
       val project: Project = workspace(moduleRef.projectId)
       val module = project(moduleRef.moduleId)
@@ -138,7 +142,8 @@ object Engine:
 extension (workspace: Workspace)
   def locals(ancestors: Set[Path] = Set())
       (using Monitor, Log[Display], WorkingDirectory, Internet, Installation, GitCommand)
-      : Map[ProjectId, Definition] raises CancelError raises WorkspaceError =
+          : Map[ProjectId, Definition] raises CancelError raises WorkspaceError =
+
     workspace.local.let: local =>
       local.forks.map: fork =>
         val workspace = Cache.workspace(fork.path).await()
@@ -149,7 +154,8 @@ extension (workspace: Workspace)
   
   def universe()
       (using Monitor, Clock, Log[Display], WorkingDirectory, Internet, Installation, GitCommand)
-      : Universe raises CancelError raises VaultError raises WorkspaceError =
+          : Universe raises CancelError raises VaultError raises WorkspaceError =
+
     given Timezone = tz"Etc/UTC"
     val vaultProjects = Cache(workspace.ecosystem).await()
     val localProjects = locals()
@@ -163,11 +169,19 @@ extension (workspace: Workspace)
 
   def apply(projectId: ProjectId): Project = workspace.projects(projectId)
 
-  def apply
-      (path: WorkPath)
-      (using Installation, Internet, Monitor, WorkingDirectory, Log[Display],
-          Raises[CancelError], Raises[GitError], Raises[PathError], Raises[ExecError], Raises[IoError])
-      : Directory =
+  def apply(path: WorkPath)
+      (using Installation,
+             Internet,
+             Monitor,
+             WorkingDirectory,
+             Log[Display],
+             Raises[CancelError],
+             Raises[GitError],
+             Raises[PathError],
+             Raises[ExecError],
+             Raises[IoError])
+          : Directory =
+
     workspace.mounts.keys.find(_.precedes(path)).match
       case None        => workspace.directory.path + path.link
       case Some(mount) => Cache(workspace.mounts(mount).repo).await().path + path.link
@@ -188,9 +202,10 @@ enum Compiler:
     case Kotlin  => name.ends(t".kt")
 
 object Step:
-  def apply
-      (ref: ModuleRef, sources: List[File], dependencies: List[Hash], binaries: List[Hash])
-      (using Raises[StreamError], Raises[IoError]): Step =
+  def apply(ref: ModuleRef, sources: List[File], dependencies: List[Hash], binaries: List[Hash])
+      (using Raises[StreamError], Raises[IoError])
+          : Step =
+
     import badEncodingHandlers.skip
     
     val sourceMap = sources.map { file => file.path -> file.readAs[Text] }.to(Map)
@@ -199,5 +214,8 @@ object Step:
     Step(ref, sourceMap, dependencies, binaries, digest)
 
 case class Step
-    (ref: ModuleRef, sources: Map[Path, Text], dependencies: List[Hash],
-        binaries: List[Hash], digest: Hash)
+    (ref:          ModuleRef,
+     sources:      Map[Path, Text],
+     dependencies: List[Hash],
+     binaries:     List[Hash],
+     digest:       Hash)

@@ -74,7 +74,9 @@ object Ids:
   class GitRefType[Type](ref: Text) extends RefType(ref):
     def apply(value: Text)(using Raises[InvalidRefError]): Type =
       value.cut(t"/").each: part =>
-        if part.starts(t".") || part.ends(t".") then raise(InvalidRefError(value, this))(GitRefType[Type](value))
+        if part.starts(t".") || part.ends(t".")
+        then raise(InvalidRefError(value, this))(GitRefType[Type](value))
+        
         if part.ends(t".lock") then raise(InvalidRefError(value, this))(GitRefType[Type](value))
         if part.contains(t"@{") then raise(InvalidRefError(value, this))(GitRefType[Type](value))
         if part.contains(t"..") then raise(InvalidRefError(value, this))(GitRefType[Type](value))
@@ -89,18 +91,24 @@ object Ids:
   object Package extends RefType(t"package name"):
     def apply(value: Text)(using Raises[InvalidRefError]): Package = value match
       case r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*" => value.asInstanceOf[Package]
-      case _                                      => raise(InvalidRefError(value, this))(value.asInstanceOf[Package])
+      
+      case _ =>
+        raise(InvalidRefError(value, this))(value.asInstanceOf[Package])
 
   object LicenseId extends RefType(t"license ID"):
     def unsafe(value: Text) = value.asInstanceOf[LicenseId]
     def apply(value: Text)(using Raises[InvalidRefError]): LicenseId = value match
       case r"[a-z]([-.]?[a-z0-9])*" => value.asInstanceOf[LicenseId]
-      case _                        => raise(InvalidRefError(value, this))(value.asInstanceOf[LicenseId])
+      
+      case _ =>
+        raise(InvalidRefError(value, this))(value.asInstanceOf[LicenseId])
   
   object ClassName extends RefType(t"class name"):
     def apply(value: Text)(using Raises[InvalidRefError]): Package = value match
       case r"[a-z][a-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)*" => value.asInstanceOf[ClassName]
-      case _                                            => raise(InvalidRefError(value, this))(value.asInstanceOf[ClassName])
+      
+      case _ =>
+        raise(InvalidRefError(value, this))(value.asInstanceOf[ClassName])
 
 
   given ecosystemIdShow: Show[EcosystemId] = identity(_)

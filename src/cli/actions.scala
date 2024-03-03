@@ -44,11 +44,19 @@ case class UserError(userMessage: Message) extends Error(userMessage)
 
 object actions:
   object install:
-    def interactive
-        (force: Boolean, noTabCompletions: Boolean)
-        (using DaemonService[?], Log[Display], SystemProperties, Environment, WorkingDirectory,
-            HomeDirectory, Effectful, FrontEnd, Terminal, Stdio)
-        : ExitStatus raises UserError =
+    def interactive(force: Boolean, noTabCompletions: Boolean)
+        (using DaemonService[?],
+               Log[Display],
+               SystemProperties,
+               Environment,
+               WorkingDirectory,
+               HomeDirectory,
+               Effectful,
+               FrontEnd,
+               Terminal,
+               Stdio)
+            : ExitStatus raises UserError =
+
       given (UserError fixes InstallError) =
         case InstallError(reason) => UserError(msg"Installation was not possible because $reason.")
       
@@ -67,11 +75,17 @@ object actions:
 
       ExitStatus.Ok
 
-    def batch
-        (force: Boolean, noTabCompletions: Boolean)
-        (using DaemonService[?], FrontEnd, Log[Display], SystemProperties, Environment, WorkingDirectory,
-            HomeDirectory, Effectful)
-        : ExitStatus raises UserError =
+    def batch(force: Boolean, noTabCompletions: Boolean)
+        (using DaemonService[?],
+               FrontEnd,
+               Log[Display],
+               SystemProperties,
+               Environment,
+               WorkingDirectory,
+               HomeDirectory,
+               Effectful)
+            : ExitStatus raises UserError =
+
       given (UserError fixes InstallError) =
         case InstallError(reason) => UserError(msg"Installation was not possible because $reason.")
 
@@ -89,9 +103,7 @@ object actions:
       ExitStatus.Ok
 
   object universe:
-    def show()
-        (using Internet, WorkingDirectory, Monitor, Log[Display], FrontEnd)
-        : ExitStatus raises UserError =
+    def show()(using Internet, WorkingDirectory, Monitor, Log[Display], FrontEnd): ExitStatus raises UserError =
 
       given (UserError fixes PathError)      = accede
       given (UserError fixes CancelError)    = accede
@@ -107,18 +119,18 @@ object actions:
 
         //Async(terminal.events.each(_ => ()))
           
-        val table = Table[(ProjectId, Definition)](
-          Column(e"$Bold(Project)"): (project, definition) =>
-            e"${definition.name}",
-            // definition.website.lay(e"${definition.name}"): website =>
-            //   e"${escapes.link(website, definition.name)}",
-          Column(e"$Bold(ID)")(_(0)),
-          Column(e"$Bold(Description)")(_(1).description),
-          Column(e"$Bold(Source)"): (_, definition) =>
-            definition.source match
-              case workspace: Workspace => e"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
-              case vault: Vault         => e"$DeepSkyBlue(${vault.name})"
-        )
+        val table =
+          Table[(ProjectId, Definition)]
+            (Column(e"$Bold(Project)"): (project, definition) =>
+               e"${definition.name}",
+               // definition.website.lay(e"${definition.name}"): website =>
+               //   e"${escapes.link(website, definition.name)}",
+             Column(e"$Bold(ID)")(_(0)),
+             Column(e"$Bold(Description)")(_(1).description),
+             Column(e"$Bold(Source)"): (_, definition) =>
+               definition.source match
+                 case workspace: Workspace => e"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
+                 case vault: Vault         => e"$DeepSkyBlue(${vault.name})")
         
         inform(table.tabulate(projects))
 
@@ -131,7 +143,7 @@ object actions:
 
     def run(ref: ModuleRef)
         (using FrontEnd, WorkingDirectory, Monitor, Log[Display], Internet, Installation, GitCommand)
-        : ExitStatus raises UserError =
+            : ExitStatus raises UserError =
       given (UserError fixes WorkspaceError) = accede
       given (UserError fixes BuildError)     = accede
       given (UserError fixes VaultError)     = accede

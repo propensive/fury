@@ -57,10 +57,19 @@ object Release:
   given relabelling: CodlRelabelling[Release] = () => Map(t"packages" -> t"provide")
 
 case class Release
-    (id: ProjectId, stream: StreamId, name: Text, website: Optional[HttpUrl], description: InlineMd,
-        license: LicenseId, date: Date, lifetime: Int, repo: Snapshot, packages: List[Package],
-        keywords: List[Keyword])
+    (id:          ProjectId,
+     stream:      StreamId,
+     name:        Text,
+     website:     Optional[HttpUrl],
+     description: InlineMd,
+     license:     LicenseId,
+     date:        Date,
+     lifetime:    Int,
+     repo:        Snapshot,
+     packages:    List[Package],
+     keywords:    List[Keyword])
 derives Debug:
+
   def expiry: Date = date + lifetime.days
 
   def definition(vault: Vault): Definition =
@@ -78,7 +87,6 @@ case class Vault(name: Text, version: Int, releases: List[Release]) derives Debu
   object index:
     lazy val releases: Map[ProjectId, Release] = unsafely(vault.releases.indexBy(_.id))
 
-
 object Local:
   given relabelling: CodlRelabelling[Local] = () => Map(t"forks" -> t"fork")
 
@@ -92,16 +100,20 @@ case class Mount(path: WorkPath, repo: Snapshot) derives Debug
 
 
 object Build:
-  given relabelling: CodlRelabelling[Build] = () => Map(
-    t"prelude" -> t":<<",
-    t"actions" -> t"command",
-    t"projects" -> t"project",
-    t"mounts" -> t"mount",
-  )
+  given relabelling: CodlRelabelling[Build] = () =>
+    Map
+      (t"prelude" -> t":<<",
+       t"actions" -> t"command",
+       t"projects" -> t"project",
+       t"mounts" -> t"mount")
 
 case class Build
-    (prelude: Optional[Prelude], ecosystem: Ecosystem, actions: List[Action], default: Optional[ActionName],
-        projects: List[Project], mounts: List[Mount])
+    (prelude:   Optional[Prelude],
+     ecosystem: Ecosystem,
+     actions:   List[Action],
+     default:   Optional[ActionName],
+     projects:  List[Project],
+     mounts:    List[Mount])
 derives Debug
 
 
@@ -112,8 +124,13 @@ object Project:
   given relabelling: CodlRelabelling[Project] = () => Map(t"modules" -> t"module")
 
 case class Project
-    (id: ProjectId, name: Text, description: InlineMd, modules: List[Module], website: HttpUrl,
-        license: Optional[LicenseId], keywords: List[Keyword])
+    (id:          ProjectId,
+     name:        Text,
+     description: InlineMd,
+     modules:     List[Module],
+     website:     HttpUrl,
+     license:     Optional[LicenseId],
+     keywords:    List[Keyword])
 derives Debug:
 
   // FIXME: Handle not-found
@@ -126,19 +143,27 @@ case class Assist(ref: ModuleRef, module: ModuleId) derives Debug
 
 
 object Module:
-  given relabelling: CodlRelabelling[Module] = () => Map(
-    t"includes"     -> t"include",
-    t"packages"     -> t"provide",
-    t"requirements" -> t"require",
-    t"usages"       -> t"use",
-    t"omissions"    -> t"omit",
-    t"assists"      -> t"assist"
-  )
+  given relabelling: CodlRelabelling[Module] = () =>
+    Map
+      (t"includes"     -> t"include",
+       t"packages"     -> t"provide",
+       t"requirements" -> t"require",
+       t"usages"       -> t"use",
+       t"omissions"    -> t"omit",
+       t"assists"      -> t"assist")
 
 case class Module
-    (id: ModuleId, includes: List[ModuleRef], requirements: List[ModuleRef], sources: List[WorkPath],
-        packages: List[Package], usages: List[ModuleRef], omissions: List[ModuleRef], assists: List[Assist],
-        compiler: Optional[Text], main: Optional[ClassName], coverage: Optional[ModuleRef])
+    (id:           ModuleId,
+     includes:     List[ModuleRef],
+     requirements: List[ModuleRef],
+     sources:      List[WorkPath],
+     packages:     List[Package],
+     usages:       List[ModuleRef],
+     omissions:    List[ModuleRef],
+     assists:      List[Assist],
+     compiler:     Optional[Text],
+     main:         Optional[ClassName],
+     coverage:     Optional[ModuleRef])
 derives Debug
 
 object ModuleRef extends RefType(t"module ref"):

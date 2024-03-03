@@ -56,11 +56,19 @@ object Cache:
     case Progress.RemoteCounting(percent)    => Activity.Progress(t"counting", percent)
     case Progress.RemoteCompressing(percent) => Activity.Progress(t"compressing", percent)
 
-  def apply
-      (snapshot: Snapshot)
-      (using Installation, Internet, Log[Display], Monitor, WorkingDirectory, GitCommand,
-          Raises[ExecError], Raises[PathError], Raises[IoError], Raises[GitError])
-      : Async[Directory] =
+  def apply(snapshot: Snapshot)
+      (using Installation,
+             Internet,
+             Log[Display],
+             Monitor,
+             WorkingDirectory,
+             GitCommand,
+             Raises[ExecError],
+             Raises[PathError],
+             Raises[IoError],
+             Raises[GitError])
+          : Async[Directory] =
+
     snapshots.getOrElseUpdate(snapshot, Async:
       val destination = summon[Installation].snapshots.path / PathName(snapshot.commit.show)
       
@@ -73,10 +81,10 @@ object Cache:
           Log.info(msg"Finished cloning ${snapshot.url}")
     )
         
-  def apply
-      (ecosystem: Ecosystem)
+  def apply(ecosystem: Ecosystem)
       (using Installation, Internet, Log[Display], Monitor, WorkingDirectory, GitCommand)
-      : Async[Vault] raises VaultError =
+          : Async[Vault] raises VaultError =
+
     ecosystems.getOrElseUpdate(ecosystem, Async:
 
       given (VaultError fixes UrlError)             = error => VaultError()
@@ -108,10 +116,9 @@ object Cache:
       Codl.read[Vault]((destination / p"vault.codl").as[File])
     )
 
-  def workspace
-      (path: Path)
-      (using Installation, Internet, Log[Display], Monitor, WorkingDirectory, GitCommand)
-      : Async[Workspace] raises WorkspaceError =
+  def workspace(path: Path)(using Installation, Internet, Log[Display], Monitor, WorkingDirectory, GitCommand)
+          : Async[Workspace] raises WorkspaceError =
+
     given (WorkspaceError fixes IoError) =
       case IoError(path) => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
 
