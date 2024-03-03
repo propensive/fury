@@ -19,12 +19,16 @@ package fury
 import profanity.*
 import vacuous.*
 import acyclicity.*
+import turbulence.*
+import rudiments.*
+import anticipation.*
 
-class CliFrontEnd()(using Terminal) extends FrontEnd:
+class CliFrontEnd()(using terminal: Terminal) extends FrontEnd:
   private var graph: Optional[Dag[Task]] = Unset
   private var active: List[Task] = Nil
+  given stdio: Stdio = terminal.stdio
 
   def schedule(task: Task): Unit = ()
   def update(task: Task): Unit = ()
   def complete(task: Task): Unit = ()
-  def inform[InfoType](info: InfoType) = ()
+  def inform[InfoType: Printable](info: InfoType) = Out.println(info)

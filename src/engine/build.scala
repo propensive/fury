@@ -213,6 +213,8 @@ object Step:
     
     Step(ref, sourceMap, dependencies, binaries, digest)
 
+  given show: Show[Step] = step => step.ref.show
+
 case class Step
     (ref:          ModuleRef,
      sources:      Map[Path, Text],

@@ -21,13 +21,14 @@ import anticipation.*
 import contingency.*
 import dendrology.*, dagStyles.default
 import escapade.*
-import escritoire.*
+import escritoire.*, insufficientSpaceHandling.ignore, tableStyles.default
 import ethereal.*
 import eucalyptus.*
 import exoskeleton.*
 import fulminate.*
 import galilei.*
 import guillotine.*
+import hieroglyph.*, textMetrics.eastAsianScripts
 import iridescence.*, colors.*
 import nettlesome.*
 import octogenarian.*
@@ -152,9 +153,10 @@ object actions:
       val workspace = Workspace()
       given universe: Universe = workspace.universe()
       
-      Engine.buildGraph(Engine.build(ref).await()).render: step =>
-        e"▪ ${Khaki}(${step.ref.projectId})${Gray}(/)${MediumAquamarine}(${step.ref.moduleId})"
-      .each(inform(_))
+      inform:
+        Engine.buildGraph(Engine.build(ref).await())
+      //  .render: step =>
+      //    e"▪ ${Khaki}(${step.ref.projectId})${Gray}(/)${MediumAquamarine}(${step.ref.moduleId})"
       
       ExitStatus.Ok
 
@@ -167,4 +169,3 @@ object actions:
   def versionInfo()(using FrontEnd): ExitStatus = 
     inform(msg"Fury version 1.0")
     ExitStatus.Ok
-
