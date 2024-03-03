@@ -21,7 +21,7 @@ import anticipation.*
 import aviation.*
 import contingency.*
 import escapade.*
-import escritoire.*, tableStyles.default
+import escritoire.*, tableStyles.default, insufficientSpaceHandling.ignore
 import ethereal.*, daemonConfig.supportStderr
 import eucalyptus.*
 import exoskeleton.*, executives.completions, unhandledErrors.stackTrace, parameterInterpretation.posix
@@ -38,7 +38,6 @@ import kaleidoscope.*
 import nettlesome.*
 import parasite.*, threadModels.platform
 import profanity.*, terminalOptions.terminalSizeDetection
-import punctuation.*
 import rudiments.*, homeDirectories.virtualMachine
 import serpentine.*, hierarchies.unixOrWindows
 import spectacular.*
@@ -136,6 +135,7 @@ def main(): Unit =
             case Init() :: Nil =>
               val dir: Optional[Path] = safely(Dir()).or(safely(workingDirectory))
               val discover = Discover()
+              
               execute:
                 dir.let(actions.build.initialize(_)).or:
                   abort(UserError(msg"The working directory could not be determined."))
@@ -252,8 +252,10 @@ def main(): Unit =
 
 def about()(using Stdio): ExitStatus =
   safely(Out.println(Image((Classpath / p"logo.png")()).render))
-  val asciiArt = t"H4sIAAAAAAAA/31Ryw3AIAi9O8UbtfHcQw8wRrUzMUmTKlSx1HgA3ocXFT6FtulySUIZEIO49gllLcjIA62MmgkY3"+
-      t"UOBeu+2VrdCCxfsm2RhAQQOD7aCq5KvtiTQTnDqbZ/gbf0LV8dcqUdzxN+x1CHBfa7mjPlh4HQDGOnRlikCAAA="
+  
+  val asciiArt =
+      t"H4sIAAAAAAAA/31Ryw3AIAi9O8UbtfHcQw8wRrUzMUmTKlSx1HgA3ocXFT6FtulySUIZEIO49gllLcjIA62MmgkY"+
+      t"3UOBeu+2VrdCCxfsm2RhAQQOD7aCq5KvtiTQTnDqbZ/gbf0LV8dcqUdzxN+x1CHBfa7mjPlh4HQDGOnRlikCAAA="
 
   unsafely(asciiArt.decode[Base64]).gunzip.utf8.cut(t"\n").each: line =>
     Out.print(t" "*19)
@@ -273,18 +275,25 @@ def about()(using Stdio): ExitStatus =
 
   case class Software(name: Text, version: Text, copyright: Text)
 
-  Table[Software](
-    Column(e"$Bold(Component)", align = Alignment.Right): software =>
-      e"$Bold(${software.name})",
-    Column(e"$Bold(Version)")(_.version.display),
-    Column(e"$Bold(Copyright)")(_.copyright.display)
-  ).tabulate(List(
-    Software(t"Fury", t"1.0${buildId.lay(t"") { id => t", build $id"}}", t"2017-2024, Propensive"),
-    Software(t"Scala", scalaProperties(t"version.number"), scalaProperties(t"copyright.string").sub(t"Copyright ", t"")),
-    unsafely(Software(t"Java distribution", Properties.java.version(), Properties.java.vendor())),
-    unsafely(Software(t"Java specification", Properties.java.vm.specification.version(), Properties.java.vm.specification.vendor()))
-  ))(72).each(Out.println(_))
+  val scalaCopyright = scalaProperties(t"copyright.string").sub(t"Copyright ", t"")
+  val jvmVersion = unsafely(Properties.java.vm.specification.version())
+  val jvmVendor = unsafely(Properties.java.vm.specification.vendor())
 
-  safely(Out.println(e"  ${Italic}(${Properties.os.name()} ${Properties.os.version()}, ${Properties.os.arch()})\n"))
+  Out.println:
+    Table[Software]
+      (Column(e"$Bold(Component)", textAlign = TextAlignment.Right): software =>
+        e"$Bold(${software.name})",
+       Column(e"$Bold(Version)")(_.version.display),
+       Column(e"$Bold(Copyright)")(_.copyright.display))
+    .tabulate(List(
+      Software(t"Fury", t"1.0${buildId.lay(t"") { id => t", build $id"}}", t"2017-2024, Propensive"),
+      Software(t"Scala", scalaProperties(t"version.number"), scalaCopyright),
+      unsafely(Software(t"Java distribution", Properties.java.version(), Properties.java.vendor())),
+      Software(t"Java specification", jvmVersion, jvmVendor)
+    )).layout(72)
+
+  safely:
+    Out.println:
+      e"  ${Italic}(${Properties.os.name()} ${Properties.os.version()}, ${Properties.os.arch()})\n"
   
   ExitStatus.Ok

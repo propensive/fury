@@ -59,19 +59,20 @@ object Release:
 case class Release
     (id: ProjectId, stream: StreamId, name: Text, website: Optional[HttpUrl], description: InlineMd,
         license: LicenseId, date: Date, lifetime: Int, repo: Snapshot, packages: List[Package],
-        keywords: List[Keyword]):
+        keywords: List[Keyword])
+derives Debug:
   def expiry: Date = date + lifetime.days
 
   def definition(vault: Vault): Definition =
     Definition(name, description, website, license, keywords, vault)
 
 
-case class Snapshot(url: HttpUrl, commit: CommitHash, branch: Optional[Branch])
+case class Snapshot(url: HttpUrl, commit: CommitHash, branch: Optional[Branch]) derives Debug
 
 object Vault:
   given relabelling: CodlRelabelling[Vault] = () => Map(t"releases" -> t"release")
 
-case class Vault(name: Text, version: Int, releases: List[Release]):
+case class Vault(name: Text, version: Int, releases: List[Release]) derives Debug:
   inline def vault: Vault = this
 
   object index:
@@ -81,13 +82,13 @@ case class Vault(name: Text, version: Int, releases: List[Release]):
 object Local:
   given relabelling: CodlRelabelling[Local] = () => Map(t"forks" -> t"fork")
 
-case class Local(forks: List[Fork])
+case class Local(forks: List[Fork]) derives Debug
 
-case class Fork(id: ProjectId, path: Path)
+case class Fork(id: ProjectId, path: Path) derives Debug
 
-case class Ecosystem(id: EcosystemId, version: Int, url: HttpUrl, branch: Branch)
+case class Ecosystem(id: EcosystemId, version: Int, url: HttpUrl, branch: Branch) derives Debug
 
-case class Mount(path: WorkPath, repo: Snapshot)
+case class Mount(path: WorkPath, repo: Snapshot) derives Debug
 
 
 object Build:
@@ -101,9 +102,10 @@ object Build:
 case class Build
     (prelude: Optional[Prelude], ecosystem: Ecosystem, actions: List[Action], default: Optional[ActionName],
         projects: List[Project], mounts: List[Mount])
+derives Debug
 
 
-case class Prelude(terminator: Text, comment: List[Text])
+case class Prelude(terminator: Text, comment: List[Text]) derives Debug
 
 
 object Project:
@@ -111,7 +113,8 @@ object Project:
 
 case class Project
     (id: ProjectId, name: Text, description: InlineMd, modules: List[Module], website: HttpUrl,
-        license: Optional[LicenseId], keywords: List[Keyword]):
+        license: Optional[LicenseId], keywords: List[Keyword])
+derives Debug:
 
   // FIXME: Handle not-found
   def apply(module: ModuleId): Module = modules.find(_.id == module).get
@@ -119,7 +122,7 @@ case class Project
   def definition(workspace: Workspace): Definition =
     Definition(name, description, website, license, keywords, workspace)
 
-case class Assist(ref: ModuleRef, module: ModuleId)
+case class Assist(ref: ModuleRef, module: ModuleId) derives Debug
 
 
 object Module:
@@ -136,6 +139,7 @@ case class Module
     (id: ModuleId, includes: List[ModuleRef], requirements: List[ModuleRef], sources: List[WorkPath],
         packages: List[Package], usages: List[ModuleRef], omissions: List[ModuleRef], assists: List[Assist],
         compiler: Optional[Text], main: Optional[ClassName], coverage: Optional[ModuleRef])
+derives Debug
 
 object ModuleRef extends RefType(t"module ref"):
   given moduleRefEncoder: Encoder[ModuleRef] = _.show
@@ -159,7 +163,8 @@ case class ModuleRef(projectId: ProjectId, moduleId: ModuleId):
 object Action:
   given relabelling: CodlRelabelling[Action] = () => Map(t"actions" -> t"action")
 
-case class Action(name: ActionName, modules: List[ModuleRef], description: Optional[Text]):
+case class Action(name: ActionName, modules: List[ModuleRef], description: Optional[Text])
+derives Debug:
   def suggestion: Suggestion = Suggestion(name.show, description.let { text => e"${colors.Khaki}($text)"} )
 
 object WorkPath:
@@ -173,7 +178,7 @@ object WorkPath:
   given creator: PathCreator[WorkPath, GeneralForbidden, Unit] = (unit, descent) => WorkPath(descent)
   given show: Show[WorkPath] = _.render
   given encoder: Encoder[WorkPath] = _.render
-  given debug: Debug[WorkPath] = _.render
+  //given debug: Debug[WorkPath] = _.render
   given digestible: Digestible[WorkPath] = (acc, path) => acc.append(path.show.bytes)
 
   given decoder(using path: Raises[PathError]): Decoder[WorkPath] = new Decoder[WorkPath]:
@@ -183,12 +188,13 @@ object WorkPath:
     type Result = Path
     def add(left: Path, right: WorkPath): Path = right.descent.reverse.foldLeft(left)(_ / _)
 
-case class WorkPath(descent: List[PathName[GeneralForbidden]]):
+case class WorkPath(descent: List[PathName[GeneralForbidden]]) derives Debug:
   def link: SafeLink = SafeLink(0, descent)
 
 case class Definition
     (name: Text, description: InlineMd, website: Optional[HttpUrl], license: Optional[LicenseId],
         keywords: List[Keyword], source: Vault | Workspace)
+derives Debug
 
 object Workspace:
   def apply()(using WorkingDirectory): Workspace raises WorkspaceError =
@@ -247,7 +253,8 @@ object Workspace:
 
     Workspace(dir, buildDoc, build, local)
 
-case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, local: Optional[Local]):
+case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, local: Optional[Local])
+derives Debug:
   val ecosystem = build.ecosystem
   lazy val actions: Map[ActionName, Action] = unsafely(build.actions.indexBy(_.name))
   lazy val projects: Map[ProjectId, Project] = unsafely(build.projects.indexBy(_.id))
