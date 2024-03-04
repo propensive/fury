@@ -33,11 +33,12 @@ import guillotine.*
 import hallucination.*
 import hellenism.*, classloaders.threadContext
 import hieroglyph.*, charDecoders.utf8, charEncoders.utf8, badEncodingHandlers.strict, textMetrics.uniform
+import inimitable.*
 import iridescence.*, colors.*
 import kaleidoscope.*
 import nettlesome.*
 import parasite.*, threadModels.platform
-import profanity.*, terminalOptions.terminalSizeDetection
+import profanity.*
 import rudiments.*, homeDirectories.virtualMachine
 import serpentine.*, hierarchies.unixOrWindows
 import spectacular.*
@@ -48,6 +49,8 @@ enum BusMessage:
   case Ping
 
 given Realm = realm"fury"
+
+given Decimalizer = Decimalizer(2)
 
 object cli:
   val Version = Switch(t"version", false, List('v'), t"Show information about the current version of Fury")
@@ -95,6 +98,7 @@ given installation(using Raises[UserError]): Installation =
 @main
 def main(): Unit =
   import cli.*
+  val initTime = now()
 
   attempt[InitError]:
     given (InitError fixes CancelError) = error => InitError(msg"A thread was cancelled")
@@ -116,154 +120,157 @@ def main(): Unit =
         
         Log.route: 
           case _ => installation.config.log.path.as[File]
+      
 
+      Log.info(msg"Initialized Fury in ${(now() - initTime).show}")
+      
       daemon[BusMessage]:
         attempt[UserError]:
-          if Version().present then execute(frontEnd(actions.versionInfo())) else arguments match
-            case Install() :: _ =>
-              val interactive = Interactive().present
-              val force = Force().present
-              val noTabCompletions = NoTabCompletions().present
-              
-              execute:
-                frontEnd:
-                  if interactive then actions.install.interactive(force, noTabCompletions)
-                  else actions.install.batch(force, noTabCompletions)
+          Log.envelop(Uuid().show.take(8)):
+            if Version().present then execute(frontEnd(actions.versionInfo())) else arguments match
+              case Install() :: _ =>
+                val interactive = Interactive().present
+                val force = Force().present
+                val noTabCompletions = NoTabCompletions().present
                 
-                service.shutdown()
-                ExitStatus.Ok
-                
-            case Init() :: Nil =>
-              val dir: Optional[Path] = safely(Dir()).or(safely(workingDirectory))
-              val discover = Discover()
-              
-              execute:
-                frontEnd:
-                  dir.let(actions.build.initialize(_)).or:
-                    abort(UserError(msg"The working directory could not be determined."))
-
-            case Config() :: Nil =>
-              execute:
-                frontEnd:
-                  info(installation.config.debug)
+                execute:
+                  frontEnd:
+                    if interactive then actions.install.interactive(force, noTabCompletions)
+                    else actions.install.batch(force, noTabCompletions)
+                  
+                  service.shutdown()
                   ExitStatus.Ok
-
-            case Cache() :: subcommands => subcommands match
-              case Clean() :: Nil   => execute(frontEnd(actions.cache.clean()))
-              case Details() :: Nil => execute(frontEnd(actions.cache.about()))
-              
-              case other :: _ =>
-                execute(frontEnd(other.let(actions.invalidSubcommand(_)).or(actions.missingSubcommand())))
-              
-              case Nil =>
+                  
+              case Init() :: Nil =>
+                val dir: Optional[Path] = safely(Dir()).or(safely(workingDirectory))
+                val discover = Discover()
+                
                 execute:
-                  Out.println(msg"Please specify a subcommand.")
-                  ExitStatus.Fail(1)
+                  frontEnd:
+                    dir.let(actions.build.initialize(_)).or:
+                      abort(UserError(msg"The working directory could not be determined."))
 
-            case About() :: _ => execute(about())
-            case Build() :: subcommands => subcommands match
-              case Nil =>
+              case Config() :: Nil =>
                 execute:
-                  Out.println(t"Module has not been specified")
-                  ExitStatus.Fail(1)
+                  frontEnd:
+                    info(installation.config.debug)
+                    ExitStatus.Ok
 
-              case target :: _ =>
+              case Cache() :: subcommands => subcommands match
+                case Clean() :: Nil   => execute(frontEnd(actions.cache.clean()))
+                case Details() :: Nil => execute(frontEnd(actions.cache.about()))
+                
+                case other :: _ =>
+                  execute(frontEnd(other.let(actions.invalidSubcommand(_)).or(actions.missingSubcommand())))
+                
+                case Nil =>
+                  execute:
+                    Out.println(msg"Please specify a subcommand.")
+                    ExitStatus.Fail(1)
+
+              case About() :: _ => execute(about())
+              case Build() :: subcommands => subcommands match
+                case Nil =>
+                  execute:
+                    Out.println(t"Module has not been specified")
+                    ExitStatus.Fail(1)
+
+                case target :: _ =>
+                  val online = Offline().absent
+                  given (UserError fixes IoError)   = accede
+                  given (UserError fixes PathError) = accede
+                  given (UserError fixes ExecError) = accede
+                  
+                  safely(internet(false)(Workspace().locals())).let: map =>
+                    val refs = map.values.map(_.source).flatMap:
+                      case workspace: Workspace => workspace.build.projects.flatMap: project =>
+                        project.modules.map: module =>
+                          ModuleRef(project.id, module.id)
+
+                    target.let(_.suggest(previous ++ refs.map(_.suggestion)))
+                  
+                  execute:
+                    given (UserError fixes InvalidRefError) = error => UserError(error.message)
+                    
+                    internet(online):
+                      frontEnd:
+                        actions.build.run(target().decodeAs[ModuleRef])
+                        Out.println(t"TODO: Build ${target.let(_()).or(t"?")}")
+                        ExitStatus.Fail(1)
+                  
+              case Graph() :: Nil =>
                 val online = Offline().absent
-                given (UserError fixes IoError)   = accede
-                given (UserError fixes PathError) = accede
-                given (UserError fixes ExecError) = accede
-                
-                safely(internet(false)(Workspace().locals())).let: map =>
-                  val refs = map.values.map(_.source).flatMap:
-                    case workspace: Workspace => workspace.build.projects.flatMap: project =>
-                      project.modules.map: module =>
-                        ModuleRef(project.id, module.id)
 
-                  target.let(_.suggest(previous ++ refs.map(_.suggestion)))
-                
                 execute:
-                  given (UserError fixes InvalidRefError) = error => UserError(error.message)
+                  given (UserError fixes PathError)      = accede
+                  given (UserError fixes CancelError)    = accede
+                  given (UserError fixes IoError)        = accede
+                  given (UserError fixes NumberError)    = accede
+                  given (UserError fixes WorkspaceError) = accede
+                  given (UserError fixes ExecError)      = accede
+                  given (UserError fixes VaultError)     = accede
                   
                   internet(online):
-                    frontEnd:
-                      actions.build.run(target().decodeAs[ModuleRef])
-                      Out.println(t"TODO: Build ${target.let(_()).or(t"?")}")
-                      ExitStatus.Fail(1)
-                
-            case Graph() :: Nil =>
-              val online = Offline().absent
-
-              execute:
-                given (UserError fixes PathError)      = accede
-                given (UserError fixes CancelError)    = accede
-                given (UserError fixes IoError)        = accede
-                given (UserError fixes NumberError)    = accede
-                given (UserError fixes WorkspaceError) = accede
-                given (UserError fixes ExecError)      = accede
-                given (UserError fixes VaultError)     = accede
-                
-                internet(online):
-                  val rootWorkspace = Workspace()
-                  given universe: Universe = rootWorkspace.universe()
-                
-                ExitStatus.Ok
-            
-            case Universe() :: subcommands =>
-              val online = Offline().absent
-              val generation: Optional[Int] = safely(Generation())
-              
-              subcommands match
-                case UniverseSearch() :: _ => execute:
-                  Out.println(t"TODO: Search the universe")
+                    val rootWorkspace = Workspace()
+                    given universe: Universe = rootWorkspace.universe()
+                  
                   ExitStatus.Ok
+              
+              case Universe() :: subcommands =>
+                val online = Offline().absent
+                val generation: Optional[Int] = safely(Generation())
                 
-                case UniverseUpdate() :: _ => execute:
-                  Out.println(t"TODO: Update the universe")
-                  ExitStatus.Fail(1)
+                subcommands match
+                  case UniverseSearch() :: _ => execute:
+                    Out.println(t"TODO: Search the universe")
+                    ExitStatus.Ok
+                  
+                  case UniverseUpdate() :: _ => execute:
+                    Out.println(t"TODO: Update the universe")
+                    ExitStatus.Fail(1)
 
-                case Nil | (UniverseShow() :: _) => execute:
-                  internet(online):
-                    frontEnd:
-                      actions.universe.show()
+                  case Nil | (UniverseShow() :: _) => execute:
+                    internet(online):
+                      frontEnd:
+                        actions.universe.show()
 
-                case command :: _ => execute:
-                  Out.println(e"Command $Italic(${command.vouch(using Unsafe)()}) was not recognized.")
+                  case command :: _ => execute:
+                    Out.println(e"Command $Italic(${command.vouch(using Unsafe)()}) was not recognized.")
+                    ExitStatus.Fail(1)
+                  
+              case Shutdown() :: Nil => execute:
+                service.shutdown()
+                ExitStatus.Ok
+              
+              case Nil =>
+                given (UserError fixes WorkspaceError) = error => UserError(error.message)
+                execute:
+                  Out.println(Workspace().build.actions.headOption.optional.debug)
                   ExitStatus.Fail(1)
                 
-            case Shutdown() :: Nil => execute:
-              service.shutdown()
-              ExitStatus.Ok
-            
-            case Nil =>
-              given (UserError fixes WorkspaceError) = error => UserError(error.message)
-              execute:
-                Out.println(Workspace().build.actions.headOption.optional.debug)
-                ExitStatus.Fail(1)
-              
 
-            case subcommand :: _ =>
-              val workspace = safely(Workspace())
-              
-              workspace.let: workspace =>
-                subcommand.let(_.suggest(previous ++ workspace.build.actions.map(_.suggestion)))
-              
-              execute:
-                workspace.lay(ExitStatus.Fail(2)): workspace =>
-                  Out.println(workspace.debug)
+              case subcommand :: _ =>
+                val workspace = safely(Workspace())
+                
+                workspace.let: workspace =>
+                  subcommand.let(_.suggest(previous ++ workspace.build.actions.map(_.suggestion)))
+                
+                execute:
+                  workspace.lay(ExitStatus.Fail(2)): workspace =>
+                    Out.println(workspace.debug)
 
-                  Out.println(t"Unrecognized subcommand: ${subcommand.let(_()).or(t"")}.")
-                  ExitStatus.Fail(1)
+                    Out.println(t"Unrecognized subcommand: ${subcommand.let(_()).or(t"")}.")
+                    ExitStatus.Fail(1)
 
-        .recover:
-          case UserError(message) =>
-            execute:
-              Out.println(message)
-              ExitStatus.Fail(1)
+        .recover: userError =>
+          execute:
+            Out.println(userError.message)
+            Log.fail(userError)
+            ExitStatus.Fail(1)
 
-  .recover:
-    case InitError(message) =>
-      println(message)
-      ExitStatus.Fail(2)
+  .recover: initError =>
+    println(initError.message)
+    ExitStatus.Fail(2)
 
 
 def about()(using Stdio): ExitStatus =

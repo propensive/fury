@@ -148,6 +148,7 @@ object actions:
     def run(ref: ModuleRef)
         (using FrontEnd, WorkingDirectory, Monitor, Log[Display], Internet, Installation, GitCommand)
             : ExitStatus raises UserError =
+
       given (UserError fixes WorkspaceError) = accede
       given (UserError fixes BuildError)     = accede
       given (UserError fixes VaultError)     = accede

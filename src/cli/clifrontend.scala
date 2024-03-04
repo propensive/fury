@@ -16,7 +16,7 @@
 
 package fury
 
-import profanity.*
+import profanity.*, terminalOptions.terminalSizeDetection
 import vacuous.*
 import acyclicity.*
 import turbulence.*
