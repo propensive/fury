@@ -95,67 +95,65 @@ given installation(using Raises[UserError]): Installation =
 @main
 def main(): Unit =
   import cli.*
-  import unsafeExceptions.canThrowAny
 
-  throwErrors[CancelError]:
+  attempt[InitError]:
+    given (InitError fixes CancelError) = error => InitError(msg"A thread was cancelled")
+
     supervise:
       given logFormat: LogFormat[File, Display] = logFormats.standardColor[File]
       given logFormat2: LogFormat[Err.type, Display] = logFormats.standardColor[Err.type]
       import filesystemOptions.{createNonexistent, createNonexistentParents}
       
-      given Log[Display] = throwErrors[UserError]:
-        given (UserError fixes IoError) =
-          error => UserError(msg"An IO error occured when trying to create the log")
+      given Log[Display] =
+        given (InitError fixes IoError) =
+          error => InitError(msg"An IO error occured when trying to create the log")
         
-        given (UserError fixes StreamError) =
-          error => UserError(msg"Stream error when logging")
+        given (InitError fixes StreamError) =
+          error => InitError(msg"Stream error when logging")
+        
+        given (InitError fixes UserError) =
+          error => InitError(error.message)
         
         Log.route: 
           case _ => installation.config.log.path.as[File]
 
       daemon[BusMessage]:
-        try throwErrors[UserError]:
-          
-          given frontEnd: FrontEnd = terminal(CliFrontEnd())
-          
-          if Version().present then execute(actions.versionInfo()) else arguments match
+        attempt[UserError]:
+          if Version().present then execute(frontEnd(actions.versionInfo())) else arguments match
             case Install() :: _ =>
               val interactive = Interactive().present
               val force = Force().present
               val noTabCompletions = NoTabCompletions().present
               
               execute:
-                try throwErrors[UserError]:
-                  if interactive then terminal(actions.install.interactive(force, noTabCompletions))
+                frontEnd:
+                  if interactive then actions.install.interactive(force, noTabCompletions)
                   else actions.install.batch(force, noTabCompletions)
-                  
-                  service.shutdown()
-                  ExitStatus.Ok
                 
-                catch
-                  case userError: UserError =>
-                    Out.println(userError.message)
-                    ExitStatus.Fail(1)
-
+                service.shutdown()
+                ExitStatus.Ok
+                
             case Init() :: Nil =>
               val dir: Optional[Path] = safely(Dir()).or(safely(workingDirectory))
               val discover = Discover()
               
               execute:
-                dir.let(actions.build.initialize(_)).or:
-                  abort(UserError(msg"The working directory could not be determined."))
+                frontEnd:
+                  dir.let(actions.build.initialize(_)).or:
+                    abort(UserError(msg"The working directory could not be determined."))
 
             case Config() :: Nil =>
               execute:
-                Out.println(installation.config.debug)
-                ExitStatus.Ok
+                frontEnd:
+                  info(installation.config.debug)
+                  ExitStatus.Ok
 
             case Cache() :: subcommands => subcommands match
-              case Clean() :: Nil   => execute(actions.cache.clean())
-              case Details() :: Nil => execute(actions.cache.info())
+              case Clean() :: Nil   => execute(frontEnd(actions.cache.clean()))
+              case Details() :: Nil => execute(frontEnd(actions.cache.about()))
               
               case other :: _ =>
-                execute(other.let(actions.invalidSubcommand(_)).or(actions.missingSubcommand()))
+                execute(frontEnd(other.let(actions.invalidSubcommand(_)).or(actions.missingSubcommand())))
               
               case Nil =>
                 execute:
@@ -187,9 +185,10 @@ def main(): Unit =
                   given (UserError fixes InvalidRefError) = error => UserError(error.message)
                   
                   internet(online):
-                    actions.build.run(target().decodeAs[ModuleRef])
-                    Out.println(t"TODO: Build ${target.let(_()).or(t"?")}")
-                    ExitStatus.Fail(1)
+                    frontEnd:
+                      actions.build.run(target().decodeAs[ModuleRef])
+                      Out.println(t"TODO: Build ${target.let(_()).or(t"?")}")
+                      ExitStatus.Fail(1)
                 
             case Graph() :: Nil =>
               val online = Offline().absent
@@ -224,7 +223,8 @@ def main(): Unit =
 
                 case Nil | (UniverseShow() :: _) => execute:
                   internet(online):
-                    actions.universe.show()
+                    frontEnd:
+                      actions.universe.show()
 
                 case command :: _ => execute:
                   Out.println(e"Command $Italic(${command.vouch(using Unsafe)()}) was not recognized.")
@@ -250,15 +250,21 @@ def main(): Unit =
               execute:
                 workspace.lay(ExitStatus.Fail(2)): workspace =>
                   Out.println(workspace.debug)
-  
+
                   Out.println(t"Unrecognized subcommand: ${subcommand.let(_()).or(t"")}.")
                   ExitStatus.Fail(1)
 
-        catch
-          case userError: UserError =>
+        .recover:
+          case UserError(message) =>
             execute:
-              Out.println(userError.message)
+              Out.println(message)
               ExitStatus.Fail(1)
+
+  .recover:
+    case InitError(message) =>
+      println(message)
+      ExitStatus.Fail(2)
+
 
 def about()(using Stdio): ExitStatus =
   safely(Out.println(Image((Classpath / p"logo.png")()).render))

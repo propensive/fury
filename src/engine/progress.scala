@@ -23,13 +23,13 @@ enum Task:
   case Compile(digest: Hash)
   case Clone(digest: Hash)
 
-def inform[InfoType: Printable](info: InfoType)(using frontEnd: FrontEnd): Unit = frontEnd.inform(info)
+def info[InfoType: Printable](info: InfoType)(using frontEnd: FrontEnd): Unit = frontEnd.info(info)
 
 trait FrontEnd:
   def schedule(task: Task): Unit
   def update(task: Task): Unit
   def complete(task: Task): Unit
-  def inform[InfoType: Printable](info: InfoType): Unit
+  def info[InfoType: Printable](info: InfoType): Unit
 
 enum Activity:
   case Progress(stage: Text, progress: Double)

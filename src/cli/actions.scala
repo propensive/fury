@@ -42,6 +42,7 @@ import vacuous.*
 def accede(error: Error): UserError = UserError(error.message)
   
 case class UserError(userMessage: Message) extends Error(userMessage)
+case class InitError(initMessage: Message) extends Error(initMessage)
 
 object actions:
   object install:
@@ -66,11 +67,11 @@ object actions:
       val directories = Installer.candidateTargets().map(_.path)
       
       if directories.length <= 1 then Installer.install(force) else
-        inform(e"$Italic(Please choose an install location.)")
+        info(e"$Italic(Please choose an install location.)")
         val menu = SelectMenu(directories, directories.head)
         val (target, events2) = menu.ask(terminal.events)
-        inform(e"Installing to $target/${service.scriptName}")
-        inform(Installer.install(force = true, target).communicate)
+        info(e"Installing to $target/${service.scriptName}")
+        info(Installer.install(force = true, target).communicate)
       
       if !noTabCompletions then Out.println(TabCompletions.install(force = true).communicate)
 
@@ -90,17 +91,17 @@ object actions:
       given (UserError fixes InstallError) =
         case InstallError(reason) => UserError(msg"Installation was not possible because $reason.")
 
-      inform(Installer.install(force).communicate)
-      if !noTabCompletions then inform(TabCompletions.install(force = true).communicate)
+      info(Installer.install(force).communicate)
+      if !noTabCompletions then info(TabCompletions.install(force = true).communicate)
       ExitStatus.Ok
 
   object cache:
     def clean()(using FrontEnd): ExitStatus raises UserError =
-      inform(msg"Cleaning the cache")
+      info(msg"Cleaning the cache")
       ExitStatus.Ok
 
-    def info()(using FrontEnd): ExitStatus raises UserError =
-      inform(msg"Details of the cache usage")
+    def about()(using FrontEnd): ExitStatus raises UserError =
+      info(msg"Details of the cache usage")
       ExitStatus.Ok
 
   object universe:
@@ -127,19 +128,21 @@ object actions:
                // definition.website.lay(e"${definition.name}"): website =>
                //   e"${escapes.link(website, definition.name)}",
              Column(e"$Bold(ID)")(_(0)),
-             Column(e"$Bold(Description)")(_(1).description),
+             Column(e"$Bold(Description)", sizing = columnSizing.Prose)(_(1).description),
              Column(e"$Bold(Source)"): (_, definition) =>
                definition.source match
-                 case workspace: Workspace => e"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
-                 case vault: Vault         => e"$DeepSkyBlue(${vault.name})")
+                 case workspace: Workspace =>
+                   e"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
+                 
+                 case vault: Vault =>
+                   e"$DeepSkyBlue(${vault.name})")
         
-        inform(table.tabulate(projects))
-
+        info(table.tabulate(projects))
         ExitStatus.Ok
 
   object build:
     def initialize(directory: Path)(using FrontEnd): ExitStatus raises UserError =
-      inform(msg"Creating a new build in $directory")
+      info(msg"Creating a new build in $directory")
       ExitStatus.Ok
 
     def run(ref: ModuleRef)
@@ -153,10 +156,7 @@ object actions:
       val workspace = Workspace()
       given universe: Universe = workspace.universe()
       
-      inform:
-        Engine.buildGraph(Engine.build(ref).await())
-      //  .render: step =>
-      //    e"▪ ${Khaki}(${step.ref.projectId})${Gray}(/)${MediumAquamarine}(${step.ref.moduleId})"
+      info(Engine.buildGraph(Engine.build(ref).await()))
       
       ExitStatus.Ok
 
@@ -167,5 +167,5 @@ object actions:
     abort(UserError(msg"No subcommand was specified."))
 
   def versionInfo()(using FrontEnd): ExitStatus = 
-    inform(msg"Fury version 1.0")
+    info(msg"Fury version 1.0")
     ExitStatus.Ok

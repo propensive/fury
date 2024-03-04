@@ -20,8 +20,13 @@ import profanity.*
 import vacuous.*
 import acyclicity.*
 import turbulence.*
+import exoskeleton.*
 import rudiments.*
+import parasite.*
 import anticipation.*
+
+def frontEnd[ResultType](lambda: FrontEnd ?=> Terminal ?=> ResultType)(using Cli, Monitor): ResultType =
+  terminal(lambda(using CliFrontEnd()))
 
 class CliFrontEnd()(using terminal: Terminal) extends FrontEnd:
   private var graph: Optional[Dag[Task]] = Unset
@@ -31,4 +36,4 @@ class CliFrontEnd()(using terminal: Terminal) extends FrontEnd:
   def schedule(task: Task): Unit = ()
   def update(task: Task): Unit = ()
   def complete(task: Task): Unit = ()
-  def inform[InfoType: Printable](info: InfoType) = Out.println(info)
+  def info[InfoType: Printable](info: InfoType) = Out.println(info)
