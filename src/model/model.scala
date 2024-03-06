@@ -184,6 +184,7 @@ object ModuleRef extends RefType(t"module ref"):
 
 case class ModuleRef(projectId: ProjectId, moduleId: ModuleId):
   def suggestion: Suggestion = Suggestion(this.show, Unset)
+  def partialSuggestion: Suggestion = Suggestion(t"${projectId}/", Unset, incomplete = true)
 
 object Action:
   given relabelling: CodlRelabelling[Action] = () => Map(t"actions" -> t"action")

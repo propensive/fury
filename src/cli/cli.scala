@@ -123,6 +123,7 @@ def main(): Unit =
       Log.info(msg"Initialized Fury in ${(now() - initTime).show}")
 
 
+
       daemon[BusMessage]:
         attempt[UserError]:
           Log.envelop(Uuid().show.take(8)):
@@ -157,17 +158,13 @@ def main(): Unit =
 
               case Cache() :: subcommands => subcommands match
                 case Clean() :: Nil   => execute(frontEnd(actions.cache.clean()))
-                case Details() :: Nil => execute(frontEnd(actions.cache.about()))
+                case Nil | Details() :: Nil => execute(frontEnd(actions.cache.about()))
                 
                 case other :: _ =>
                   execute(frontEnd(other.let(actions.invalidSubcommand(_)).or(actions.missingSubcommand())))
                 
-                case Nil =>
-                  execute:
-                    Out.println(msg"Please specify a subcommand.")
-                    ExitStatus.Fail(1)
-
               case About() :: _ => execute(about())
+              
               case Build() :: subcommands => subcommands match
                 case Nil =>
                   execute:
@@ -186,16 +183,26 @@ def main(): Unit =
                         project.modules.map: module =>
                           ModuleRef(project.id, module.id)
 
-                    target.let(_.suggest(previous ++ refs.map(_.suggestion)))
+                    
+                    target.let: target =>
+                      if target().contains(t"/") then target.suggest(previous ++ refs.map(_.suggestion))
+                      else target.suggest(previous ++ refs.map(_.partialSuggestion))
                   
                   execute:
                     given (UserError fixes InvalidRefError) = error => UserError(error.message)
                     
                     internet(online):
-                      Async:
+                      terminal:
                         frontEnd:
-                          actions.build.run(target().decodeAs[ModuleRef])
-                      .await()
+                          val buildAsync = Async:
+                            actions.build.run(target().decodeAs[ModuleRef])
+                          
+                          Async:
+                            terminal.events.each:
+                              case Keypress.Escape => summon[FrontEnd].abort()
+                              case other => Out.println(other.toString.tt)
+                          
+                          buildAsync.await()
                   
               case Graph() :: Nil =>
                 val online = Offline().absent
@@ -232,8 +239,9 @@ def main(): Unit =
                   case Nil | (UniverseShow() :: _) =>
                     execute:
                       internet(online):
-                        frontEnd:
-                          actions.universe.show()
+                        terminal:
+                          frontEnd:
+                            actions.universe.show()
 
                   case command :: _ => execute:
                     Out.println(e"Command $Italic(${command.vouch(using Unsafe)()}) was not recognized.")
@@ -248,32 +256,42 @@ def main(): Unit =
                 execute:
                   Out.println(Workspace().build.actions.headOption.optional.debug)
                   ExitStatus.Fail(1)
-                
 
               case subcommand :: _ =>
                 val workspace = safely(Workspace())
+                val online = Offline().absent
                 
                 workspace.let: workspace =>
                   subcommand.let(_.suggest(previous ++ workspace.build.actions.map(_.suggestion)))
-                
-                execute:
-                  workspace.lay(ExitStatus.Fail(2)): workspace =>
-                    Out.println(workspace.debug)
 
-                    Out.println(t"Unrecognized subcommand: ${subcommand.let(_()).or(t"")}.")
-                    ExitStatus.Fail(1)
+                execute:
+                  given (UserError fixes InvalidRefError) = error => UserError(error.message)
+                  given (UserError fixes ExecError) = accede
+                  given (UserError fixes IoError)   = accede
+                  given (UserError fixes PathError) = accede
+                  
+                  workspace.lay(ExitStatus.Fail(2)): workspace =>
+                    workspace.build.actions.find(_.name == ActionName(subcommand())).optional.let: action =>
+                      Async:
+                        internet(online):
+                          frontEnd:
+                            action.modules.each(actions.build.run(_))
+                            ExitStatus.Ok
+                      .await()
+                    .or:
+                      subcommand.let(frontEnd(actions.invalidSubcommand(_))).or:
+                        Out.println(t"No subcommand was specified.")
+                        ExitStatus.Fail(1)
 
         .recover: userError =>
           execute:
             Out.println(userError.message)
             Log.fail(userError)
-            ExitStatus.Fail(1)
+            ExitStatus.Fail(4)
 
   .recover: initError =>
     println(initError.message)
     ExitStatus.Fail(2)
-
-
 
 def about()(using Stdio): ExitStatus =
   safely(Out.println(Image((Classpath / p"logo.png")()).render))

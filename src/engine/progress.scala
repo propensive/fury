@@ -17,6 +17,7 @@
 package fury
 
 import anticipation.*
+import parasite.*
 
 enum Task:
   case Download(digest: Hash)
@@ -26,6 +27,8 @@ enum Task:
 def info[InfoType: Printable](info: InfoType)(using frontEnd: FrontEnd): Unit = frontEnd.info(info)
 
 trait FrontEnd:
+  val aborted: Promise[Unit] = Promise()
+  def abort(): Unit = aborted.offer(())
   def schedule(task: Task): Unit
   def update(task: Task): Unit
   def complete(task: Task): Unit

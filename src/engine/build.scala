@@ -152,50 +152,54 @@ class Builder():
                     ClasspathEntry.Jarfile(t"$rootPath/jna-5.14.0.jar")))
             
               val classpath2 = additions.foldLeft(classpath)(_ + _)
-              
-              val process: ScalacProcess =
-                Log.envelop(phase.ref):
-                  import scalacOptions.*
-                  Scalac[3.4]
-                   (List(language.experimental.fewerBraces,
-                         language.experimental.erasedDefinitions,
-                         language.experimental.clauseInterleaving,
-                         language.experimental.into,
-                         language.experimental.genericNumberLiterals,
-                         language.experimental.saferExceptions,
-                         language.experimental.namedTypeArguments,
-                         internal.requireTargetName,
-                         internal.explicitNulls,
-                         internal.checkPatterns,
-                         internal.safeInit,
-                         advanced.maxInlines(64),
-                         experimental,
-                         sourceFuture,
-                         newSyntax,
-                         warnings.deprecation,
-                         warnings.feature))
-                   (classpath2)
-                   (phase.sources, work.path)
-     
-              
-              Async:
-                process.notices.each: notice =>
-                  info(e"$Bold(${phase.ref})")
-                  info(e"${notice.importance}: $Italic(${notice.message})")
-                  info(e"${colors.Silver}(${notice.code})")
-              
-              process.complete()
-  
-              val errorCount = process.notices.count(_.importance == Importance.Error)
-              val warnCount = process.notices.count(_.importance == Importance.Warning)
-  
-              info(msg"Finished building ${phase.ref} with $errorCount errors and $warnCount warnings")
-  
-              if errorCount == 0 then
-                work.moveTo(output)
-                output.as[Directory]
-              else Unset)
+              if phase.sources.isEmpty then output.as[Directory] else
+                val process: ScalacProcess =
+                  Log.envelop(phase.ref):
+                    import scalacOptions.*
+                    Scalac[3.4]
+                     (List(language.experimental.fewerBraces,
+                           language.experimental.erasedDefinitions,
+                           language.experimental.clauseInterleaving,
+                           language.experimental.into,
+                           language.experimental.genericNumberLiterals,
+                           language.experimental.saferExceptions,
+                           language.experimental.namedTypeArguments,
+                           internal.requireTargetName,
+                           internal.explicitNulls,
+                           internal.checkPatterns,
+                           internal.safeInit,
+                           advanced.maxInlines(64),
+                           experimental,
+                           sourceFuture,
+                           newSyntax,
+                           warnings.deprecation,
+                           warnings.feature))
+                     (classpath2)
+                     (phase.sources, work.path)
+                
+                Async:
+                  summon[FrontEnd].aborted.await()
+                  process.abort()
 
+                Async:
+                  process.notices.each: notice =>
+                    info(e"$Bold(${phase.ref})")
+                    info(e"${notice.importance}: $Italic(${notice.message})")
+                    info(e"${colors.Silver}(${notice.code})")
+                  
+                process.complete()
+    
+                val errorCount = process.notices.count(_.importance == Importance.Error)
+                val warnCount = process.notices.count(_.importance == Importance.Warning)
+    
+                info(msg"Finished building ${phase.ref} with $errorCount errors and $warnCount warnings")
+    
+                if process.cancelled then Unset
+                else if errorCount == 0 then
+                  work.moveTo(output)
+                  output.as[Directory]
+                else Unset)
+  
 extension (workspace: Workspace)
   def locals(ancestors: Set[Path] = Set())
       (using Monitor, Log[Display], WorkingDirectory, Internet, Installation, GitCommand)
