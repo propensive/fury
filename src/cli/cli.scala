@@ -38,7 +38,7 @@ import iridescence.*, colors.*
 import kaleidoscope.*
 import nettlesome.*
 import parasite.*, threadModels.platform
-import profanity.*
+import profanity.*, terminalOptions.terminalSizeDetection
 import rudiments.*, homeDirectories.virtualMachine
 import serpentine.*, hierarchies.unixOrWindows
 import spectacular.*
@@ -97,7 +97,7 @@ given installation(using Raises[UserError]): Installation =
 @main
 def main(): Unit =
   import cli.*
-  val initTime = now()
+  val initTime: Instant = safely(Instant(Properties.ethereal.startTime[Long]())).or(now())
 
   attempt[InitError]:
     given (InitError fixes CancelError) = error => InitError(msg"A thread was cancelled")
@@ -120,9 +120,9 @@ def main(): Unit =
         Log.route: 
           case _ => installation.config.log.path.as[File]
       
-
       Log.info(msg"Initialized Fury in ${(now() - initTime).show}")
-      
+
+
       daemon[BusMessage]:
         attempt[UserError]:
           Log.envelop(Uuid().show.take(8)):
@@ -220,18 +220,20 @@ def main(): Unit =
                 val generation: Optional[Int] = safely(Generation())
                 
                 subcommands match
-                  case UniverseSearch() :: _ => execute:
-                    Out.println(t"TODO: Search the universe")
-                    ExitStatus.Ok
+                  case UniverseSearch() :: _ =>
+                    execute:
+                      Out.println(t"TODO: Search the universe")
+                      ExitStatus.Ok
                   
-                  case UniverseUpdate() :: _ => execute:
-                    Out.println(t"TODO: Update the universe")
-                    ExitStatus.Fail(1)
+                  case UniverseUpdate() :: _ =>
+                    execute:
+                      ExitStatus.Fail(1)
 
-                  case Nil | (UniverseShow() :: _) => execute:
-                    internet(online):
-                      frontEnd:
-                        actions.universe.show()
+                  case Nil | (UniverseShow() :: _) =>
+                    execute:
+                      internet(online):
+                        frontEnd:
+                          actions.universe.show()
 
                   case command :: _ => execute:
                     Out.println(e"Command $Italic(${command.vouch(using Unsafe)()}) was not recognized.")
@@ -270,6 +272,7 @@ def main(): Unit =
   .recover: initError =>
     println(initError.message)
     ExitStatus.Fail(2)
+
 
 
 def about()(using Stdio): ExitStatus =
