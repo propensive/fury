@@ -131,7 +131,7 @@ object actions:
                // definition.website.lay(e"${definition.name}"): website =>
                //   e"${escapes.link(website, definition.name)}",
              Column(e"$Bold(ID)")(_(0)),
-             Column(e"$Bold(Description)", sizing = columnSizing.Prose)(_(1).description),
+             Column(e"$Bold(Description)", sizing = columnar.Prose)(_(1).description),
              Column(e"$Bold(Source)"): (_, definition) =>
                definition.source match
                  case workspace: Workspace =>
