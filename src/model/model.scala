@@ -235,9 +235,6 @@ object Workspace:
     given (WorkspaceError fixes HostnameError) =
       case HostnameError(text, _) => WorkspaceError(WorkspaceError.Reason.BadData(text))
 
-    given (WorkspaceError fixes NotFoundError) =
-      case NotFoundError(path) => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
-
     given (WorkspaceError fixes CodlReadError) =
       case CodlReadError(_) => WorkspaceError(WorkspaceError.Reason.BadContent)
 

@@ -17,11 +17,8 @@
 package fury
 
 import profanity.*, terminalOptions.terminalSizeDetection
-import vacuous.*
-import acyclicity.*
 import turbulence.*
 import exoskeleton.*
-import rudiments.*
 import parasite.*
 import anticipation.*
 
@@ -29,8 +26,6 @@ def frontEnd[ResultType](lambda: FrontEnd ?=> Terminal ?=> ResultType)(using Cli
   terminal(lambda(using CliFrontEnd()))
 
 class CliFrontEnd()(using terminal: Terminal) extends FrontEnd:
-  private var graph: Optional[Dag[Task]] = Unset
-  private var active: List[Task] = Nil
   given stdio: Stdio = terminal.stdio
 
   def schedule(task: Task): Unit = ()

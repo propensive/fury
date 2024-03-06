@@ -109,7 +109,6 @@ object Cache:
       given (VaultError fixes HostnameError)        = error => VaultError()
       given (VaultError fixes UndecodableCharError) = error => VaultError()
       given (VaultError fixes PathError)            = error => VaultError()
-      given (VaultError fixes NotFoundError)        = error => VaultError()
       given (VaultError fixes CodlReadError)        = error => VaultError()
       given (VaultError fixes MarkdownError)        = error => VaultError()
 

@@ -23,13 +23,21 @@ import aviation.*, calendars.gregorian
 import escapade.*
 import eucalyptus.*
 import fulminate.*
-import galilei.*, filesystemOptions.{createNonexistent, createNonexistentParents, dereferenceSymlinks}
+
+import galilei.*, filesystemOptions.{createNonexistent,
+                                     createNonexistentParents,
+                                     dereferenceSymlinks,
+                                     overwritePreexisting,
+                                     deleteRecursively,
+                                     moveAtomically}
+
 import gastronomy.*, alphabets.base32.zBase32Unpadded
 import gossamer.*
 import acyclicity.*
 import guillotine.*
 import hellenism.*
 import hypotenuse.*
+import inimitable.*
 import nettlesome.*
 import octogenarian.*
 import parasite.*
@@ -111,69 +119,82 @@ class Builder():
       tasks.getOrElseUpdate
        (hash,
         Async:
+          val outputName = hash.bytes.encodeAs[Base32]
+          val output = installation.build / PathName(outputName.take(2)) / PathName(outputName.drop(2))
           val inputs = phase.classpath.map(run).map(_.await())
-          if inputs.exists(_.absent) then abort(CancelError()) else
-            val additions = inputs.compact.map(_.path)
-            info(msg"Starting to build ${phase.ref} in ${hash.bytes.encodeAs[Base32]}")
-            
-            val output = (installation.build / PathName(hash.bytes.encodeAs[Base32])).as[Directory]
-   
-            val rootPath = t"/home/propensive/pub/dotty/dist/target/pack/lib"
-            
-            val classpath =
-              LocalClasspath
-               (List
-                 (ClasspathEntry.Jarfile(t"$rootPath/scala-library-2.13.12.jar"),
-                  ClasspathEntry.Jarfile(t"$rootPath/scala3-library_3-3.4.2-RC1-bin-SNAPSHOT.jar"),
-                  ClasspathEntry.Jarfile(t"$rootPath/scala-asm-9.6.0-scala-1.jar"),
-                  ClasspathEntry.Jarfile(t"$rootPath/compiler-interface-1.9.6.jar"),
-                  ClasspathEntry.Jarfile(t"$rootPath/scala3-interfaces-3.4.2-RC1-bin-SNAPSHOT.jar"),
-                  ClasspathEntry.Jarfile(t"$rootPath/scala3-compiler_3-3.4.2-RC1-bin-SNAPSHOT.jar"),
-                  ClasspathEntry.Jarfile(t"$rootPath/tasty-core_3-3.4.2-RC1-bin-SNAPSHOT.jar"),
-                  ClasspathEntry.Jarfile(t"$rootPath/scala3-staging_3-3.4.2-RC1-bin-SNAPSHOT.jar"),
-                  ClasspathEntry.Jarfile(t"$rootPath/scala3-tasty-inspector_3-3.4.2-RC1-bin-SNAPSHOT.jar"),
-                  ClasspathEntry.Jarfile(t"$rootPath/jline-reader-3.25.1.jar"),
-                  ClasspathEntry.Jarfile(t"$rootPath/jline-terminal-3.25.1.jar"),
-                  ClasspathEntry.Jarfile(t"$rootPath/jline-terminal-jna-3.25.1.jar"),
-                  ClasspathEntry.Jarfile(t"$rootPath/jna-5.14.0.jar")))
-          
-            val classpath2 = additions.foldLeft(classpath)(_ + _)
-            
-            val notices: LazyList[Notice] =
-              Log.envelop(phase.ref):
-                import scalacOptions.*
-                Scalac[3.4]
-                 (List(language.experimental.fewerBraces,
-                       language.experimental.erasedDefinitions,
-                       language.experimental.clauseInterleaving,
-                       language.experimental.into,
-                       language.experimental.genericNumberLiterals,
-                       language.experimental.saferExceptions,
-                       language.experimental.namedTypeArguments,
-                       internal.requireTargetName,
-                       internal.explicitNulls,
-                       internal.checkPatterns,
-                       internal.safeInit,
-                       advanced.maxInlines(64),
-                       experimental,
-                       sourceFuture,
-                       newSyntax,
-                       warnings.deprecation,
-                       warnings.feature))
-                 (classpath2)
-                 (phase.sources, output.path)
-   
-            val errorCount = notices.count(_.importance == Importance.Error)
-            val warnCount = notices.count(_.importance == Importance.Warning)
-          
-            notices.each: notice =>
-              info(e"$Bold(${phase.ref})")
-              info(e"${notice.importance}: $Italic(${notice.message})")
-              info(e"${colors.Silver}(${notice.code})")
 
-            info(msg"Finished building ${phase.ref} with $errorCount errors and $warnCount warnings")
-
-            if errorCount == 0 then output else Unset)
+          if output.exists() then
+            output.as[Directory].tap(_.touch())
+          else
+            if inputs.exists(_.absent) then abort(CancelError()) else
+              val additions = inputs.compact.map(_.path)
+              info(msg"Starting to build ${phase.ref} in ${hash.bytes.encodeAs[Base32]}")
+              
+              val work = (installation.work / PathName(Uuid().show)).as[Directory]
+     
+              val rootPath = t"/home/propensive/pub/dotty/dist/target/pack/lib"
+              
+              val classpath =
+                LocalClasspath
+                 (List
+                   (ClasspathEntry.Jarfile(t"$rootPath/scala-library-2.13.12.jar"),
+                    ClasspathEntry.Jarfile(t"$rootPath/scala3-library_3-3.4.2-RC1-bin-SNAPSHOT.jar"),
+                    ClasspathEntry.Jarfile(t"$rootPath/scala-asm-9.6.0-scala-1.jar"),
+                    ClasspathEntry.Jarfile(t"$rootPath/compiler-interface-1.9.6.jar"),
+                    ClasspathEntry.Jarfile(t"$rootPath/scala3-interfaces-3.4.2-RC1-bin-SNAPSHOT.jar"),
+                    ClasspathEntry.Jarfile(t"$rootPath/scala3-compiler_3-3.4.2-RC1-bin-SNAPSHOT.jar"),
+                    ClasspathEntry.Jarfile(t"$rootPath/tasty-core_3-3.4.2-RC1-bin-SNAPSHOT.jar"),
+                    ClasspathEntry.Jarfile(t"$rootPath/scala3-staging_3-3.4.2-RC1-bin-SNAPSHOT.jar"),
+                    ClasspathEntry.Jarfile(t"$rootPath/scala3-tasty-inspector_3-3.4.2-RC1-bin-SNAPSHOT.jar"),
+                    ClasspathEntry.Jarfile(t"$rootPath/jline-reader-3.25.1.jar"),
+                    ClasspathEntry.Jarfile(t"$rootPath/jline-terminal-3.25.1.jar"),
+                    ClasspathEntry.Jarfile(t"$rootPath/jline-terminal-jna-3.25.1.jar"),
+                    ClasspathEntry.Jarfile(t"$rootPath/jna-5.14.0.jar")))
+            
+              val classpath2 = additions.foldLeft(classpath)(_ + _)
+              
+              val process: ScalacProcess =
+                Log.envelop(phase.ref):
+                  import scalacOptions.*
+                  Scalac[3.4]
+                   (List(language.experimental.fewerBraces,
+                         language.experimental.erasedDefinitions,
+                         language.experimental.clauseInterleaving,
+                         language.experimental.into,
+                         language.experimental.genericNumberLiterals,
+                         language.experimental.saferExceptions,
+                         language.experimental.namedTypeArguments,
+                         internal.requireTargetName,
+                         internal.explicitNulls,
+                         internal.checkPatterns,
+                         internal.safeInit,
+                         advanced.maxInlines(64),
+                         experimental,
+                         sourceFuture,
+                         newSyntax,
+                         warnings.deprecation,
+                         warnings.feature))
+                   (classpath2)
+                   (phase.sources, work.path)
+     
+              
+              Async:
+                process.notices.each: notice =>
+                  info(e"$Bold(${phase.ref})")
+                  info(e"${notice.importance}: $Italic(${notice.message})")
+                  info(e"${colors.Silver}(${notice.code})")
+              
+              process.complete()
+  
+              val errorCount = process.notices.count(_.importance == Importance.Error)
+              val warnCount = process.notices.count(_.importance == Importance.Warning)
+  
+              info(msg"Finished building ${phase.ref} with $errorCount errors and $warnCount warnings")
+  
+              if errorCount == 0 then
+                work.moveTo(output)
+                output.as[Directory]
+              else Unset)
 
 extension (workspace: Workspace)
   def locals(ancestors: Set[Path] = Set())
