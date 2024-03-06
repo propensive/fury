@@ -68,7 +68,8 @@ object Installation:
     Installation(config, cache, vault, lib, tmp, snapshots)
     
 case class Installation
-    (config: Config, cache: Directory, vault: Directory, lib: Directory, tmp: Directory,
-        snapshots: Directory)
+    (config: Config, cache: Directory, vault: Directory, lib: Directory, tmp: Directory, snapshots: Directory):
+
+  val build: Path = cache.path / p"build"
   
 inline def installation(using inline installation: Installation): Installation = installation

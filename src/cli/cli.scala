@@ -49,7 +49,6 @@ enum BusMessage:
   case Ping
 
 given Realm = realm"fury"
-
 given Decimalizer = Decimalizer(2)
 
 object cli:
@@ -193,10 +192,10 @@ def main(): Unit =
                     given (UserError fixes InvalidRefError) = error => UserError(error.message)
                     
                     internet(online):
-                      frontEnd:
-                        actions.build.run(target().decodeAs[ModuleRef])
-                        Out.println(t"TODO: Build ${target.let(_()).or(t"?")}")
-                        ExitStatus.Fail(1)
+                      Async:
+                        frontEnd:
+                          actions.build.run(target().decodeAs[ModuleRef])
+                      .await()
                   
               case Graph() :: Nil =>
                 val online = Offline().absent

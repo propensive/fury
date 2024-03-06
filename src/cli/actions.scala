@@ -19,6 +19,7 @@ package fury
 import ambience.*
 import anticipation.*
 import contingency.*
+import anthology.*
 import dendrology.*, dagStyles.default
 import escapade.*
 import escritoire.*, insufficientSpaceHandling.ignore, tableStyles.default
@@ -98,10 +99,12 @@ object actions:
   object cache:
     def clean()(using FrontEnd): ExitStatus raises UserError =
       info(msg"Cleaning the cache")
+      Cache.clear()
       ExitStatus.Ok
 
-    def about()(using FrontEnd): ExitStatus raises UserError =
-      info(msg"Details of the cache usage")
+    def about()(using FrontEnd, Monitor): ExitStatus raises UserError = Cache.about.pipe: cache =>
+      info(msg"""The cache contains ${cache.ecosystems} ecosystems, ${cache.snapshots} repository snapshots,
+                 ${cache.workspaces} workspaces and ${cache.files} files, totalling ${cache.dataSize}.""")
       ExitStatus.Ok
 
   object universe:
@@ -146,19 +149,31 @@ object actions:
       ExitStatus.Ok
 
     def run(ref: ModuleRef)
-        (using FrontEnd, WorkingDirectory, Monitor, Log[Display], Internet, Installation, GitCommand)
+        (using FrontEnd,
+               WorkingDirectory,
+               Monitor,
+               Log[Display],
+               Internet,
+               Installation,
+               GitCommand,
+               SystemProperties)
             : ExitStatus raises UserError =
 
       given (UserError fixes WorkspaceError) = accede
       given (UserError fixes BuildError)     = accede
       given (UserError fixes VaultError)     = accede
       given (UserError fixes CancelError)    = accede
+      given (UserError fixes PathError)      = accede
+      given (UserError fixes IoError)        = accede
+      given (UserError fixes ScalacError)    = accede
 
       val workspace = Workspace()
       given universe: Universe = workspace.universe()
       
-      info(Engine.buildGraph(Engine.build(ref).await()))
-      
+      val builder = Builder()
+      val hash = builder.build(ref).await()
+      info(builder.buildGraph(hash))
+      builder.run(hash).await()
       ExitStatus.Ok
 
   def invalidSubcommand(command: Argument)(using FrontEnd): ExitStatus raises UserError =

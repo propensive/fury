@@ -21,7 +21,7 @@ import aviation.*
 import cellulose.*
 import eucalyptus.*
 import galilei.*, filesystemOptions.{dereferenceSymlinks, createNonexistent, createNonexistentParents}
-import hieroglyph.*, charDecoders.utf8, badEncodingHandlers.collect
+import hieroglyph.*, charDecoders.utf8, badEncodingHandlers.skip
 import nettlesome.*
 import octogenarian.*
 import parasite.*
@@ -30,6 +30,7 @@ import guillotine.*
 import fulminate.*
 import punctuation.*
 import gossamer.*
+import gastronomy.*
 import escapade.*
 import rudiments.*
 import vacuous.*
@@ -39,15 +40,24 @@ import turbulence.*
 
 import scala.collection.concurrent as scc
 
+case class CachedFile(lastModified: Instant, text: Async[Text], hash: Async[Hash])
+case class CacheInfo(ecosystems: Int, snapshots: Int, workspaces: Int, files: Int, dataSize: ByteSize)
+
 object Cache:
   private val ecosystems: scc.TrieMap[Ecosystem, Async[Vault]] = scc.TrieMap()
   private val snapshots: scc.TrieMap[Snapshot, Async[Directory]] = scc.TrieMap()
   private val workspaces: scc.TrieMap[Path, (Instant, Async[Workspace])] = scc.TrieMap()
+  private val files: scc.TrieMap[Path, CachedFile] = scc.TrieMap()
 
   def clear(): Unit =
     ecosystems.clear()
     snapshots.clear()
     workspaces.clear()
+    files.clear()
+
+  def about(using Monitor): CacheInfo =
+    val dataSize = ByteSize(files.values.map { file => safely(file.text.await().length).or(0) }.sum)
+    CacheInfo(ecosystems.size, snapshots.size, workspaces.size, files.size, dataSize)
 
   def gitProgress(stream: LazyList[Progress]): LazyList[Activity] = stream.collect:
     case Progress.Receiving(percent)         => Activity.Progress(t"receiving", percent)
@@ -128,6 +138,20 @@ object Cache:
     if cacheTime == lastModified then workspace else Async(Workspace(path)).tap: async =>
       workspaces(path) = (lastModified, async)
       
+  def file(path: Path)(using Monitor): CachedFile raises IoError raises StreamError raises CancelError =
+    val file = path.as[File]
+    val lastModified = file.lastModified
+    def text() = Async(file.readAs[Text])
+    
+    def cachedFile() =
+      val async = text()
+      CachedFile(lastModified, async, async.map(_.digest[Sha2[256]]))
+
+    val cached = files.getOrElseUpdate(path, cachedFile())
+      
+    if cached.lastModified == lastModified then cached else cachedFile().tap: entry =>
+      files(path) = entry
+
 case class VaultError() extends Error(msg"the vault file is not valid")
 
 given Realm = realm"fury"
