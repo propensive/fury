@@ -75,7 +75,7 @@ class Builder():
     builds.synchronized:
       builds.getOrElseUpdate
         (moduleRef,
-         Async:
+         async:
            Log.info(msg"Starting computation of $moduleRef")
      
            given (BuildError fixes GitError)        = error => BuildError()
@@ -118,7 +118,7 @@ class Builder():
     tasks.synchronized:
       tasks.getOrElseUpdate
        (hash,
-        Async:
+        async:
           val outputName = hash.bytes.encodeAs[Base32]
           val output = installation.build / PathName(outputName.take(2)) / PathName(outputName.drop(2))
           val inputs = phase.classpath.map(run).map(_.await())
@@ -177,11 +177,11 @@ class Builder():
                      (classpath2)
                      (phase.sources, work.path)
                 
-                Async:
+                daemon:
                   summon[FrontEnd].aborted.await()
                   process.abort()
 
-                Async:
+                async:
                   process.notices.each: notice =>
                     info(e"$Bold(${phase.ref})")
                     info(e"${notice.importance}: $Italic(${notice.message})")

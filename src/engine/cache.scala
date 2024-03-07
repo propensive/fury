@@ -79,7 +79,7 @@ object Cache:
              Raises[GitError])
           : Async[Directory] =
 
-    snapshots.getOrElseUpdate(snapshot, Async:
+    snapshots.getOrElseUpdate(snapshot, async:
       val destination = summon[Installation].snapshots.path / PathName(snapshot.commit.show)
       
       if destination.exists() then destination.as[Directory] else
@@ -95,7 +95,7 @@ object Cache:
       (using Installation, Internet, Log[Display], Monitor, WorkingDirectory, GitCommand)
           : Async[Vault] raises VaultError =
 
-    ecosystems.getOrElseUpdate(ecosystem, Async:
+    ecosystems.getOrElseUpdate(ecosystem, async:
 
       given (VaultError fixes UrlError)             = error => VaultError()
       given (VaultError fixes InvalidRefError)      = error => VaultError()
@@ -132,15 +132,15 @@ object Cache:
       case IoError(path) => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
 
     val lastModified = path.as[File].lastModified
-    val (cacheTime, workspace) = workspaces.getOrElseUpdate(path, (lastModified, Async(Workspace(path))))
+    val (cacheTime, workspace) = workspaces.getOrElseUpdate(path, (lastModified, async(Workspace(path))))
       
-    if cacheTime == lastModified then workspace else Async(Workspace(path)).tap: async =>
+    if cacheTime == lastModified then workspace else async(Workspace(path)).tap: async =>
       workspaces(path) = (lastModified, async)
       
   def file(path: Path)(using Monitor): CachedFile raises IoError raises StreamError raises CancelError =
     val file = path.as[File]
     val lastModified = file.lastModified
-    def text() = Async(file.readAs[Text])
+    def text() = async(file.readAs[Text])
     
     def cachedFile() =
       val async = text()

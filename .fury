@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 :<< "##"
-    This file contains build definitions for use with Fury.
-
-    Fury is available at:
-
-      https://github.com/propensive/fury/
-
-    To get started, run this file.
+    ┌─────────────────────────────────────────────────────────┐
+    │ Fury                                                    │
+    │ ‾‾‾‾                                                    │
+    │ This file contains a Fury build definition.             │
+    │ Fury can be downloaded from https://fury.build/         │
+    │ or your can just run this file on the command line.     │
+    └─────────────────────────────────────────────────────────┘ 
     
 ecosystem vent 4 https://github.com/propensive/vent main
 
@@ -62,18 +62,18 @@ project fury
   module compose
     compiler  docker?
 
-# variant scala-js
-#   - module test
-#   + module bench
-#   : module core
-#     - compiler  scala
-#     + compiler  java
-#     + include   fury/scalajs
-# 
-# variant scala-native
-#   - module test
-#   : module core
-#     - sources
+  # variant scala-js
+  #   - module test
+  #   + module bench
+  #   : module core
+  #     - compiler  scala
+  #     + compiler  java
+  #     + include   fury/scalajs
+  # 
+  # variant scala-native
+  #   - module test
+  #   : module core
+  #     - sources
 
 ##
 

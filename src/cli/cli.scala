@@ -124,7 +124,7 @@ def main(): Unit =
 
 
 
-      daemon[BusMessage]:
+      cliService[BusMessage]:
         attempt[UserError]:
           Log.envelop(Uuid().show.take(8)):
             if Version().present then execute(frontEnd(actions.versionInfo())) else arguments match
@@ -194,10 +194,10 @@ def main(): Unit =
                     internet(online):
                       terminal:
                         frontEnd:
-                          val buildAsync = Async:
+                          val buildAsync = async:
                             actions.build.run(target().decodeAs[ModuleRef])
                           
-                          Async:
+                          daemon:
                             terminal.events.each:
                               case Keypress.Escape =>
                                 Out.println(e"$Bold(Aborting the build.)")
@@ -274,7 +274,7 @@ def main(): Unit =
                   
                   workspace.lay(ExitStatus.Fail(2)): workspace =>
                     workspace.build.actions.find(_.name == ActionName(subcommand())).optional.let: action =>
-                      Async:
+                      async:
                         internet(online):
                           frontEnd:
                             action.modules.each(actions.build.run(_))
