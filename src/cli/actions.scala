@@ -149,14 +149,15 @@ object actions:
       ExitStatus.Ok
 
     def run(target: Target)
-        (using FrontEnd,
-               WorkingDirectory,
-               Monitor,
-               Log[Display],
-               Internet,
-               Installation,
-               GitCommand,
-               SystemProperties)
+       (using FrontEnd,
+              WorkingDirectory,
+              Monitor,
+              Log[Display],
+              Internet,
+              Installation,
+              GitCommand,
+              SystemProperties,
+              Environment)
             : ExitStatus raises UserError =
 
       given (UserError fixes WorkspaceError) = accede

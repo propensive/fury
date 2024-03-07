@@ -67,8 +67,8 @@ class Builder():
 
   given expandable: Expandable[Phase] = _.dependencies.map(phases(_))
 
-  def buildGraph(digest: Hash): DagDiagram[Phase] =
-    DagDiagram(Dag.create(phases(digest))(_.dependencies.to(Set).map(phases(_))))
+  def dag(digest: Hash): Dag[Phase] = Dag.create(phases(digest))(_.dependencies.to(Set).map(phases(_)))
+  def buildGraph(digest: Hash): DagDiagram[Phase] = DagDiagram(dag(digest))
 
   def build(target: Target)(using Universe)
       (using Monitor, Clock, Log[Display], WorkingDirectory, Internet, Installation, GitCommand)
@@ -95,15 +95,14 @@ class Builder():
             case vault: Vault =>
               Workspace(Cache(vault.index.releases(target.projectId).repo).await().path)
             
-          val project: Project = workspace(target.projectId)
-          project(target.goalId) match
+          workspace(target.projectId)(target.goalId) match
             case module: Module =>
               val sourceFiles: List[File] = module.sources.flatMap: directory =>
-                workspace(directory).descendants.filter(_.is[File]).filter(_.name.ends(t".scala")).map(_.as[File])
+                workspace(directory).as[Directory].descendants.filter(_.is[File]).filter(_.name.ends(t".scala")).map(_.as[File])
         
               val includes = module.includes.map(build(_)).map(_.await())
               val classpath = includes.map(phases(_)).flatMap(_.runtimeClasspath).to(Set).to(List)
-              val phase = Phase(target, sourceFiles, includes, classpath, Nil)
+              val phase = Phase(target, sourceFiles, includes, classpath, Nil, Unset)
               
               phases(phase.digest) = phase
                 
@@ -113,11 +112,11 @@ class Builder():
             case artifact: Artifact =>
               val includes = artifact.includes.map(build(_)).map(_.await())
               val classpath = includes.map(phases(_)).flatMap(_.runtimeClasspath).to(Set).to(List)
-              val phase = Phase(target, Nil, includes, classpath, Nil)
+              val phase = Phase(target, Nil, includes, classpath, Nil, workspace(artifact.path))
               phases(phase.digest) = phase
               phase.digest)
 
-  def run(hash: Hash)(using Log[Display], Installation, FrontEnd, Monitor, SystemProperties)
+  def run(hash: Hash)(using Log[Display], Installation, FrontEnd, Monitor, SystemProperties, Environment)
           : Async[Optional[Directory]] raises CancelError raises IoError raises PathError raises ScalacError =
 
     val phase = phases(hash)
@@ -128,10 +127,19 @@ class Builder():
         async:
           val outputName = hash.bytes.encodeAs[Base32]
           val output = installation.build / PathName(outputName.take(2)) / PathName(outputName.drop(2))
-          val inputs = phase.classpath.map(run).map(_.await())
+          val inputAsyncs = phase.classpath.map(run)
+          
+          phase.destination.let: path =>
+            ZipFile.create(path).tap: zipFile =>
+              (dag(hash) - phase).sorted.map(_.digest).each: hash =>
+                tasks(hash).await().let: directory =>
+                  zipFile.append:
+                    directory.descendants.filter(_.is[File]).map: path =>
+                      ZipEntry(ZipRef(t"/"+directory.path.relativeTo(path).show), path.as[File])
 
-          if output.exists() then
-            output.as[Directory].tap(_.touch())
+          val inputs = inputAsyncs.map(_.await())
+
+          if output.exists() then output.as[Directory].tap(_.touch())
           else
             if inputs.exists(_.absent) then abort(CancelError()) else
               val additions = inputs.compact.map(_.path)
@@ -249,11 +257,10 @@ extension (workspace: Workspace)
              Raises[PathError],
              Raises[ExecError],
              Raises[IoError])
-          : Directory =
+          : Path =
 
     workspace.mounts.keys.find(_.precedes(path)).optional.lay(workspace.directory.path + path.link): mount =>
       Cache(workspace.mounts(mount).repo).await().path + path.link
-    .as[Directory]
 
 def universe(using universe: Universe): Universe = universe
 
@@ -272,7 +279,14 @@ enum Compiler:
     case Kotlin  => name.ends(t".kt")
 
 object Phase:
-  def apply(target: Target, sources: List[File], dependencies: List[Hash], classpath: List[Hash], binaries: List[Hash])(using Monitor)
+  def apply
+     (target: Target,
+      sources: List[File],
+      dependencies: List[Hash],
+      classpath: List[Hash],
+      binaries: List[Hash],
+      destination: Optional[Path])
+     (using Monitor)
           : Phase raises BuildError =
 
     given (BuildError fixes CancelError) = error => BuildError()
@@ -281,10 +295,17 @@ object Phase:
 
     val sourceMap = sources.map { file => file.path.name -> Cache.file(file.path).text.await() }.to(Map)
     
-    Phase(target, sourceMap, dependencies, classpath, binaries)
+    Phase(target, sourceMap, dependencies, classpath, binaries, destination)
 
   given show: Show[Phase] = _.target.show
 
-case class Phase(target: Target, sources: Map[Text, Text], dependencies: List[Hash], classpath: List[Hash], binaries: List[Hash]):
+case class Phase
+   (target: Target,
+    sources: Map[Text, Text],
+    dependencies: List[Hash],
+    classpath: List[Hash],
+    binaries: List[Hash],
+    destination: Optional[Path]):
+
   lazy val digest = (sources.values.to(List), dependencies, binaries).digest[Sha2[256]]
   def runtimeClasspath = digest :: classpath

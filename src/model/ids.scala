@@ -44,12 +44,10 @@ extends Error(msg"There were problems with the build file $path")
 trait RefType(val name: Text)
 
 object Ids:
-  opaque type GoalId                = Text
-  opaque type EcosystemId           = Text
-  opaque type StreamId              = Text
-  opaque type ProjectId             = Text
-  opaque type ModuleId    <: GoalId = GoalId
-  opaque type ArtifactId  <: GoalId = GoalId
+  opaque type GoalId      = Text
+  opaque type EcosystemId = Text
+  opaque type StreamId    = Text
+  opaque type ProjectId   = Text
   
   @targetName("Pkg")
   opaque type Package = Text
@@ -69,8 +67,7 @@ object Ids:
   object EcosystemId extends Id[EcosystemId]()
   object StreamId extends Id[StreamId]()
   object ProjectId extends Id[ProjectId]()
-  object ModuleId extends Id[ModuleId]()
-  object ArtifactId extends Id[ArtifactId]()
+  object GoalId extends Id[GoalId]()
   object Keyword extends Id[Keyword]()
   object ActionName extends Id[ActionName]()
 
@@ -119,11 +116,6 @@ object Ids:
   given ecosystemIdDecoder(using Raises[InvalidRefError]): Decoder[EcosystemId] = EcosystemId(_)
   given ecosystemIdDigestible: Digestible[EcosystemId] = (acc, ecosystemId) => acc.append(ecosystemId.bytes)
   
-  given moduleIdShow: Show[ModuleId] = identity(_)
-  given moduleIdEncoder: Encoder[ModuleId] = identity(_)
-  given moduleIdDecoder(using Raises[InvalidRefError]): Decoder[ModuleId] = ModuleId(_)
-  given moduleIdDigestible: Digestible[ModuleId] = (acc, moduleId) => acc.append(moduleId.bytes)
-  
   given projectIdShow: Show[ProjectId] = identity(_)
   given projectIdEncoder: Encoder[ProjectId] = identity(_)
   given projectIdDecoder(using Raises[InvalidRefError]): Decoder[ProjectId] = ProjectId(_)
@@ -159,11 +151,7 @@ object Ids:
   given keywordDecoder(using Raises[InvalidRefError]): Decoder[Keyword] = Keyword(_)
   given keywordDigestible: Digestible[Keyword] = (acc, keyword) => acc.append(keyword.bytes)
 
-  given artifactIdShow: Show[ArtifactId] = identity(_)
-  given artifactIdEncoder: Encoder[ArtifactId] = identity(_)
-  given artifactIdDecoder(using Raises[InvalidRefError]): Decoder[ArtifactId] = ArtifactId(_)
-  given artifactIdDigestible: Digestible[ArtifactId] = (acc, artifactId) => acc.append(artifactId.bytes)
-  
   given goalIdShow: Show[GoalId] = identity(_)
   given goalIdEncoder: Encoder[GoalId] = identity(_)
   given goalIdDigestible: Digestible[GoalId] = (acc, goalId) => acc.append(goalId.bytes)
+  given goalIdDecoder(using Raises[InvalidRefError]): Decoder[GoalId] = GoalId(_)

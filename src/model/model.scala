@@ -123,8 +123,10 @@ case class Prelude(terminator: Text, comment: List[Text]) derives Debug
 object Project:
   given relabelling: CodlRelabelling[Project] = () =>
     Map
-     (t"modules"   -> t"module",
-      t"artifacts" -> t"artifact")
+     (t"modules"    -> t"module",
+      t"artifacts"  -> t"artifact",
+      t"containers" -> t"container",
+      t"execs"      -> t"exec")
 
 case class Project
     (id:          ProjectId,
@@ -132,6 +134,8 @@ case class Project
      description: InlineMd,
      modules:     List[Module],
      artifacts:   List[Artifact],
+     containers:  List[Container],
+     execs:       List[Exec],
      website:     HttpUrl,
      license:     Optional[LicenseId],
      keywords:    List[Keyword])
@@ -147,13 +151,27 @@ derives Debug:
   def definition(workspace: Workspace): Definition =
     Definition(name, description, website, license, keywords, workspace)
 
-case class Assist(target: Target, module: ModuleId) derives Debug
+case class Assist(target: Target, module: GoalId) derives Debug
 
 object Artifact:
   given relabelling: CodlRelabelling[Artifact] = () =>
     Map(t"kind" -> t"type", t"includes" -> t"include")
 
-case class Artifact(id: ArtifactId, path: WorkPath, includes: List[Target]) derives Debug
+case class Artifact(id: GoalId, path: WorkPath, includes: List[Target]) derives Debug
+
+object Container:
+  given relabelling: CodlRelabelling[Container] = () =>
+    Map(t"copies" -> t"copy")
+
+case class Copy(source: WorkPath, destination: WorkPath) derives Debug
+
+case class Container(id: GoalId, path: WorkPath, copies: List[Copy]) derives Debug
+
+object Exec:
+  given relabelling: CodlRelabelling[Exec] = () =>
+    Map(t"includes" -> t"include")
+
+case class Exec(id: GoalId, includes: List[Target]) derives Debug
 
 object Module:
   given relabelling: CodlRelabelling[Module] = () =>
@@ -166,7 +184,7 @@ object Module:
       t"assists"      -> t"assist")
 
 case class Module
-    (id:           ModuleId,
+    (id:           GoalId,
      includes:     List[Target],
      requirements: List[Target],
      sources:      List[WorkPath],
@@ -189,11 +207,11 @@ object Target extends RefType(t"target"):
     t"${target.projectId.let { projectId => t"$projectId/" }.or(t"")}${target.goalId}"
 
   def apply(value: Text)(using Raises[InvalidRefError]): Target = value match
-    case r"${ProjectId(project)}([^/]+)\/${ModuleId(module)}([^/]+)" =>
+    case r"${ProjectId(project)}([^/]+)\/${GoalId(module)}([^/]+)" =>
       Target(project, module)
 
     case _ =>
-      raise(InvalidRefError(value, this))(Target(ProjectId(t"unknown"), ModuleId(t"unknown")))
+      raise(InvalidRefError(value, this))(Target(ProjectId(t"unknown"), GoalId(t"unknown")))
 
 case class Target(projectId: ProjectId, goalId: GoalId):
   def suggestion: Suggestion = Suggestion(this.show, Unset)
