@@ -65,19 +65,19 @@ object cli:
   def Generation(using Raises[NumberError]) =
     Flag[Int](t"generation", false, List('g'), t"Use universe generation number")
 
-  val About = Subcommand(t"about", e"About Fury")
-  val Build = Subcommand(t"build", e"Start a new build (default)")
-  val Cache = Subcommand(t"cache", e"Cache operations")
-  val Config = Subcommand(t"config", e"View and change configuration")
-  val Shutdown = Subcommand(t"shutdown", e"Shutdown the Fury daemon")
-  val Init = Subcommand(t"init", e"Initialize a new project")
-  val Universe = Subcommand(t"universe", e"Universe actions")
-  val UniverseSearch = Subcommand(t"search", e"Search for a release")
-  val UniverseShow = Subcommand(t"show", e"Show details of the current universe")
-  val UniverseUpdate = Subcommand(t"update", e"Check for universe updates")
-  val Graph = Subcommand(t"graph", e"Show a build graph")
-  val Update = Subcommand(t"update", e"Update Fury")
-  val Install = Subcommand(t"install", e"Install Fury")
+  val About          = Subcommand(t"about",    e"About Fury")
+  val Build          = Subcommand(t"build",    e"Start a new build (default)")
+  val Cache          = Subcommand(t"cache",    e"Cache operations")
+  val Config         = Subcommand(t"config",   e"View and change configuration")
+  val Shutdown       = Subcommand(t"shutdown", e"Shutdown the Fury daemon")
+  val Init           = Subcommand(t"init",     e"Initialize a new project")
+  val Universe       = Subcommand(t"universe", e"Universe actions")
+  val UniverseSearch = Subcommand(t"search",   e"Search for a release")
+  val UniverseShow   = Subcommand(t"show",     e"Show details of the current universe")
+  val UniverseUpdate = Subcommand(t"update",   e"Check for universe updates")
+  val Graph          = Subcommand(t"graph",    e"Show a build graph")
+  val Update         = Subcommand(t"update",   e"Update Fury")
+  val Install        = Subcommand(t"install",  e"Install Fury")
 
   val Clean = Subcommand(t"clean", e"Clean the cache")
   val Details = Subcommand(t"info", e"Information about cache usage")
@@ -199,8 +199,10 @@ def main(): Unit =
                           
                           Async:
                             terminal.events.each:
-                              case Keypress.Escape => summon[FrontEnd].abort()
-                              case other => Out.println(other.toString.tt)
+                              case Keypress.Escape =>
+                                Out.println(e"$Bold(Aborting the build.)")
+                                summon[FrontEnd].abort()
+                              case other => ()
                           
                           buildAsync.await()
                   
