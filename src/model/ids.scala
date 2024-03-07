@@ -45,17 +45,18 @@ trait RefType(val name: Text)
 
 object Ids:
   opaque type EcosystemId = Text
-  opaque type StreamId = Text
-  opaque type ProjectId = Text
-  opaque type ModuleId = Text
+  opaque type StreamId    = Text
+  opaque type ProjectId   = Text
+  opaque type ModuleId    = Text
+  opaque type ArtifactId  = Text
   
   @targetName("Pkg")
   opaque type Package = Text
   
-  opaque type ClassName = Text
+  opaque type ClassName  = Text
   opaque type ActionName = Text
-  opaque type Keyword = Text
-  opaque type LicenseId = Text
+  opaque type Keyword    = Text
+  opaque type LicenseId  = Text
 
   class Id[IdType]() extends RefType(t"ID"):
     def apply(value: Text)(using Raises[InvalidRefError]): IdType = value match
@@ -68,6 +69,7 @@ object Ids:
   object StreamId extends Id[StreamId]()
   object ProjectId extends Id[ProjectId]()
   object ModuleId extends Id[ModuleId]()
+  object ArtifactId extends Id[ArtifactId]()
   object Keyword extends Id[Keyword]()
   object ActionName extends Id[ActionName]()
 
@@ -155,3 +157,8 @@ object Ids:
   given keywordEncoder: Encoder[Keyword] = identity(_)
   given keywordDecoder(using Raises[InvalidRefError]): Decoder[Keyword] = Keyword(_)
   given keywordDigestible: Digestible[Keyword] = (acc, keyword) => acc.append(keyword.bytes)
+
+  given artifactIdShow: Show[ArtifactId] = identity(_)
+  given artifactIdEncoder: Encoder[ArtifactId] = identity(_)
+  given artifactIdDecoder(using Raises[InvalidRefError]): Decoder[ArtifactId] = ArtifactId(_)
+  given artifactIdDigestible: Digestible[ArtifactId] = (acc, ecosystemId) => acc.append(ecosystemId.bytes)

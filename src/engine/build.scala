@@ -49,6 +49,7 @@ import serpentine.*, hierarchies.unixOrWindows
 import spectacular.*
 import turbulence.*
 import vacuous.*
+import zeppelin.*
 
 import scala.collection.concurrent as scc
 
@@ -61,22 +62,23 @@ case class BuildError() extends Error(msg"the build could not run")
 
 class Builder():
   private val phases: scc.TrieMap[Hash, Phase] = scc.TrieMap()
-  private val builds: scc.TrieMap[ModuleRef, Async[Hash]] = scc.TrieMap()
+  private val builds: scc.TrieMap[Target, Async[Hash]] = scc.TrieMap()
+  private val tasks: scc.TrieMap[Hash, Async[Optional[Directory]]] = scc.TrieMap()
 
   given expandable: Expandable[Phase] = _.dependencies.map(phases(_))
 
   def buildGraph(digest: Hash): DagDiagram[Phase] =
     DagDiagram(Dag.create(phases(digest))(_.dependencies.to(Set).map(phases(_))))
 
-  def build(moduleRef: ModuleRef)(using Universe)
+  def build(target: Target)(using Universe)
       (using Monitor, Clock, Log[Display], WorkingDirectory, Internet, Installation, GitCommand)
           : Async[Hash] raises BuildError =
 
     builds.synchronized:
       builds.getOrElseUpdate
-        (moduleRef,
+        (target,
          async:
-           Log.info(msg"Starting computation of $moduleRef")
+           Log.info(msg"Starting computation of $target")
      
            given (BuildError fixes GitError)        = error => BuildError()
            given (BuildError fixes ExecError)       = error => BuildError()
@@ -87,28 +89,26 @@ class Builder():
            given (BuildError fixes StreamError)     = error => BuildError()
            given (BuildError fixes CancelError)     = error => BuildError()
            
-           val workspace = universe(moduleRef.projectId).source match
+           val workspace = universe(target.projectId).source match
              case workspace: Workspace => workspace
   
              case vault: Vault =>
-               Workspace(Cache(vault.index.releases(moduleRef.projectId).repo).await().path)
+               Workspace(Cache(vault.index.releases(target.projectId).repo).await().path)
              
-           val project: Project = workspace(moduleRef.projectId)
-           val module = project(moduleRef.moduleId)
+           val project: Project = workspace(target.projectId)
+           val module = project(target.moduleId)
      
            val sourceFiles: List[File] = module.sources.flatMap: directory =>
              workspace(directory).descendants.filter(_.is[File]).filter(_.name.ends(t".scala")).map(_.as[File])
      
            val includes = module.includes.map(build(_)).map(_.await())
            val classpath = includes.map(phases(_)).flatMap(_.runtimeClasspath).to(Set).to(List)
-           val phase = Phase(moduleRef, sourceFiles, includes, classpath, Nil)
+           val phase = Phase(target, sourceFiles, includes, classpath, Nil)
            
            phases(phase.digest) = phase
              
-           Log.info(msg"Computed $moduleRef")
+           Log.info(msg"Computed $target")
            phase.digest)
-
-  private val tasks: scc.TrieMap[Hash, Async[Optional[Directory]]] = scc.TrieMap()
 
   def run(hash: Hash)(using Log[Display], Installation, FrontEnd, Monitor, SystemProperties)
           : Async[Optional[Directory]] raises CancelError raises IoError raises PathError raises ScalacError =
@@ -128,7 +128,7 @@ class Builder():
           else
             if inputs.exists(_.absent) then abort(CancelError()) else
               val additions = inputs.compact.map(_.path)
-              info(msg"Starting to build ${phase.ref} in ${hash.bytes.encodeAs[Base32]}")
+              info(msg"Starting to build ${phase.target} in ${hash.bytes.encodeAs[Base32]}")
               
               val work = (installation.work / PathName(Uuid().show)).as[Directory]
      
@@ -154,7 +154,7 @@ class Builder():
               val classpath2 = additions.foldLeft(classpath)(_ + _)
               if phase.sources.isEmpty then output.as[Directory] else
                 val process: ScalacProcess =
-                  Log.envelop(phase.ref):
+                  Log.envelop(phase.target):
                     import scalacOptions.*
                     Scalac[3.4]
                      (List(language.experimental.fewerBraces,
@@ -183,7 +183,7 @@ class Builder():
 
                 async:
                   process.notices.each: notice =>
-                    info(e"$Bold(${phase.ref})")
+                    info(e"$Bold(${phase.target})")
                     info(e"${notice.importance}: $Italic(${notice.message})")
                     info(e"${colors.Silver}(${notice.code})")
                   
@@ -192,7 +192,7 @@ class Builder():
                 val errorCount = process.notices.count(_.importance == Importance.Error)
                 val warnCount = process.notices.count(_.importance == Importance.Warning)
     
-                info(msg"Finished building ${phase.ref} with $errorCount errors and $warnCount warnings")
+                info(msg"Finished building ${phase.target} with $errorCount errors and $warnCount warnings")
     
                 if process.cancelled then Unset
                 else if errorCount == 0 then
@@ -265,7 +265,7 @@ enum Compiler:
     case Kotlin  => name.ends(t".kt")
 
 object Phase:
-  def apply(ref: ModuleRef, sources: List[File], dependencies: List[Hash], classpath: List[Hash], binaries: List[Hash])(using Monitor)
+  def apply(target: Target, sources: List[File], dependencies: List[Hash], classpath: List[Hash], binaries: List[Hash])(using Monitor)
           : Phase raises BuildError =
 
     given (BuildError fixes CancelError) = error => BuildError()
@@ -274,10 +274,10 @@ object Phase:
 
     val sourceMap = sources.map { file => file.path.name -> Cache.file(file.path).text.await() }.to(Map)
     
-    Phase(ref, sourceMap, dependencies, classpath, binaries)
+    Phase(target, sourceMap, dependencies, classpath, binaries)
 
-  given show: Show[Phase] = _.ref.show
+  given show: Show[Phase] = _.target.show
 
-case class Phase(ref: ModuleRef, sources: Map[Text, Text], dependencies: List[Hash], classpath: List[Hash], binaries: List[Hash]):
+case class Phase(target: Target, sources: Map[Text, Text], dependencies: List[Hash], classpath: List[Hash], binaries: List[Hash]):
   lazy val digest = (sources.values.to(List), dependencies, binaries).digest[Sha2[256]]
   def runtimeClasspath = digest :: classpath

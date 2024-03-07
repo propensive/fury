@@ -148,7 +148,7 @@ object actions:
       info(msg"Creating a new build in $directory")
       ExitStatus.Ok
 
-    def run(ref: ModuleRef)
+    def run(target: Target)
         (using FrontEnd,
                WorkingDirectory,
                Monitor,
@@ -171,7 +171,7 @@ object actions:
       given universe: Universe = workspace.universe()
       
       val builder = Builder()
-      val hash = builder.build(ref).await()
+      val hash = builder.build(target).await()
       info(builder.buildGraph(hash))
       builder.run(hash).await()
       ExitStatus.Ok

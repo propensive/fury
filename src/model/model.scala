@@ -121,13 +121,17 @@ case class Prelude(terminator: Text, comment: List[Text]) derives Debug
 
 
 object Project:
-  given relabelling: CodlRelabelling[Project] = () => Map(t"modules" -> t"module")
+  given relabelling: CodlRelabelling[Project] = () =>
+    Map
+     (t"modules"   -> t"module",
+      t"artifacts" -> t"artifact")
 
 case class Project
     (id:          ProjectId,
      name:        Text,
      description: InlineMd,
      modules:     List[Module],
+     artifacts:   List[Artifact],
      website:     HttpUrl,
      license:     Optional[LicenseId],
      keywords:    List[Keyword])
@@ -139,57 +143,61 @@ derives Debug:
   def definition(workspace: Workspace): Definition =
     Definition(name, description, website, license, keywords, workspace)
 
-case class Assist(ref: ModuleRef, module: ModuleId) derives Debug
+case class Assist(target: Target, module: ModuleId) derives Debug
 
+object Artifact:
+  given relabelling: CodlRelabelling[Artifact] = () => Map(t"kind" -> t"type")
+
+case class Artifact(id: ArtifactId, path: WorkPath) derives Debug
 
 object Module:
   given relabelling: CodlRelabelling[Module] = () =>
     Map
-      (t"includes"     -> t"include",
-       t"packages"     -> t"provide",
-       t"requirements" -> t"require",
-       t"usages"       -> t"use",
-       t"omissions"    -> t"omit",
-       t"assists"      -> t"assist")
+     (t"includes"     -> t"include",
+      t"packages"     -> t"provide",
+      t"requirements" -> t"require",
+      t"usages"       -> t"use",
+      t"omissions"    -> t"omit",
+      t"assists"      -> t"assist")
 
 case class Module
     (id:           ModuleId,
-     includes:     List[ModuleRef],
-     requirements: List[ModuleRef],
+     includes:     List[Target],
+     requirements: List[Target],
      sources:      List[WorkPath],
      packages:     List[Package],
-     usages:       List[ModuleRef],
-     omissions:    List[ModuleRef],
+     usages:       List[Target],
+     omissions:    List[Target],
      assists:      List[Assist],
      compiler:     Optional[Text],
      main:         Optional[ClassName],
-     coverage:     Optional[ModuleRef])
+     coverage:     Optional[Target])
 derives Debug
 
-object ModuleRef extends RefType(t"module ref"):
-  given moduleRefEncoder: Encoder[ModuleRef] = _.show
-  given moduleRefDebug: Debug[ModuleRef] = _.show
-  given moduleRefMessage: Communicable[ModuleRef] = ref => Message(ref.show)
-  given moduleRefDecoder(using Raises[InvalidRefError]): Decoder[ModuleRef] = ModuleRef(_)
+object Target extends RefType(t"target"):
+  given moduleRefEncoder: Encoder[Target] = _.show
+  given moduleRefDebug: Debug[Target] = _.show
+  given moduleRefMessage: Communicable[Target] = target => Message(target.show)
+  given moduleRefDecoder(using Raises[InvalidRefError]): Decoder[Target] = Target(_)
 
-  given Show[ModuleRef] = ref =>
-    t"${ref.projectId.let { projectId => t"$projectId/" }.or(t"")}${ref.moduleId}"
+  given Show[Target] = target =>
+    t"${target.projectId.let { projectId => t"$projectId/" }.or(t"")}${target.moduleId}"
 
-  def apply(value: Text)(using Raises[InvalidRefError]): ModuleRef = value match
+  def apply(value: Text)(using Raises[InvalidRefError]): Target = value match
     case r"${ProjectId(project)}([^/]+)\/${ModuleId(module)}([^/]+)" =>
-      ModuleRef(project, module)
+      Target(project, module)
 
     case _ =>
-      raise(InvalidRefError(value, this))(ModuleRef(ProjectId(t"unknown"), ModuleId(t"unknown")))
+      raise(InvalidRefError(value, this))(Target(ProjectId(t"unknown"), ModuleId(t"unknown")))
 
-case class ModuleRef(projectId: ProjectId, moduleId: ModuleId):
+case class Target(projectId: ProjectId, moduleId: ModuleId):
   def suggestion: Suggestion = Suggestion(this.show, Unset)
   def partialSuggestion: Suggestion = Suggestion(t"${projectId}/", Unset, incomplete = true)
 
 object Action:
   given relabelling: CodlRelabelling[Action] = () => Map(t"actions" -> t"action")
 
-case class Action(name: ActionName, modules: List[ModuleRef], description: Optional[Text])
+case class Action(name: ActionName, modules: List[Target], description: Optional[Text])
 derives Debug:
   def suggestion: Suggestion = Suggestion(name.show, description.let { text => e"${colors.Khaki}($text)"} )
 

@@ -18,6 +18,7 @@ repo propensive/anthology      0000000000000000000000000000000000000000
 repo propensive/acyclicity     0000000000000000000000000000000000000000
 repo propensive/superlunary    0000000000000000000000000000000000000000
 repo propensive/hallucination  0000000000000000000000000000000000000000
+repo propensive/zeppelin       0000000000000000000000000000000000000000
 
 project fury
   module model
@@ -29,7 +30,7 @@ project fury
 
   module engine
     compiler  scala
-    include   fury/model  feudalism/core  anthology/scala  dendrology/dag
+    include   fury/model  feudalism/core  anthology/scala  dendrology/dag zeppelin/core
     sources   src/engine
 
   module cli

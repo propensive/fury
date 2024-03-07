@@ -178,15 +178,15 @@ def main(): Unit =
                   given (UserError fixes ExecError) = accede
                   
                   safely(internet(false)(Workspace().locals())).let: map =>
-                    val refs = map.values.map(_.source).flatMap:
+                    val targets = map.values.map(_.source).flatMap:
                       case workspace: Workspace => workspace.build.projects.flatMap: project =>
                         project.modules.map: module =>
-                          ModuleRef(project.id, module.id)
+                          Target(project.id, module.id)
 
                     
                     target.let: target =>
-                      if target().contains(t"/") then target.suggest(previous ++ refs.map(_.suggestion))
-                      else target.suggest(previous ++ refs.map(_.partialSuggestion))
+                      if target().contains(t"/") then target.suggest(previous ++ targets.map(_.suggestion))
+                      else target.suggest(previous ++ targets.map(_.partialSuggestion))
                   
                   execute:
                     given (UserError fixes InvalidRefError) = error => UserError(error.message)
@@ -195,7 +195,7 @@ def main(): Unit =
                       terminal:
                         frontEnd:
                           val buildAsync = async:
-                            actions.build.run(target().decodeAs[ModuleRef])
+                            actions.build.run(target().decodeAs[Target])
                           
                           daemon:
                             terminal.events.each:
