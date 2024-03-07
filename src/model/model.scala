@@ -138,7 +138,11 @@ case class Project
 derives Debug:
 
   // FIXME: Handle not-found
-  def apply(module: ModuleId): Module = modules.find(_.id == module).get
+  def apply(goal: GoalId): Module | Artifact =
+    modules.find(_.id == goal).orElse(artifacts.find(_.id == goal)).get
+
+  def goals: List[GoalId] = modules.map(_.id) ++ artifacts.map(_.id)
+  def targets: List[Target] = goals.map(Target(id, _))
 
   def definition(workspace: Workspace): Definition =
     Definition(name, description, website, license, keywords, workspace)
@@ -146,9 +150,10 @@ derives Debug:
 case class Assist(target: Target, module: ModuleId) derives Debug
 
 object Artifact:
-  given relabelling: CodlRelabelling[Artifact] = () => Map(t"kind" -> t"type")
+  given relabelling: CodlRelabelling[Artifact] = () =>
+    Map(t"kind" -> t"type", t"includes" -> t"include")
 
-case class Artifact(id: ArtifactId, path: WorkPath) derives Debug
+case class Artifact(id: ArtifactId, path: WorkPath, includes: List[Target]) derives Debug
 
 object Module:
   given relabelling: CodlRelabelling[Module] = () =>
@@ -181,7 +186,7 @@ object Target extends RefType(t"target"):
   given moduleRefDecoder(using Raises[InvalidRefError]): Decoder[Target] = Target(_)
 
   given Show[Target] = target =>
-    t"${target.projectId.let { projectId => t"$projectId/" }.or(t"")}${target.moduleId}"
+    t"${target.projectId.let { projectId => t"$projectId/" }.or(t"")}${target.goalId}"
 
   def apply(value: Text)(using Raises[InvalidRefError]): Target = value match
     case r"${ProjectId(project)}([^/]+)\/${ModuleId(module)}([^/]+)" =>
@@ -190,7 +195,7 @@ object Target extends RefType(t"target"):
     case _ =>
       raise(InvalidRefError(value, this))(Target(ProjectId(t"unknown"), ModuleId(t"unknown")))
 
-case class Target(projectId: ProjectId, moduleId: ModuleId):
+case class Target(projectId: ProjectId, goalId: GoalId):
   def suggestion: Suggestion = Suggestion(this.show, Unset)
   def partialSuggestion: Suggestion = Suggestion(t"${projectId}/", Unset, incomplete = true)
 

@@ -76,39 +76,46 @@ class Builder():
 
     builds.synchronized:
       builds.getOrElseUpdate
-        (target,
-         async:
-           Log.info(msg"Starting computation of $target")
-     
-           given (BuildError fixes GitError)        = error => BuildError()
-           given (BuildError fixes ExecError)       = error => BuildError()
-           given (BuildError fixes PathError)       = error => BuildError()
-           given (BuildError fixes IoError)         = error => BuildError()
-           given (BuildError fixes UnknownRefError) = error => BuildError()
-           given (BuildError fixes WorkspaceError)  = error => BuildError()
-           given (BuildError fixes StreamError)     = error => BuildError()
-           given (BuildError fixes CancelError)     = error => BuildError()
-           
-           val workspace = universe(target.projectId).source match
-             case workspace: Workspace => workspace
-  
-             case vault: Vault =>
-               Workspace(Cache(vault.index.releases(target.projectId).repo).await().path)
-             
-           val project: Project = workspace(target.projectId)
-           val module = project(target.moduleId)
-     
-           val sourceFiles: List[File] = module.sources.flatMap: directory =>
-             workspace(directory).descendants.filter(_.is[File]).filter(_.name.ends(t".scala")).map(_.as[File])
-     
-           val includes = module.includes.map(build(_)).map(_.await())
-           val classpath = includes.map(phases(_)).flatMap(_.runtimeClasspath).to(Set).to(List)
-           val phase = Phase(target, sourceFiles, includes, classpath, Nil)
-           
-           phases(phase.digest) = phase
-             
-           Log.info(msg"Computed $target")
-           phase.digest)
+       (target,
+        async:
+          Log.info(msg"Starting computation of $target")
+    
+          given (BuildError fixes GitError)        = error => BuildError()
+          given (BuildError fixes ExecError)       = error => BuildError()
+          given (BuildError fixes PathError)       = error => BuildError()
+          given (BuildError fixes IoError)         = error => BuildError()
+          given (BuildError fixes UnknownRefError) = error => BuildError()
+          given (BuildError fixes WorkspaceError)  = error => BuildError()
+          given (BuildError fixes StreamError)     = error => BuildError()
+          given (BuildError fixes CancelError)     = error => BuildError()
+          
+          val workspace = universe(target.projectId).source match
+            case workspace: Workspace => workspace
+ 
+            case vault: Vault =>
+              Workspace(Cache(vault.index.releases(target.projectId).repo).await().path)
+            
+          val project: Project = workspace(target.projectId)
+          project(target.goalId) match
+            case module: Module =>
+              val sourceFiles: List[File] = module.sources.flatMap: directory =>
+                workspace(directory).descendants.filter(_.is[File]).filter(_.name.ends(t".scala")).map(_.as[File])
+        
+              val includes = module.includes.map(build(_)).map(_.await())
+              val classpath = includes.map(phases(_)).flatMap(_.runtimeClasspath).to(Set).to(List)
+              val phase = Phase(target, sourceFiles, includes, classpath, Nil)
+              
+              phases(phase.digest) = phase
+                
+              Log.info(msg"Computed $target")
+              phase.digest
+            
+            case artifact: Artifact =>
+              val includes = artifact.includes.map(build(_)).map(_.await())
+              val classpath = includes.map(phases(_)).flatMap(_.runtimeClasspath).to(Set).to(List)
+              val phase = Phase(target, Nil, includes, classpath, Nil)
+              phases(phase.digest) = phase
+              phase.digest)
 
   def run(hash: Hash)(using Log[Display], Installation, FrontEnd, Monitor, SystemProperties)
           : Async[Optional[Directory]] raises CancelError raises IoError raises PathError raises ScalacError =

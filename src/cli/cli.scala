@@ -179,10 +179,7 @@ def main(): Unit =
                   
                   safely(internet(false)(Workspace().locals())).let: map =>
                     val targets = map.values.map(_.source).flatMap:
-                      case workspace: Workspace => workspace.build.projects.flatMap: project =>
-                        project.modules.map: module =>
-                          Target(project.id, module.id)
-
+                      case workspace: Workspace => workspace.build.projects.flatMap(_.targets)
                     
                     target.let: target =>
                       if target().contains(t"/") then target.suggest(previous ++ targets.map(_.suggestion))

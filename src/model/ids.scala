@@ -44,11 +44,12 @@ extends Error(msg"There were problems with the build file $path")
 trait RefType(val name: Text)
 
 object Ids:
-  opaque type EcosystemId = Text
-  opaque type StreamId    = Text
-  opaque type ProjectId   = Text
-  opaque type ModuleId    = Text
-  opaque type ArtifactId  = Text
+  opaque type GoalId                = Text
+  opaque type EcosystemId           = Text
+  opaque type StreamId              = Text
+  opaque type ProjectId             = Text
+  opaque type ModuleId    <: GoalId = GoalId
+  opaque type ArtifactId  <: GoalId = GoalId
   
   @targetName("Pkg")
   opaque type Package = Text
@@ -161,4 +162,8 @@ object Ids:
   given artifactIdShow: Show[ArtifactId] = identity(_)
   given artifactIdEncoder: Encoder[ArtifactId] = identity(_)
   given artifactIdDecoder(using Raises[InvalidRefError]): Decoder[ArtifactId] = ArtifactId(_)
-  given artifactIdDigestible: Digestible[ArtifactId] = (acc, ecosystemId) => acc.append(ecosystemId.bytes)
+  given artifactIdDigestible: Digestible[ArtifactId] = (acc, artifactId) => acc.append(artifactId.bytes)
+  
+  given goalIdShow: Show[GoalId] = identity(_)
+  given goalIdEncoder: Encoder[GoalId] = identity(_)
+  given goalIdDigestible: Digestible[GoalId] = (acc, goalId) => acc.append(goalId.bytes)
