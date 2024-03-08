@@ -153,11 +153,23 @@ derives Debug:
 
 case class Assist(target: Target, module: GoalId) derives Debug
 
+object Basis extends RefType(t"basis"):
+  given encoder: Encoder[Basis] = _.toString.tt.lower
+  given decoder(using Raises[InvalidRefError]): Decoder[Basis] =
+    case t"runtime" => Basis.Runtime
+    case t"tools"   => Basis.Tools
+    case value          => raise(InvalidRefError(value, this))(Basis.Runtime)
+
+enum Basis:
+  case Runtime, Tools
+
+
 object Artifact:
   given relabelling: CodlRelabelling[Artifact] = () =>
     Map(t"kind" -> t"type", t"includes" -> t"include")
 
-case class Artifact(id: GoalId, path: WorkPath, includes: List[Target]) derives Debug
+case class Artifact(id: GoalId, path: WorkPath, basis: Optional[Basis], includes: List[Target])
+derives Debug
 
 object Container:
   given relabelling: CodlRelabelling[Container] = () =>

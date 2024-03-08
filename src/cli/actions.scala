@@ -17,7 +17,7 @@
 package fury
 
 import ambience.*
-import anticipation.*
+import anticipation.*, filesystemInterfaces.galileiApi
 import contingency.*
 import anthology.*
 import dendrology.*, dagStyles.default
@@ -32,7 +32,9 @@ import guillotine.*
 import hieroglyph.*, textMetrics.eastAsianScripts
 import iridescence.*, colors.*
 import nettlesome.*
+import zeppelin.*
 import octogenarian.*
+import surveillance.*
 import parasite.*
 import profanity.*
 import rudiments.*
@@ -135,7 +137,7 @@ object actions:
              Column(e"$Bold(Source)"): (_, definition) =>
                definition.source match
                  case workspace: Workspace =>
-                   e"$Aquamarine(${rootWorkspace.directory.path.relativeTo(workspace.directory.path)})"
+                   e"$Aquamarine(${workspace.directory.path.relativeTo(rootWorkspace.directory.path)})"
                  
                  case vault: Vault =>
                    e"$DeepSkyBlue(${vault.name})")
@@ -148,11 +150,12 @@ object actions:
       info(msg"Creating a new build in $directory")
       ExitStatus.Ok
 
-    def run(target: Target)
+    def run(target: Target, watch: Boolean)
        (using FrontEnd,
               WorkingDirectory,
               Monitor,
               Log[Display],
+              DaemonService[?],
               Internet,
               Installation,
               GitCommand,
@@ -160,21 +163,34 @@ object actions:
               Environment)
             : ExitStatus raises UserError =
 
+      import filesystemOptions.doNotCreateNonexistent
+      import filesystemOptions.dereferenceSymlinks
       given (UserError fixes WorkspaceError) = accede
       given (UserError fixes BuildError)     = accede
       given (UserError fixes VaultError)     = accede
       given (UserError fixes CancelError)    = accede
       given (UserError fixes PathError)      = accede
+      given (UserError fixes ZipError)       = accede
+      given (UserError fixes StreamError)    = accede
       given (UserError fixes IoError)        = accede
       given (UserError fixes ScalacError)    = accede
 
       val workspace = Workspace()
       given universe: Universe = workspace.universe()
       
-      val builder = Builder()
-      val hash = builder.build(target).await()
-      info(builder.buildGraph(hash))
-      builder.run(hash).await()
+      def build(): Set[Directory] =
+        val builder = Builder()
+        val hash = builder.build(target).await()
+        info(builder.buildGraph(hash))
+        builder.run(hash).await()
+        builder.watchDirectories(hash)
+      
+      if !watch then build()
+      else while !summon[FrontEnd].aborted.ready do
+        Watcher(build().to(List)*).pipe: watcher =>
+          watcher.stream.head
+          watcher.removeAll()
+
       ExitStatus.Ok
 
   def invalidSubcommand(command: Argument)(using FrontEnd): ExitStatus raises UserError =

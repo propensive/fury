@@ -61,6 +61,7 @@ object cli:
   val Force = Switch(t"force", false, List('F'), t"Overwrite existing files if necessary")
   def Dir(using Raises[PathError]) = Flag[Path](t"dir", false, List('d'), t"Specify the working directory")
   val Offline = Switch(t"offline", false, List('o'), t"Work offline, if possible")
+  val Watch = Switch(t"watch", false, List('w'), t"Watch source directories for changes")
   
   def Generation(using Raises[NumberError]) =
     Flag[Int](t"generation", false, List('g'), t"Use universe generation number")
@@ -70,6 +71,7 @@ object cli:
   val Cache          = Subcommand(t"cache",    e"Cache operations")
   val Config         = Subcommand(t"config",   e"View and change configuration")
   val Shutdown       = Subcommand(t"shutdown", e"Shutdown the Fury daemon")
+  val Wip            = Subcommand(t"wip",      e"Do something experimental")
   val Init           = Subcommand(t"init",     e"Initialize a new project")
   val Universe       = Subcommand(t"universe", e"Universe actions")
   val UniverseSearch = Subcommand(t"search",   e"Search for a release")
@@ -90,6 +92,7 @@ given (using Raises[UserError]): HomeDirectory =
   homeDirectories.virtualMachine
 
 given (using Cli): WorkingDirectory = workingDirectories.daemonClient 
+
 given installation(using Raises[UserError]): Installation =
   given (UserError fixes ConfigError) = error => UserError(msg"The configuration file could not be read.")
   Installation()
@@ -121,8 +124,6 @@ def main(): Unit =
           case _ => installation.config.log.path.as[File]
       
       Log.info(msg"Initialized Fury in ${(now() - initTime).show}")
-
-
 
       cliService[BusMessage]:
         attempt[UserError]:
@@ -173,6 +174,7 @@ def main(): Unit =
 
                 case target :: _ =>
                   val online = Offline().absent
+                  val watch = Watch().present
                   given (UserError fixes IoError)   = accede
                   given (UserError fixes PathError) = accede
                   given (UserError fixes ExecError) = accede
@@ -192,11 +194,11 @@ def main(): Unit =
                       terminal:
                         frontEnd:
                           val buildAsync = async:
-                            actions.build.run(target().decodeAs[Target])
+                            actions.build.run(target().decodeAs[Target], watch)
                           
                           daemon:
                             terminal.events.each:
-                              case Keypress.Escape =>
+                              case Keypress.Escape | Keypress.Ctrl('C') =>
                                 Out.println(e"$Bold(Aborting the build.)")
                                 summon[FrontEnd].abort()
                               case other => ()
@@ -250,6 +252,11 @@ def main(): Unit =
                 service.shutdown()
                 ExitStatus.Ok
               
+              case Wip() :: Nil =>
+                execute:
+                  frontEnd:
+                    ExitStatus.Ok
+              
               case Nil =>
                 given (UserError fixes WorkspaceError) = error => UserError(error.message)
                 execute:
@@ -259,6 +266,7 @@ def main(): Unit =
               case subcommand :: _ =>
                 val workspace = safely(Workspace())
                 val online = Offline().absent
+                val watch = Watch().present
                 
                 workspace.let: workspace =>
                   subcommand.let(_.suggest(previous ++ workspace.build.actions.map(_.suggestion)))
@@ -274,7 +282,7 @@ def main(): Unit =
                       async:
                         internet(online):
                           frontEnd:
-                            action.modules.each(actions.build.run(_))
+                            action.modules.each(actions.build.run(_, watch))
                             ExitStatus.Ok
                       .await()
                     .or:
@@ -343,3 +351,4 @@ def about()(using Stdio): ExitStatus =
       e"  ${Italic}(${Properties.os.name()} ${Properties.os.version()}, ${Properties.os.arch()})\n"
   
   ExitStatus.Ok
+

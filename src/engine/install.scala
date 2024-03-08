@@ -57,7 +57,7 @@ object Installation:
     given (ConfigError fixes PathError) =
       case PathError(path, reason) => ConfigError(msg"The path $path was not valid because $reason")
     
-    val cache = (Xdg.cacheHome[Path] / p"fury").as[Directory]
+    val cache: Directory = (Xdg.cacheHome[Path] / p"fury").as[Directory]
     val configPath: Path = Home.Config() / p"fury"
     val config: Config = Codl.read[Config]((configPath / p"config.codl").as[File])
     val vault: Directory = (cache / p"vault").as[Directory]
@@ -68,9 +68,15 @@ object Installation:
     Installation(config, cache, vault, lib, tmp, snapshots)
     
 case class Installation
-    (config: Config, cache: Directory, vault: Directory, lib: Directory, tmp: Directory, snapshots: Directory):
+   (config:    Config,
+    cache:     Directory,
+    vault:     Directory,
+    lib:       Directory,
+    tmp:       Directory,
+    snapshots: Directory):
 
   val build: Path = cache.path / p"build"
   val work: Path = cache.path / p"work"
+  val basis: Path = cache.path / p"basis"
   
 inline def installation(using inline installation: Installation): Installation = installation

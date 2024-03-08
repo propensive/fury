@@ -22,6 +22,8 @@ import ambience.*
 import aviation.*, calendars.gregorian
 import escapade.*
 import eucalyptus.*
+import ethereal.*
+import digression.*
 import fulminate.*
 
 import galilei.*, filesystemOptions.{createNonexistent,
@@ -102,7 +104,9 @@ class Builder():
         
               val includes = module.includes.map(build(_)).map(_.await())
               val classpath = includes.map(phases(_)).flatMap(_.runtimeClasspath).to(Set).to(List)
-              val phase = Phase(target, sourceFiles, includes, classpath, Nil, Unset)
+              // FIXME: Don't create directories if they don't exist
+              val watchDirectories = module.sources.map(workspace(_).as[Directory]).to(Set)
+              val phase = Phase(target, watchDirectories, sourceFiles, includes, classpath, Nil, Unset, Unset)
               
               phases(phase.digest) = phase
                 
@@ -112,12 +116,16 @@ class Builder():
             case artifact: Artifact =>
               val includes = artifact.includes.map(build(_)).map(_.await())
               val classpath = includes.map(phases(_)).flatMap(_.runtimeClasspath).to(Set).to(List)
-              val phase = Phase(target, Nil, includes, classpath, Nil, workspace(artifact.path))
+              // FIXME: Specify watchDirectories
+              val phase = Phase(target, Set(), Nil, includes, classpath, Nil, workspace(artifact.path), artifact.basis)
               phases(phase.digest) = phase
               phase.digest)
 
-  def run(hash: Hash)(using Log[Display], Installation, FrontEnd, Monitor, SystemProperties, Environment)
-          : Async[Optional[Directory]] raises CancelError raises IoError raises PathError raises ScalacError =
+  def watchDirectories(hash: Hash): Set[Directory] = dag(hash).keys.flatMap(_.watchDirectories)
+
+  def run(hash: Hash)
+      (using Log[Display], DaemonService[?], Installation, FrontEnd, Monitor, SystemProperties, Environment)
+          : Async[Optional[Directory]] raises CancelError raises StreamError raises ZipError raises IoError raises PathError raises BuildError raises ScalacError =
 
     val phase = phases(hash)
 
@@ -130,12 +138,17 @@ class Builder():
           val inputAsyncs = phase.classpath.map(run)
           
           phase.destination.let: path =>
-            ZipFile.create(path).tap: zipFile =>
-              (dag(hash) - phase).sorted.map(_.digest).each: hash =>
-                tasks(hash).await().let: directory =>
-                  zipFile.append:
-                    directory.descendants.filter(_.is[File]).map: path =>
-                      ZipEntry(ZipRef(t"/"+directory.path.relativeTo(path).show), path.as[File])
+            val zipFile = phase.basis.lay(ZipFile.create(path)): basis =>
+              basis().copyTo(path)
+              ZipFile(path.as[File])
+
+            (dag(hash) - phase).sorted.map(_.digest).each: hash =>
+              tasks(hash).await().let: directory =>
+                val entries = directory.descendants.filter(_.is[File]).map: path =>
+                  ZipEntry(ZipRef(t"/"+path.relativeTo(directory.path).show), path.as[File])
+                zipFile.append(entries, 2000-Jan-1 at 0.00.am in tz"Etc/UTC")
+            
+            zipFile
 
           val inputs = inputAsyncs.map(_.await())
 
@@ -146,25 +159,7 @@ class Builder():
               info(msg"Starting to build ${phase.target} in ${hash.bytes.encodeAs[Base32]}")
               
               val work = (installation.work / PathName(Uuid().show)).as[Directory]
-     
-              val rootPath = t"/home/propensive/pub/dotty/dist/target/pack/lib"
-              
-              val classpath =
-                LocalClasspath
-                 (List
-                   (ClasspathEntry.Jarfile(t"$rootPath/scala-library-2.13.12.jar"),
-                    ClasspathEntry.Jarfile(t"$rootPath/scala3-library_3-3.4.2-RC1-bin-SNAPSHOT.jar"),
-                    ClasspathEntry.Jarfile(t"$rootPath/scala-asm-9.6.0-scala-1.jar"),
-                    ClasspathEntry.Jarfile(t"$rootPath/compiler-interface-1.9.6.jar"),
-                    ClasspathEntry.Jarfile(t"$rootPath/scala3-interfaces-3.4.2-RC1-bin-SNAPSHOT.jar"),
-                    ClasspathEntry.Jarfile(t"$rootPath/scala3-compiler_3-3.4.2-RC1-bin-SNAPSHOT.jar"),
-                    ClasspathEntry.Jarfile(t"$rootPath/tasty-core_3-3.4.2-RC1-bin-SNAPSHOT.jar"),
-                    ClasspathEntry.Jarfile(t"$rootPath/scala3-staging_3-3.4.2-RC1-bin-SNAPSHOT.jar"),
-                    ClasspathEntry.Jarfile(t"$rootPath/scala3-tasty-inspector_3-3.4.2-RC1-bin-SNAPSHOT.jar"),
-                    ClasspathEntry.Jarfile(t"$rootPath/jline-reader-3.25.1.jar"),
-                    ClasspathEntry.Jarfile(t"$rootPath/jline-terminal-3.25.1.jar"),
-                    ClasspathEntry.Jarfile(t"$rootPath/jline-terminal-jna-3.25.1.jar"),
-                    ClasspathEntry.Jarfile(t"$rootPath/jna-5.14.0.jar")))
+              val classpath = LocalClasspath(List(ClasspathEntry.Jarfile(unsafely(Basis.Tools().path.show))))
             
               val classpath2 = additions.foldLeft(classpath)(_ + _)
               if phase.sources.isEmpty then output.as[Directory] else
@@ -280,12 +275,14 @@ enum Compiler:
 
 object Phase:
   def apply
-     (target: Target,
-      sources: List[File],
-      dependencies: List[Hash],
-      classpath: List[Hash],
-      binaries: List[Hash],
-      destination: Optional[Path])
+     (target:           Target,
+      watchDirectories: Set[Directory],
+      sources:          List[File],
+      dependencies:     List[Hash],
+      classpath:        List[Hash],
+      binaries:         List[Hash],
+      destination:      Optional[Path],
+      basis:            Optional[Basis])
      (using Monitor)
           : Phase raises BuildError =
 
@@ -295,17 +292,55 @@ object Phase:
 
     val sourceMap = sources.map { file => file.path.name -> Cache.file(file.path).text.await() }.to(Map)
     
-    Phase(target, sourceMap, dependencies, classpath, binaries, destination)
+    Phase(target, watchDirectories, sourceMap, dependencies, classpath, binaries, destination, basis)
 
   given show: Show[Phase] = _.target.show
 
 case class Phase
-   (target: Target,
-    sources: Map[Text, Text],
-    dependencies: List[Hash],
-    classpath: List[Hash],
-    binaries: List[Hash],
-    destination: Optional[Path]):
+   (target:           Target,
+    watchDirectories: Set[Directory],
+    sources:          Map[Text, Text],
+    dependencies:     List[Hash],
+    classpath:        List[Hash],
+    binaries:         List[Hash],
+    destination:      Optional[Path],
+    basis:            Optional[Basis]):
 
   lazy val digest = (sources.values.to(List), dependencies, binaries).digest[Sha2[256]]
   def runtimeClasspath = digest :: classpath
+
+extension (basis: Basis)
+  def inclusions: Set[Text] = basis match
+    case Basis.Runtime =>
+      Set(t"/scala/", t"/rootdoc.txt", t"/library.properties")
+
+    case Basis.Tools =>
+      Basis.Runtime.inclusions ++
+        Set(t"/xsbti/", t"/dotty/", t"/compiler.properties", t"/org/scalajs/", t"/scala-asm.properties")
+  
+  def exclusions: Set[Text] = basis match
+    case Basis.Runtime => Set(t"/scala/tasty/", t"/scala/quoted/staging/")
+    case Basis.Tools   => Set()
+
+  def path(using Installation): Path = unsafely(installation.basis / PathName(basis.encode+t".jar"))
+    
+  def apply()(using FrontEnd, Environment, Installation, DaemonService[?]): File raises BuildError =
+    basis.synchronized:
+      given (BuildError fixes StreamError) = error => BuildError()
+      given (BuildError fixes ZipError)    = error => BuildError()
+      given (BuildError fixes IoError)     = error => BuildError()
+
+      if !path.exists() then
+        inclusions.pipe: inclusions =>
+          exclusions.pipe: exclusions =>
+            val entries =
+              ZipFile(service.script.as[File])
+              .entries()
+              .filter: entry =>
+                  val name = entry.ref.show
+                  inclusions.exists(name.starts(_)) && !exclusions.exists(name.starts(_))
+        
+            ZipFile.create(path.as[File].path).tap: file =>
+              file.append(entries, 2000-Jan-1 at 0.00.pm in tz"Etc/UTC")
+      
+      path.as[File]
