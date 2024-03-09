@@ -114,10 +114,10 @@ case class Build
      default:   Optional[ActionName],
      projects:  List[Project],
      mounts:    List[Mount])
-derives Debug
+derives Debug, CodlEncoder
 
 
-case class Prelude(terminator: Text, comment: List[Text]) derives Debug
+case class Prelude(terminator: Text, comment: List[Text]) derives Debug, CodlEncoder
 
 
 object Project:
@@ -139,7 +139,7 @@ case class Project
      website:     HttpUrl,
      license:     Optional[LicenseId],
      keywords:    List[Keyword])
-derives Debug:
+derives Debug, CodlEncoder:
 
   // FIXME: Handle not-found
   def apply(goal: GoalId): Module | Artifact =
@@ -151,7 +151,7 @@ derives Debug:
   def definition(workspace: Workspace): Definition =
     Definition(name, description, website, license, keywords, workspace)
 
-case class Assist(target: Target, module: GoalId) derives Debug
+case class Assist(target: Target, module: GoalId) derives Debug, CodlEncoder
 
 object Basis extends RefType(t"basis"):
   given encoder: Encoder[Basis] = _.toString.tt.lower
@@ -168,22 +168,34 @@ object Artifact:
   given relabelling: CodlRelabelling[Artifact] = () =>
     Map(t"kind" -> t"type", t"includes" -> t"include")
 
-case class Artifact(id: GoalId, path: WorkPath, basis: Optional[Basis], includes: List[Target])
-derives Debug
+case class Artifact
+    (id:       GoalId,
+     path:     WorkPath,
+     basis:    Optional[Basis],
+     includes: List[Target],
+     main:     Optional[Package],
+     prefix:   Optional[WorkPath],
+     suffix:   Optional[WorkPath],
+     manifest: List[ManifestEntry])
+derives Debug, CodlEncoder
+
+case class ManifestEntry(key: Text, value: Text) derives Debug, CodlEncoder
 
 object Container:
   given relabelling: CodlRelabelling[Container] = () =>
     Map(t"copies" -> t"copy")
 
-case class Copy(source: WorkPath, destination: WorkPath) derives Debug
+case class Insertion(source: WorkPath, destination: WorkPath) derives Debug, CodlEncoder
+case class Extraction(source: WorkPath, destination: WorkPath) derives Debug, CodlEncoder
 
-case class Container(id: GoalId, path: WorkPath, copies: List[Copy]) derives Debug
+case class Container(id: GoalId, path: WorkPath, insertions: List[Insertion], extractions: List[Extraction])
+derives Debug, CodlEncoder
 
 object Exec:
   given relabelling: CodlRelabelling[Exec] = () =>
     Map(t"includes" -> t"include")
 
-case class Exec(id: GoalId, includes: List[Target]) derives Debug
+case class Exec(id: GoalId, includes: List[Target]) derives Debug, CodlEncoder
 
 object Module:
   given relabelling: CodlRelabelling[Module] = () =>
@@ -207,7 +219,7 @@ case class Module
      compiler:     Optional[Text],
      main:         Optional[ClassName],
      coverage:     Optional[Target])
-derives Debug
+derives Debug, CodlEncoder
 
 object Target extends RefType(t"target"):
   given moduleRefEncoder: Encoder[Target] = _.show
@@ -257,7 +269,7 @@ object WorkPath:
     type Result = Path
     def add(left: Path, right: WorkPath): Path = right.descent.reverse.foldLeft(left)(_ / _)
 
-case class WorkPath(descent: List[PathName[GeneralForbidden]]) derives Debug:
+case class WorkPath(descent: List[PathName[GeneralForbidden]]) derives Debug, CodlEncoder:
   def link: SafeLink = SafeLink(0, descent)
 
 case class Definition

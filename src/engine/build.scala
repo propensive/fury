@@ -40,6 +40,7 @@ import guillotine.*
 import hellenism.*
 import hypotenuse.*
 import inimitable.*
+import feudalism.*
 import nettlesome.*
 import octogenarian.*
 import parasite.*
@@ -61,6 +62,9 @@ case class Config(log: LogConfig = LogConfig())
 case class LogConfig(path: Path = Unix / p"var" / p"log" / p"fury.log")
 
 case class BuildError() extends Error(msg"the build could not run")
+
+val Isolation: Semaphore = Semaphore()
+val Epoch: LocalTime = 2000-Jan-1 at 0.00.am in tz"Etc/UTC"
 
 class Builder():
   private val phases: scc.TrieMap[Hash, Phase] = scc.TrieMap()
@@ -99,11 +103,18 @@ class Builder():
             
           workspace(target.projectId)(target.goalId) match
             case module: Module =>
+              
               val sourceFiles: List[File] = module.sources.flatMap: directory =>
-                workspace(directory).as[Directory].descendants.filter(_.is[File]).filter(_.name.ends(t".scala")).map(_.as[File])
+                workspace(directory)
+                 .as[Directory]
+                 .descendants
+                 .filter(_.is[File])
+                 .filter(_.name.ends(t".scala"))
+                 .map(_.as[File])
         
               val includes = module.includes.map(build(_)).map(_.await())
               val classpath = includes.map(phases(_)).flatMap(_.runtimeClasspath).to(Set).to(List)
+              
               // FIXME: Don't create directories if they don't exist
               val watchDirectories = module.sources.map(workspace(_).as[Directory]).to(Set)
               val phase = Phase(target, watchDirectories, sourceFiles, includes, classpath, Nil, Unset, Unset)
@@ -117,7 +128,9 @@ class Builder():
               val includes = artifact.includes.map(build(_)).map(_.await())
               val classpath = includes.map(phases(_)).flatMap(_.runtimeClasspath).to(Set).to(List)
               // FIXME: Specify watchDirectories
-              val phase = Phase(target, Set(), Nil, includes, classpath, Nil, workspace(artifact.path), artifact.basis)
+              val phase =
+                Phase(target, Set(), Nil, includes, classpath, Nil, workspace(artifact.path), artifact.basis)
+
               phases(phase.digest) = phase
               phase.digest)
 
@@ -125,7 +138,8 @@ class Builder():
 
   def run(hash: Hash)
       (using Log[Display], DaemonService[?], Installation, FrontEnd, Monitor, SystemProperties, Environment)
-          : Async[Optional[Directory]] raises CancelError raises StreamError raises ZipError raises IoError raises PathError raises BuildError raises ScalacError =
+          : Async[Optional[Directory]] raises CancelError raises StreamError raises ZipError raises
+             IoError raises PathError raises BuildError raises ScalacError =
 
     val phase = phases(hash)
 
@@ -138,17 +152,20 @@ class Builder():
           val inputAsyncs = phase.classpath.map(run)
           
           phase.destination.let: path =>
-            val zipFile = phase.basis.lay(ZipFile.create(path)): basis =>
-              basis().copyTo(path)
-              ZipFile(path.as[File])
-
-            (dag(hash) - phase).sorted.map(_.digest).each: hash =>
-              tasks(hash).await().let: directory =>
-                val entries = directory.descendants.filter(_.is[File]).map: path =>
-                  ZipEntry(ZipRef(t"/"+path.relativeTo(directory.path).show), path.as[File])
-                zipFile.append(entries, 2000-Jan-1 at 0.00.am in tz"Etc/UTC")
-            
-            zipFile
+            if !path.exists() then
+              val tmpPath = unsafely(installation.work / PathName(Uuid().show))
+              val zipFile = phase.basis.lay(ZipFile.create(tmpPath)): basis =>
+                basis().copyTo(path)
+                ZipFile(path.as[File])
+  
+              (dag(hash) - phase).sorted.map(_.digest).each: hash =>
+                tasks(hash).await().let: directory =>
+                  val entries = directory.descendants.filter(_.is[File]).map: path =>
+                    ZipEntry(ZipRef(t"/"+path.relativeTo(directory.path).show), path.as[File])
+  
+                  zipFile.append(entries, Epoch)
+              
+              tmpPath.as[File].moveTo(path)
 
           val inputs = inputAsyncs.map(_.await())
 
@@ -340,7 +357,6 @@ extension (basis: Basis)
                   val name = entry.ref.show
                   inclusions.exists(name.starts(_)) && !exclusions.exists(name.starts(_))
         
-            ZipFile.create(path.as[File].path).tap: file =>
-              file.append(entries, 2000-Jan-1 at 0.00.pm in tz"Etc/UTC")
+            ZipFile.create(path.as[File].path).tap(_.append(entries, Epoch))
       
       path.as[File]

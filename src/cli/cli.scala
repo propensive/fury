@@ -71,7 +71,6 @@ object cli:
   val Cache          = Subcommand(t"cache",    e"Cache operations")
   val Config         = Subcommand(t"config",   e"View and change configuration")
   val Shutdown       = Subcommand(t"shutdown", e"Shutdown the Fury daemon")
-  val Wip            = Subcommand(t"wip",      e"Do something experimental")
   val Init           = Subcommand(t"init",     e"Initialize a new project")
   val Universe       = Subcommand(t"universe", e"Universe actions")
   val UniverseSearch = Subcommand(t"search",   e"Search for a release")
@@ -251,11 +250,6 @@ def main(): Unit =
               case Shutdown() :: Nil => execute:
                 service.shutdown()
                 ExitStatus.Ok
-              
-              case Wip() :: Nil =>
-                execute:
-                  frontEnd:
-                    ExitStatus.Ok
               
               case Nil =>
                 given (UserError fixes WorkspaceError) = error => UserError(error.message)
