@@ -158,11 +158,10 @@ object Basis extends RefType(t"basis"):
   given decoder(using Raises[InvalidRefError]): Decoder[Basis] =
     case t"runtime" => Basis.Runtime
     case t"tools"   => Basis.Tools
-    case value          => raise(InvalidRefError(value, this))(Basis.Runtime)
+    case value      => raise(InvalidRefError(value, this))(Basis.Runtime)
 
 enum Basis:
   case Runtime, Tools
-
 
 object Artifact:
   given relabelling: CodlRelabelling[Artifact] = () =>

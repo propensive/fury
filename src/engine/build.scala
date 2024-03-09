@@ -36,6 +36,7 @@ import galilei.*, filesystemOptions.{createNonexistent,
 import gastronomy.*, alphabets.base32.zBase32Unpadded
 import gossamer.*
 import acyclicity.*
+import hieroglyph.*, charEncoders.utf8, charDecoders.utf8, badEncodingHandlers.skip
 import guillotine.*
 import hellenism.*
 import hypotenuse.*
@@ -149,14 +150,20 @@ class Builder():
         async:
           val outputName = hash.bytes.encodeAs[Base32]
           val output = installation.build / PathName(outputName.take(2)) / PathName(outputName.drop(2))
+          val checkFile = output / p"checksum"
           val inputAsyncs = phase.classpath.map(run)
           
           phase.destination.let: path =>
-            if !path.exists() then
+            def checksumsDiffer(): Boolean =
+              val currentHash = path.as[File].stream[Bytes].digest[Sha2[256]].bytes.encodeAs[Base32]
+              checkFile.as[File].readAs[Text] != currentHash
+            
+            if !path.exists() || checkFile.exists() && checksumsDiffer() then
+              info(t"Building file $path")
               val tmpPath = unsafely(installation.work / PathName(Uuid().show))
               val zipFile = phase.basis.lay(ZipFile.create(tmpPath)): basis =>
-                basis().copyTo(path)
-                ZipFile(path.as[File])
+                basis().copyTo(tmpPath)
+                ZipFile(tmpPath.as[File])
   
               (dag(hash) - phase).sorted.map(_.digest).each: hash =>
                 tasks(hash).await().let: directory =>
@@ -165,7 +172,10 @@ class Builder():
   
                   zipFile.append(entries, Epoch)
               
-              tmpPath.as[File].moveTo(path)
+              tmpPath.as[File].tap: file =>
+                output.as[Directory]
+                file.stream[Bytes].digest[Sha2[256]].bytes.encodeAs[Base32].writeTo(checkFile.as[File])
+                file.moveTo(path)
 
           val inputs = inputAsyncs.map(_.await())
 
