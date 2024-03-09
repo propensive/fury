@@ -168,14 +168,15 @@ object Artifact:
     Map(t"kind" -> t"type", t"includes" -> t"include")
 
 case class Artifact
-    (id:       GoalId,
-     path:     WorkPath,
-     basis:    Optional[Basis],
-     includes: List[Target],
-     main:     Optional[Package],
-     prefix:   Optional[WorkPath],
-     suffix:   Optional[WorkPath],
-     manifest: List[ManifestEntry])
+    (id:         GoalId,
+     path:       WorkPath,
+     basis:      Optional[Basis],
+     includes:   List[Target],
+     main:       Optional[Package],
+     prefix:     Optional[WorkPath],
+     suffix:     Optional[WorkPath],
+     executable: Optional[Boolean],
+     manifest:   List[ManifestEntry])
 derives Debug, CodlEncoder
 
 case class ManifestEntry(key: Text, value: Text) derives Debug, CodlEncoder

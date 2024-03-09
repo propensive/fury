@@ -118,7 +118,7 @@ class Builder():
               
               // FIXME: Don't create directories if they don't exist
               val watchDirectories = module.sources.map(workspace(_).as[Directory]).to(Set)
-              val phase = Phase(target, watchDirectories, sourceFiles, includes, classpath, Nil, Unset, Unset)
+              val phase = Phase(target, watchDirectories, sourceFiles, includes, classpath, Nil, Unset, Unset, Unset, Unset)
               
               phases(phase.digest) = phase
                 
@@ -130,7 +130,7 @@ class Builder():
               val classpath = includes.map(phases(_)).flatMap(_.runtimeClasspath).to(Set).to(List)
               // FIXME: Specify watchDirectories
               val phase =
-                Phase(target, Set(), Nil, includes, classpath, Nil, workspace(artifact.path), artifact.basis)
+                Phase(target, Set(), Nil, includes, classpath, Nil, workspace(artifact.path), artifact, artifact.prefix.let(workspace(_)), artifact.basis)
 
               phases(phase.digest) = phase
               phase.digest)
@@ -174,7 +174,16 @@ class Builder():
               
               tmpPath.as[File].tap: file =>
                 output.as[Directory]
+                phase.prefix.let: prefix =>
+                  val tmpPath2 = unsafely(installation.work / PathName(Uuid().show))
+                  val tmpFile = prefix.as[File].copyTo(tmpPath2).as[File]
+                  file.stream[Bytes].appendTo(tmpFile)
+                  tmpFile.moveTo(file.path)
+                  
                 file.stream[Bytes].digest[Sha2[256]].bytes.encodeAs[Base32].writeTo(checkFile.as[File])
+                phase.artifact.let: artifact =>
+                  if artifact.executable.or(false) then file.executable() = true
+                
                 file.moveTo(path)
 
           val inputs = inputAsyncs.map(_.await())
@@ -309,6 +318,8 @@ object Phase:
       classpath:        List[Hash],
       binaries:         List[Hash],
       destination:      Optional[Path],
+      artifact:         Optional[Artifact],
+      prefix:           Optional[Path],
       basis:            Optional[Basis])
      (using Monitor)
           : Phase raises BuildError =
@@ -319,7 +330,7 @@ object Phase:
 
     val sourceMap = sources.map { file => file.path.name -> Cache.file(file.path).text.await() }.to(Map)
     
-    Phase(target, watchDirectories, sourceMap, dependencies, classpath, binaries, destination, basis)
+    Phase(target, watchDirectories, sourceMap, dependencies, classpath, binaries, destination, artifact, prefix, basis)
 
   given show: Show[Phase] = _.target.show
 
@@ -331,6 +342,8 @@ case class Phase
     classpath:        List[Hash],
     binaries:         List[Hash],
     destination:      Optional[Path],
+    artifact:         Optional[Artifact],
+    prefix:           Optional[Path],
     basis:            Optional[Basis]):
 
   lazy val digest = (sources.values.to(List), dependencies, binaries).digest[Sha2[256]]

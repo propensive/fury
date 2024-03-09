@@ -325,17 +325,17 @@ def about()(using Stdio): ExitStatus =
   
   val software =
     List
-      (Software(t"Fury", t"1.0${buildId.lay(t"") { id => t", build $id"}}", t"2017-2024, Propensive"),
-       Software(t"Scala", scalaProperties(t"version.number"), scalaCopyright),
-       unsafely(Software(t"Java distribution", Properties.java.version(), Properties.java.vendor())),
-       Software(t"Java specification", jvmVersion, jvmVendor))
+     (Software(t"Fury", t"1.0${buildId.lay(t"") { id => t", build $id"}}", t"2017-2024, Propensive"),
+      Software(t"Scala", scalaProperties(t"version.number"), scalaCopyright),
+      unsafely(Software(t"Java distribution", Properties.java.version(), Properties.java.vendor())),
+      Software(t"Java specification", jvmVersion, jvmVendor))
 
   Out.println:
     Table[Software]
-      (Column(e"$Bold(Component)", textAlign = TextAlignment.Right): software =>
-        e"$Bold(${software.name})",
-       Column(e"$Bold(Version)")(_.version.display),
-       Column(e"$Bold(Copyright)")(_.copyright.display))
+     (Column(e"$Bold(Component)", textAlign = TextAlignment.Right): software =>
+       e"$Bold(${software.name})",
+      Column(e"$Bold(Version)")(_.version.display),
+      Column(e"$Bold(Copyright)")(_.copyright.display))
     .tabulate(software).layout(72)
   
   Out.println()
