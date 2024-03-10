@@ -72,9 +72,84 @@ class Builder():
   private val builds: scc.TrieMap[Target, Async[Hash]] = scc.TrieMap()
   private val tasks: scc.TrieMap[Hash, Async[Optional[Directory]]] = scc.TrieMap()
 
-  given expandable: Expandable[Phase] = _.dependencies.map(phases(_))
+  extension (artifact: Artifact)
+    def phase(workspace: Workspace, target: Target)
+        (using Installation, Internet, Monitor, WorkingDirectory, Log[Display], Universe, GitCommand)
+            : ArtifactPhase raises CancelError raises PathError raises GitError raises BuildError raises
+               ExecError raises IoError =
 
-  def dag(digest: Hash): Dag[Phase] = Dag.create(phases(digest))(_.dependencies.to(Set).map(phases(_)))
+      val destination: Path = workspace(artifact.path)
+      val antecedents: List[Hash] = artifact.includes.map(build(_)).map(_.await())
+      val classpath: List[Hash] = antecedents.map(phases(_)).flatMap(_.runtimeClasspath).to(Set).to(List)
+      val prefixPath = artifact.prefix.let(workspace(_))
+      val suffixPath = artifact.suffix.let(workspace(_))
+      val watches = Set(prefixPath, suffixPath).compact
+
+      ArtifactPhase(artifact, target, destination, antecedents, classpath, prefixPath, suffixPath, watches)
+
+  extension (module: Module)
+    def phase(workspace: Workspace, target: Target)
+        (using Installation, Internet, Universe, Monitor, WorkingDirectory, Log[Display])
+            : ModulePhase raises CancelError raises GitError raises PathError raises ExecError raises
+               IoError raises BuildError raises StreamError =
+      
+      val antecedents: List[Hash] = module.includes.map(build(_)).map(_.await())
+      val classpath: List[Hash] = antecedents.map(phases(_)).flatMap(_.runtimeClasspath).to(Set).to(List)
+      val sourceFiles: List[File] =
+        module
+         .sources
+         .map(workspace(_).as[Directory])
+         .flatMap(_.descendants.filter(_.is[File]))
+         .filter(_.name.ends(t".scala"))
+         .map(_.as[File])
+      
+      val sourceMap = sourceFiles.map { file => file.path.name -> Cache.file(file.path).text.await() }.to(Map)
+      val watches = module.sources.map(workspace(_)).to(Set)
+
+      ModulePhase(module, target, watches, sourceMap, antecedents, classpath)
+
+  object Phase:
+    given show: Show[Phase] = _.target.show
+  
+  trait Phase:
+    def target: Target
+    def watches: Set[Path]
+    def antecedents: List[Hash]
+    def classpath: List[Hash]
+    def digest: Hash
+    def runtimeClasspath = digest :: classpath
+
+  case class ArtifactPhase
+     (artifact: Artifact,
+      target: Target,
+      destination: Path,
+      antecedents: List[Hash],
+      classpath: List[Hash],
+      prefixPath: Optional[Path],
+      suffixPath: Optional[Path],
+      watches: Set[Path])
+  extends Phase:
+    export artifact.*
+    lazy val digest = antecedents.digest[Sha2[256]]
+
+  case class ModulePhase
+     (module: Module,
+      target: Target,
+      watches: Set[Path],
+      sourceMap: Map[Text, Text],
+      antecedents: List[Hash],
+      classpath: List[Hash])
+  extends Phase:
+    export module.*
+    lazy val digest = (sourceMap.values.to(List), antecedents).digest[Sha2[256]]
+
+  // case class ContainerPhase(container: Container, target: Target, watches: Set[Path], dockerfile: Path)
+  // extends Phase:
+  //   export container.*
+
+  given expandable: Expandable[Phase] = _.antecedents.map(phases(_))
+
+  def dag(digest: Hash): Dag[Phase] = Dag.create(phases(digest))(_.antecedents.to(Set).map(phases(_)))
   def buildGraph(digest: Hash): DagDiagram[Phase] = DagDiagram(dag(digest))
 
   def build(target: Target)(using Universe)
@@ -104,38 +179,16 @@ class Builder():
             
           workspace(target.projectId)(target.goalId) match
             case module: Module =>
-              
-              val sourceFiles: List[File] = module.sources.flatMap: directory =>
-                workspace(directory)
-                 .as[Directory]
-                 .descendants
-                 .filter(_.is[File])
-                 .filter(_.name.ends(t".scala"))
-                 .map(_.as[File])
-        
-              val includes = module.includes.map(build(_)).map(_.await())
-              val classpath = includes.map(phases(_)).flatMap(_.runtimeClasspath).to(Set).to(List)
-              
-              // FIXME: Don't create directories if they don't exist
-              val watchDirectories = module.sources.map(workspace(_).as[Directory]).to(Set)
-              val phase = Phase(target, watchDirectories, sourceFiles, includes, classpath, Nil, Unset, Unset, Unset, Unset)
-              
+              val phase = module.phase(workspace, target)
               phases(phase.digest) = phase
-                
-              Log.info(msg"Computed $target")
               phase.digest
             
             case artifact: Artifact =>
-              val includes = artifact.includes.map(build(_)).map(_.await())
-              val classpath = includes.map(phases(_)).flatMap(_.runtimeClasspath).to(Set).to(List)
-              // FIXME: Specify watchDirectories
-              val phase =
-                Phase(target, Set(), Nil, includes, classpath, Nil, workspace(artifact.path), artifact, artifact.prefix.let(workspace(_)), artifact.basis)
-
+              val phase = artifact.phase(workspace, target)
               phases(phase.digest) = phase
               phase.digest)
 
-  def watchDirectories(hash: Hash): Set[Directory] = dag(hash).keys.flatMap(_.watchDirectories)
+  def watchDirectories(hash: Hash): Set[Path] = dag(hash).keys.flatMap(_.watches)
 
   def run(hash: Hash)
       (using Log[Display], DaemonService[?], Installation, FrontEnd, Monitor, SystemProperties, Environment)
@@ -153,99 +206,107 @@ class Builder():
           val checkFile = output / p"checksum"
           val inputAsyncs = phase.classpath.map(run)
           
-          phase.destination.let: path =>
-            def checksumsDiffer(): Boolean =
-              val currentHash = path.as[File].stream[Bytes].digest[Sha2[256]].bytes.encodeAs[Base32]
-              checkFile.as[File].readAs[Text] != currentHash
-            
-            if !path.exists() || checkFile.exists() && checksumsDiffer() then
-              info(t"Building file $path")
-              val tmpPath = unsafely(installation.work / PathName(Uuid().show))
-              val zipFile = phase.basis.lay(ZipFile.create(tmpPath)): basis =>
-                basis().copyTo(tmpPath)
-                ZipFile(tmpPath.as[File])
-  
-              (dag(hash) - phase).sorted.map(_.digest).each: hash =>
-                tasks(hash).await().let: directory =>
-                  val entries = directory.descendants.filter(_.is[File]).map: path =>
-                    ZipEntry(ZipRef(t"/"+path.relativeTo(directory.path).show), path.as[File])
-  
-                  zipFile.append(entries, Epoch)
+          phase match
+            case artifact: ArtifactPhase =>
+              def checksumsDiffer(): Boolean =
+                val currentHash = artifact.destination.as[File].stream[Bytes].digest[Sha2[256]].bytes.encodeAs[Base32]
+                checkFile.as[File].readAs[Text] != currentHash
               
-              tmpPath.as[File].tap: file =>
-                output.as[Directory]
-                phase.prefix.let: prefix =>
-                  val tmpPath2 = unsafely(installation.work / PathName(Uuid().show))
-                  val tmpFile = prefix.as[File].copyTo(tmpPath2).as[File]
-                  file.stream[Bytes].appendTo(tmpFile)
-                  tmpFile.moveTo(file.path)
-                  
-                file.stream[Bytes].digest[Sha2[256]].bytes.encodeAs[Base32].writeTo(checkFile.as[File])
-                phase.artifact.let: artifact =>
-                  if artifact.executable.or(false) then file.executable() = true
+              if !artifact.destination.exists() || checkFile.exists() && checksumsDiffer() then
+                info(t"Building file ${artifact.destination}")
+                val tmpPath = unsafely(installation.work / PathName(Uuid().show))
+                val zipFile = artifact.basis.lay(ZipFile.create(tmpPath)): basis =>
+                  basis().copyTo(tmpPath)
+                  ZipFile(tmpPath.as[File])
+    
+                (dag(hash) - artifact).sorted.map(_.digest).each: hash =>
+                  tasks(hash).await().let: directory =>
+                    val entries = directory.descendants.filter(_.is[File]).map: path =>
+                      ZipEntry(ZipRef(t"/"+path.relativeTo(directory.path).show), path.as[File])
+    
+                    zipFile.append(entries, Epoch)
                 
-                file.moveTo(path)
-
-          val inputs = inputAsyncs.map(_.await())
-
-          if output.exists() then output.as[Directory].tap(_.touch())
-          else
-            if inputs.exists(_.absent) then abort(CancelError()) else
-              val additions = inputs.compact.map(_.path)
-              info(msg"Starting to build ${phase.target} in ${hash.bytes.encodeAs[Base32]}")
-              
-              val work = (installation.work / PathName(Uuid().show)).as[Directory]
-              val classpath = LocalClasspath(List(ClasspathEntry.Jarfile(unsafely(Basis.Tools().path.show))))
-            
-              val classpath2 = additions.foldLeft(classpath)(_ + _)
-              if phase.sources.isEmpty then output.as[Directory] else
-                val process: ScalacProcess =
-                  Log.envelop(phase.target):
-                    import scalacOptions.*
-                    Scalac[3.4]
-                     (List(language.experimental.fewerBraces,
-                           language.experimental.erasedDefinitions,
-                           language.experimental.clauseInterleaving,
-                           language.experimental.into,
-                           language.experimental.genericNumberLiterals,
-                           language.experimental.saferExceptions,
-                           language.experimental.namedTypeArguments,
-                           internal.requireTargetName,
-                           internal.explicitNulls,
-                           internal.checkPatterns,
-                           internal.safeInit,
-                           advanced.maxInlines(64),
-                           experimental,
-                           sourceFuture,
-                           newSyntax,
-                           warnings.deprecation,
-                           warnings.feature))
-                     (classpath2)
-                     (phase.sources, work.path)
-                
-                daemon:
-                  summon[FrontEnd].aborted.await()
-                  process.abort()
-
-                async:
-                  process.notices.each: notice =>
-                    info(e"$Bold(${phase.target})")
-                    info(e"${notice.importance}: $Italic(${notice.message})")
-                    info(e"${colors.Silver}(${notice.code})")
-                  
-                process.complete()
-    
-                val errorCount = process.notices.count(_.importance == Importance.Error)
-                val warnCount = process.notices.count(_.importance == Importance.Warning)
-    
-                info(msg"Finished building ${phase.target} with $errorCount errors and $warnCount warnings")
-    
-                if process.cancelled then Unset
-                else if errorCount == 0 then
-                  work.moveTo(output)
+                tmpPath.as[File].tap: file =>
                   output.as[Directory]
-                else Unset)
-  
+                  artifact.prefixPath.let: prefix =>
+                    val tmpPath2 = unsafely(installation.work / PathName(Uuid().show))
+                    val tmpFile = prefix.as[File].copyTo(tmpPath2).as[File]
+                    file.stream[Bytes].appendTo(tmpFile)
+                    tmpFile.moveTo(file.path)
+                    
+                  file.stream[Bytes].digest[Sha2[256]].bytes.encodeAs[Base32].writeTo(checkFile.as[File])
+                  if artifact.executable.or(false) then file.executable() = true
+                  
+                  file.moveTo(artifact.destination)
+              
+              output.as[Directory]
+            
+            case module: ModulePhase =>
+              val inputs = inputAsyncs.map(_.await())
+              if output.exists() then output.as[Directory].tap(_.touch())
+              else
+                try if inputs.exists(_.absent) then abort(CancelError()) else
+                  val additions = inputs.compact.map(_.path)
+                  info(msg"Starting to build ${module.target} in ${hash.bytes.encodeAs[Base32]}")
+                  
+                  val work = (installation.work / PathName(Uuid().show)).as[Directory]
+                  val classpath = LocalClasspath(List(ClasspathEntry.Jarfile(unsafely(Basis.Tools().path.show))))
+                
+                  val classpath2 = additions.foldLeft(classpath)(_ + _)
+                  
+                  if module.sources.isEmpty then output.as[Directory] else
+                    val process: ScalacProcess =
+                      Log.envelop(module.target):
+                        import scalacOptions.*
+                        Scalac[3.4]
+                         (List(language.experimental.fewerBraces,
+                               language.experimental.erasedDefinitions,
+                               language.experimental.clauseInterleaving,
+                               language.experimental.into,
+                               language.experimental.genericNumberLiterals,
+                               language.experimental.saferExceptions,
+                               language.experimental.namedTypeArguments,
+                               internal.requireTargetName,
+                               internal.explicitNulls,
+                               internal.checkPatterns,
+                               internal.safeInit,
+                               advanced.maxInlines(64),
+                               experimental,
+                               sourceFuture,
+                               newSyntax,
+                               warnings.deprecation,
+                               warnings.feature))
+                         (classpath2)
+                         (module.sourceMap, work.path)
+                    
+                    daemon:
+                      summon[FrontEnd].aborted.await()
+                      process.abort()
+
+                    async:
+                      process.notices.each: notice =>
+                        info(e"$Bold(${module.target})")
+                        info(e"${notice.importance}: $Italic(${notice.message})")
+                        info(e"${colors.Silver}(${notice.code})")
+                    
+                    process.complete()
+                    
+                    val errorCount = process.notices.count(_.importance == Importance.Error)
+                    val warnCount = process.notices.count(_.importance == Importance.Warning)
+        
+                    info(msg"Finished building ${module.target} with $errorCount errors and $warnCount warnings")
+        
+                    if process.cancelled then Unset
+                    else if errorCount == 0 then
+                      work.moveTo(output)
+                      output.as[Directory]
+                    else Unset
+                catch case exception =>
+                  info(t"Failed with exception: ${exception.toString.tt}")
+                  Log.fail(exception.toString.tt)
+                  Unset)
+
+
 extension (workspace: Workspace)
   def locals(ancestors: Set[Path] = Set())
       (using Monitor, Log[Display], WorkingDirectory, Internet, Installation, GitCommand)
@@ -308,46 +369,6 @@ enum Compiler:
     case Java(_) => name.ends(t".java")
     case Scala   => name.ends(t".scala")
     case Kotlin  => name.ends(t".kt")
-
-object Phase:
-  def apply
-     (target:           Target,
-      watchDirectories: Set[Directory],
-      sources:          List[File],
-      dependencies:     List[Hash],
-      classpath:        List[Hash],
-      binaries:         List[Hash],
-      destination:      Optional[Path],
-      artifact:         Optional[Artifact],
-      prefix:           Optional[Path],
-      basis:            Optional[Basis])
-     (using Monitor)
-          : Phase raises BuildError =
-
-    given (BuildError fixes CancelError) = error => BuildError()
-    given (BuildError fixes StreamError) = error => BuildError()
-    given (BuildError fixes IoError)     = error => BuildError()
-
-    val sourceMap = sources.map { file => file.path.name -> Cache.file(file.path).text.await() }.to(Map)
-    
-    Phase(target, watchDirectories, sourceMap, dependencies, classpath, binaries, destination, artifact, prefix, basis)
-
-  given show: Show[Phase] = _.target.show
-
-case class Phase
-   (target:           Target,
-    watchDirectories: Set[Directory],
-    sources:          Map[Text, Text],
-    dependencies:     List[Hash],
-    classpath:        List[Hash],
-    binaries:         List[Hash],
-    destination:      Optional[Path],
-    artifact:         Optional[Artifact],
-    prefix:           Optional[Path],
-    basis:            Optional[Basis]):
-
-  lazy val digest = (sources.values.to(List), dependencies, binaries).digest[Sha2[256]]
-  def runtimeClasspath = digest :: classpath
 
 extension (basis: Basis)
   def inclusions: Set[Text] = basis match

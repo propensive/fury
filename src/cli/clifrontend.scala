@@ -21,6 +21,7 @@ import turbulence.*
 import exoskeleton.*
 import parasite.*
 import anticipation.*
+import gossamer.*
 
 def frontEnd[ResultType](lambda: FrontEnd ?=> Terminal ?=> ResultType)(using Cli, Monitor): ResultType =
   terminal(lambda(using CliFrontEnd()))
@@ -32,3 +33,6 @@ class CliFrontEnd()(using terminal: Terminal) extends FrontEnd:
   def update(task: Task): Unit = ()
   def complete(task: Task): Unit = ()
   def info[InfoType: Printable](info: InfoType) = Out.println(info)
+
+
+val bars = t" ▎▍▌▋▊▉█"
