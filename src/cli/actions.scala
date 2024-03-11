@@ -182,7 +182,7 @@ object actions:
         val builder = Builder()
         val hash = builder.build(target).await()
         info(builder.buildGraph(hash))
-        builder.run(hash).await()
+        builder.run(hash)
         builder.watchDirectories(hash).map(_.as[Directory])
       
       if !watch then build()
