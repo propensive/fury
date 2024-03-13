@@ -37,10 +37,12 @@ import vacuous.*
 import serpentine.*, hierarchies.unixOrWindows
 import spectacular.*
 import turbulence.*
+import harlequin.*
 
 import scala.collection.concurrent as scc
 
 case class CachedFile(lastModified: Instant, text: Async[Text], hash: Async[Hash])
+
 case class CacheInfo(ecosystems: Int, snapshots: Int, workspaces: Int, files: Int, dataSize: ByteSize)
 
 object Cache:
@@ -48,6 +50,7 @@ object Cache:
   private val snapshots: scc.TrieMap[Snapshot, Async[Directory]] = scc.TrieMap()
   private val workspaces: scc.TrieMap[Path, (Instant, Async[Workspace])] = scc.TrieMap()
   private val files: scc.TrieMap[Path, CachedFile] = scc.TrieMap()
+  private val syntax: scc.TrieMap[Path, IArray[Seq[Token]]] = scc.TrieMap()
 
   def clear(): Unit =
     ecosystems.clear()

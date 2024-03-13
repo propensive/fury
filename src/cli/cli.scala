@@ -39,6 +39,7 @@ import kaleidoscope.*
 import nettlesome.*
 import parasite.*, threadModels.platform
 import profanity.*, terminalOptions.terminalSizeDetection
+import quantitative.*
 import rudiments.*, homeDirectories.virtualMachine
 import serpentine.*, hierarchies.unixOrWindows
 import spectacular.*
@@ -89,6 +90,7 @@ given (using Raises[UserError]): HomeDirectory =
       UserError(msg"Could not access the home directory because the $property system property was not set.")
 
   homeDirectories.virtualMachine
+
 
 given (using Cli): WorkingDirectory = workingDirectories.daemonClient 
 
@@ -190,19 +192,18 @@ def main(): Unit =
                     given (UserError fixes InvalidRefError) = error => UserError(error.message)
                     
                     internet(online):
-                      terminal:
-                        frontEnd:
-                          val buildAsync = async:
-                            actions.build.run(target().decodeAs[Target], watch)
-                          
-                          daemon:
-                            terminal.events.each:
-                              case Keypress.Escape | Keypress.Ctrl('C') =>
-                                Out.println(e"$Bold(Aborting the build.)")
-                                summon[FrontEnd].abort()
-                              case other => ()
-                          
-                          buildAsync.await()
+                      frontEnd:
+                        val buildAsync = async:
+                          actions.build.run(target().decodeAs[Target], watch)
+
+                        daemon:
+                          terminal.events.each:
+                            case Keypress.Escape | Keypress.Ctrl('C') =>
+                              Out.println(e"$Bold(Aborting the build.)")
+                              summon[FrontEnd].abort()
+                            case other => ()
+                        
+                        buildAsync.await().also(Out.print(t"\e[?25h"))
                   
               case Graph() :: Nil =>
                 val online = Offline().absent

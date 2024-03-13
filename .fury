@@ -8,16 +8,7 @@
     │ or your can just run this file on the command line.     │
     └─────────────────────────────────────────────────────────┘ 
     
-ecosystem vent 4 https://github.com/propensive/vent main
-
-command test fury/test
-  description Test everything
-
-command debug fury/core
-  description Start the debugger
-
-command launch fury/core
-  description Launch the application
+ecosystem vent 6 https://github.com/propensive/vent main
 
 project fury
   name         Fury
@@ -27,53 +18,22 @@ project fury
   
   module model
     include  acyclicity/core
-    include  acyclicity/core
     include  aviation/core
     include  cellulose/core
     include  escritoire/core
+    include  exoskeleton/completions
     include  galilei/core
     include  gastronomy/core
     include  imperial/core
     include  jacinta/core
     include  nettlesome/url
-    include  nonagenarian/core
+    include  octogenarian/core
     include  punctuation/core
     include  telekinesis/client
     include  xylophone/core
     
     sources  src/model
     main     fury.Main
-
-  module start
-    compiler  scala
-    include   fulminate/core  rudiments/core  kaleidoscope/core
-
-  module core
-    compiler  scala
-    sources   src/core
-    include   fury/model
-
-  module test
-    compiler  scala
-    sources   src/test
-    include   probably/cli
-    include   fury/model
-  
-  module compose
-    compiler  docker?
-
-  # variant scala-js
-  #   - module test
-  #   + module bench
-  #   : module core
-  #     - compiler  scala
-  #     + compiler  java
-  #     + include   fury/scalajs
-  # 
-  # variant scala-native
-  #   - module test
-  #   : module core
-  #     - sources
 
 ##
 

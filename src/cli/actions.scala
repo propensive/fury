@@ -20,7 +20,6 @@ import ambience.*
 import anticipation.*, filesystemInterfaces.galileiApi
 import contingency.*
 import anthology.*
-import dendrology.*, dagStyles.default
 import escapade.*
 import escritoire.*, insufficientSpaceHandling.ignore, tableStyles.default
 import ethereal.*
@@ -151,7 +150,7 @@ object actions:
       ExitStatus.Ok
 
     def run(target: Target, watch: Boolean)
-       (using FrontEnd,
+       (using CliFrontEnd,
               WorkingDirectory,
               Monitor,
               Log[Display],
@@ -181,12 +180,12 @@ object actions:
       def build(): Set[Directory] =
         val builder = Builder()
         val hash = builder.build(target).await()
-        info(builder.buildGraph(hash))
+        summon[FrontEnd].graph(builder.buildGraph(hash))
         builder.run(hash)
         builder.watchDirectories(hash).map(_.as[Directory])
       
       if !watch then build()
-      else while !summon[FrontEnd].aborted.ready do
+      else while summon[FrontEnd].continue do
         Watcher(build().to(List)*).pipe: watcher =>
           watcher.stream.head
           watcher.removeAll()

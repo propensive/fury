@@ -18,6 +18,9 @@ package fury
 
 import anticipation.*
 import parasite.*
+import dendrology.*
+
+import scala.collection.concurrent as scc
 
 enum Task:
   case Download(digest: Hash)
@@ -27,12 +30,18 @@ enum Task:
 def info[InfoType: Printable](info: InfoType)(using frontEnd: FrontEnd): Unit = frontEnd.info(info)
 
 trait FrontEnd:
-  val aborted: Promise[Unit] = Promise()
+
+  protected val active: scc.TrieMap[Target, Double] = scc.TrieMap()
+  private val aborted: Promise[Unit] = Promise()
+  def continue: Boolean = !aborted.ready
   def abort(): Unit = aborted.offer(())
   def schedule(task: Task): Unit
   def update(task: Task): Unit
-  def complete(task: Task): Unit
+  def graph(diagram: DagDiagram[Target]): Unit
   def info[InfoType: Printable](info: InfoType): Unit
+  def attend(): Unit = aborted.attend()
+
+  def update(target: Target, progress: Double) = active(target) = progress
 
 enum Activity:
   case Progress(stage: Text, progress: Double)

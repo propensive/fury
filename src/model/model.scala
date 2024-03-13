@@ -125,6 +125,7 @@ object Project:
     Map
      (t"modules"    -> t"module",
       t"artifacts"  -> t"artifact",
+      t"libraries"  -> t"library",
       t"containers" -> t"container",
       t"execs"      -> t"exec")
 
@@ -133,6 +134,7 @@ case class Project
      name:        Text,
      description: InlineMd,
      modules:     List[Module],
+     libraries:   List[Library],
      artifacts:   List[Artifact],
      containers:  List[Container],
      execs:       List[Exec],
@@ -142,8 +144,8 @@ case class Project
 derives Debug, CodlEncoder:
 
   // FIXME: Handle not-found
-  def apply(goal: GoalId): Module | Artifact =
-    modules.find(_.id == goal).orElse(artifacts.find(_.id == goal)).get
+  def apply(goal: GoalId): Module | Artifact | Library =
+    modules.find(_.id == goal).orElse(artifacts.find(_.id == goal)).orElse(libraries.find(_.id == goal)).get
 
   def goals: List[GoalId] = modules.map(_.id) ++ artifacts.map(_.id)
   def targets: List[Target] = goals.map(Target(id, _))
@@ -220,6 +222,8 @@ case class Module
      main:         Optional[ClassName],
      coverage:     Optional[Target])
 derives Debug, CodlEncoder
+
+case class Library(id: GoalId, url: HttpUrl) derives Debug, CodlEncoder
 
 object Target extends RefType(t"target"):
   given moduleRefEncoder: Encoder[Target] = _.show

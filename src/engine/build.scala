@@ -39,6 +39,7 @@ import acyclicity.*
 import hieroglyph.*, charEncoders.utf8, charDecoders.utf8, badEncodingHandlers.skip
 import guillotine.*
 import hellenism.*
+import telekinesis.*
 import hypotenuse.*
 import inimitable.*
 import feudalism.*
@@ -75,11 +76,19 @@ class Builder():
   private val tasks: scc.TrieMap[Hash, Async[PhaseResult]] = scc.TrieMap()
 
   def task(hash: Hash)
-      (using Monitor, Environment, FrontEnd, Log[Display], SystemProperties, Installation, DaemonService[?])
+      (using Monitor, Environment, FrontEnd, Log[Display], SystemProperties, Installation, DaemonService[?], Internet)
           : Async[PhaseResult] =
 
     tasks.synchronized:
       tasks.getOrElseUpdate(hash, async(phases(hash).run(hash)))
+
+  extension (library: Library)
+    def phase(workspace: Workspace, target: Target)
+        (using Installation, Internet, Monitor, WorkingDirectory, Log[Display], Universe, GitCommand)
+            : LibraryPhase raises CancelError raises PathError raises GitError raises BuildError raises
+               ExecError raises IoError =
+      LibraryPhase(installation.build, library, target)
+      
 
   extension (artifact: Artifact)
     def phase(workspace: Workspace, target: Target)
@@ -94,7 +103,7 @@ class Builder():
       val suffixPath = artifact.suffix.let(workspace(_))
       val watches = Set(prefixPath, suffixPath).compact
 
-      ArtifactPhase(artifact, target, destination, antecedents, classpath, prefixPath, suffixPath, watches)
+      ArtifactPhase(installation.build, artifact, target, destination, antecedents, classpath, prefixPath, suffixPath, watches)
 
   extension (module: Module)
     def phase(workspace: Workspace, target: Target)
@@ -115,26 +124,30 @@ class Builder():
       val sourceMap = sourceFiles.map { file => file.path.name -> Cache.file(file.path).text.await() }.to(Map)
       val watches = module.sources.map(workspace(_)).to(Set)
 
-      ModulePhase(module, target, watches, sourceMap, antecedents, classpath)
+      ModulePhase(installation.build, module, target, watches, sourceMap, antecedents, classpath)
 
   object Phase:
     given show: Show[Phase] = _.target.show
   
   trait Phase:
+    def build: Path
     def target: Target
     def watches: Set[Path]
     def antecedents: List[Hash]
     def classpath: List[Hash]
+    def binaries: List[Hash]
     def digest: Hash
     def runtimeClasspath = digest :: classpath
-
+    lazy val output: Path = digest.bytes.encodeAs[Base32].pipe: hash =>
+      unsafely(build / PathName(hash.take(2)) / PathName(hash.drop(2)))
 
     def run(hash: Hash)
-        (using FrontEnd, Log[Display], DaemonService[?], Installation, Monitor, SystemProperties, Environment)
+        (using FrontEnd, Log[Display], DaemonService[?], Installation, Monitor, SystemProperties, Environment, Internet)
             : PhaseResult
 
   case class ArtifactPhase
-     (artifact:    Artifact,
+     (build:       Path,
+      artifact:    Artifact,
       target:      Target,
       destination: Path,
       antecedents: List[Hash],
@@ -145,10 +158,11 @@ class Builder():
   extends Phase:
 
     export artifact.*
-    lazy val digest = antecedents.digest[Sha2[256]]
+    val digest = antecedents.digest[Sha2[256]]
+    val binaries: List[Hash] = Nil
     
     def run(hash: Hash)
-        (using FrontEnd, Log[Display], DaemonService[?], Installation, Monitor, SystemProperties, Environment)
+        (using FrontEnd, Log[Display], DaemonService[?], Installation, Monitor, SystemProperties, Environment, Internet)
             : PhaseResult =
 
       attempt[AggregateError[BuildError]]:
@@ -162,7 +176,7 @@ class Builder():
           given (BuildError fixes WorkspaceError) = error => BuildError()
           given (BuildError fixes CancelError) = error => BuildError()
  
-          val output = outputDirectory(hash)
+          val inputs = antecedents.map(task(_))
           val checksumPath = output / p"checksum"
    
           def checksumsDiffer(): Boolean =
@@ -170,7 +184,6 @@ class Builder():
             checksumPath.as[File].readAs[Text] != currentHash
           
           if !destination.exists() || checksumPath.exists() && checksumsDiffer() then
-            info(t"Building file ${destination}")
             val tmpPath = unsafely(installation.work / PathName(Uuid().show))
             
             val zipFile = basis.lay(ZipFile.create(tmpPath)): basis =>
@@ -181,6 +194,7 @@ class Builder():
               tasks(hash).await().map: directory =>
                 val entries = directory.descendants.filter(_.is[File]).map: path =>
                   ZipEntry(ZipRef(t"/"+path.relativeTo(directory.path).show), path.as[File])
+
                 zipFile.append(entries, Epoch)
             
             tmpPath.as[File].tap: file =>
@@ -198,8 +212,35 @@ class Builder():
         
           output.as[Directory]
 
+  case class LibraryPhase(build: Path, library: Library, target: Target) extends Phase:
+    val antecedents: List[Hash] = Nil
+    val watches: Set[Path] = Set()
+    val classpath: List[Hash] = Nil
+    val digest: Hash = library.url.show.digest[Sha2[256]]
+    val binaries: List[Hash] = List(digest)
+
+    def run(hash: Hash)
+        (using FrontEnd, Log[Display], DaemonService[?], Installation, Monitor, SystemProperties, Environment, Internet)
+            : PhaseResult =
+
+      attempt[AggregateError[BuildError]]:
+        validate[BuildError]:
+          given (BuildError fixes HttpError) = error => BuildError()
+          given (BuildError fixes IoError) = error => BuildError()
+          given (BuildError fixes StreamError) = error => BuildError()
+          given (BuildError fixes OfflineError) = error => BuildError()
+          
+          summon[Internet].require: (online: Online) ?=> // FIXME: Why is this necessary?
+            summon[Online]
+            output.as[Directory]
+            val checksumPath = output / p"checksum"
+            val destination = (output / p"library.jar").as[File]
+            library.url.get().as[Bytes].writeTo(destination)
+            output.as[Directory]
+
   case class ModulePhase
-     (module:      Module,
+     (build:       Path,
+      module:      Module,
       target:      Target,
       watches:     Set[Path],
       sourceMap:   Map[Text, Text],
@@ -207,10 +248,11 @@ class Builder():
       classpath:   List[Hash])
   extends Phase:
     export module.*
-    lazy val digest = (sourceMap.values.to(List), antecedents).digest[Sha2[256]]
+    val digest = (sourceMap.values.to(List), antecedents).digest[Sha2[256]]
+    val binaries: List[Hash] = Nil
     
     def run(hash: Hash)
-        (using FrontEnd, Log[Display], DaemonService[?], Installation, Monitor, SystemProperties, Environment)
+        (using FrontEnd, Log[Display], DaemonService[?], Installation, Monitor, SystemProperties, Environment, Internet)
             : PhaseResult =
 
       attempt[AggregateError[BuildError]]:
@@ -225,24 +267,23 @@ class Builder():
           given (BuildError fixes WorkspaceError) = error => BuildError()
           given (BuildError fixes CancelError)    = error => BuildError()
 
-          val inputAsyncs = antecedents.map(task(_))
-          val inputs = inputAsyncs.map(_.await())
-          val output = outputDirectory(hash)
+          val inputs = antecedents.map(task(_)).map(_.await())
+          if !summon[FrontEnd].continue then abort(BuildError())
 
           if output.exists() then output.as[Directory].tap(_.touch())
           else
-            info(t"Starting build of ${target}")
             if inputs.exists(_.failure)
             then
               Log.info(t"One of the inputs did not complete")
               abort(CancelError())
             else
-              info(msg"Starting to build ${target} in ${hash.bytes.encodeAs[Base32]}")
-              
               val work = (installation.work / PathName(Uuid().show)).as[Directory]
               val baseClasspath = LocalClasspath(List(ClasspathEntry.Jarfile(unsafely(Basis.Tools().path.show))))
 
-              classpath.map(outputDirectory(_)).foldLeft(baseClasspath)(_ + _).pipe: classpath =>
+              val allBinaries = classpath.flatMap(phases(_).binaries).map(outputDirectory(_) / p"library.jar")
+              Log.info(t"Binaries: ${allBinaries.debug}")
+              
+              (classpath.map(outputDirectory(_)) ++ allBinaries).foldLeft(baseClasspath)(_ + _).pipe: classpath =>
                 if sourceMap.isEmpty then output.as[Directory] else
                   val process: ScalacProcess =
                     Log.envelop(target):
@@ -250,43 +291,59 @@ class Builder():
                       Scalac[3.4]
                        (List
                          (language.experimental.fewerBraces,
-                          language.experimental.erasedDefinitions,
+                          language.experimental.genericNumberLiterals,
                           language.experimental.clauseInterleaving,
                           language.experimental.into,
-                          language.experimental.genericNumberLiterals,
+                          language.experimental.erasedDefinitions,
                           language.experimental.saferExceptions,
                           language.experimental.namedTypeArguments,
+                          advanced.maxInlines(64),
                           internal.requireTargetName,
                           internal.explicitNulls,
                           internal.checkPatterns,
                           internal.safeInit,
-                          advanced.maxInlines(64),
+                          internal.ccNew,
                           experimental,
                           sourceFuture,
                           newSyntax,
+                          warnings.lint.privateShadow,
+                          warnings.lint.typeParameterShadow,
                           warnings.deprecation,
-                          warnings.feature))
+                          warnings.feature,
+                          warnings.implausiblePatterns))
                        (classpath)
                        (sourceMap, work.path)
                   
                   daemon:
-                    summon[FrontEnd].aborted.await()
+                    summon[FrontEnd].attend()
                     process.abort()
       
+                  daemon:
+                    process.progress.each: progress =>
+                      summon[FrontEnd](target) = progress.complete
+
                   async:
                     process.notices.each: notice =>
-                      info(e"$Bold(${target})")
-                      info(e"${notice.importance}: $Italic(${notice.message})")
-                      info(e"${colors.Silver}(${notice.code})")
+                      val prefix = notice.importance match
+                        case Importance.Error   => errorRibbon.fill(e"$target", notice.file.display)
+                        case Importance.Warning => warningRibbon.fill(e"$target", notice.file.display)
+                        case Importance.Info    => infoRibbon.fill(e"$target", notice.file.display)
+
+                      notice.codeRange.let: code =>
+                        info(prefix)
+                        info(e"${Bg(rgb"#003333")}(  ) <code goes here>")
+                        if code.startLine == code.endLine
+                        then info(e"   ${t" "*code.startColumn}${rgb"#CC0033"}(${t"‾"*(code.endColumn - code.startColumn).max(1)})")
+                        else info(e"   multiline code")
+
+                        info(e"$Italic(${notice.message})")
                   
                   process.complete()
                   
                   val errorCount = process.notices.count(_.importance == Importance.Error)
                   val warnCount = process.notices.count(_.importance == Importance.Warning)
        
-                  info(msg"Finished building ${target} with $errorCount errors and $warnCount warnings")
-                  
-                  work.moveTo(output).as[Directory]
+                  if errorCount == 0 then work.moveTo(output).as[Directory] else abort(BuildError())
 
 
   // case class ContainerPhase(container: Container, target: Target, watches: Set[Path], dockerfile: Path)
@@ -296,7 +353,7 @@ class Builder():
   given expandable: Expandable[Phase] = _.antecedents.map(phases(_))
 
   def dag(digest: Hash): Dag[Phase] = Dag.create(phases(digest))(_.antecedents.to(Set).map(phases(_)))
-  def buildGraph(digest: Hash): DagDiagram[Phase] = DagDiagram(dag(digest))
+  def buildGraph(digest: Hash): DagDiagram[Target] = DagDiagram(dag(digest).map(_.target))
 
   def build(target: Target)(using Universe)
       (using Monitor, Clock, Log[Display], WorkingDirectory, Internet, Installation, GitCommand)
@@ -306,8 +363,6 @@ class Builder():
       builds.getOrElseUpdate
        (target,
         async:
-          Log.info(msg"Starting computation of $target")
-    
           given (BuildError fixes GitError)        = error => BuildError()
           given (BuildError fixes ExecError)       = error => BuildError()
           given (BuildError fixes PathError)       = error => BuildError()
@@ -332,6 +387,11 @@ class Builder():
             case artifact: Artifact =>
               val phase = artifact.phase(workspace, target)
               phases(phase.digest) = phase
+              phase.digest
+            
+            case library: Library =>
+              val phase = library.phase(workspace, target)
+              phases(phase.digest) = phase
               phase.digest)
 
   def watchDirectories(hash: Hash): Set[Path] = dag(hash).keys.flatMap(_.watches)
@@ -340,7 +400,7 @@ class Builder():
     unsafely(installation.build / PathName(hash.take(2)) / PathName(hash.drop(2)))
 
   def run(hash: Hash)
-      (using Log[Display], DaemonService[?], Installation, FrontEnd, Monitor, SystemProperties, Environment)
+      (using Log[Display], DaemonService[?], Installation, FrontEnd, Monitor, SystemProperties, Environment, Internet)
           : PhaseResult raises CancelError raises StreamError raises
              ZipError raises IoError raises PathError raises BuildError raises ScalacError =
 
@@ -455,3 +515,7 @@ extension (basis: Basis)
             ZipFile.create(path.as[File].path).tap(_.append(entries, Epoch))
       
       path.as[File]
+
+val errorRibbon = Ribbon(rgb"#990033", rgb"#CC0033")
+val warningRibbon = Ribbon(rgb"#FFCC00", rgb"#FFCC99")
+val infoRibbon = Ribbon(rgb"#006666", rgb"#6699CC")
