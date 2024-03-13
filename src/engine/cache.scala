@@ -37,7 +37,6 @@ import vacuous.*
 import serpentine.*, hierarchies.unixOrWindows
 import spectacular.*
 import turbulence.*
-import harlequin.*
 
 import scala.collection.concurrent as scc
 
@@ -50,7 +49,20 @@ object Cache:
   private val snapshots: scc.TrieMap[Snapshot, Async[Directory]] = scc.TrieMap()
   private val workspaces: scc.TrieMap[Path, (Instant, Async[Workspace])] = scc.TrieMap()
   private val files: scc.TrieMap[Path, CachedFile] = scc.TrieMap()
-  private val syntax: scc.TrieMap[Path, IArray[Seq[Token]]] = scc.TrieMap()
+
+  def file(path: Path)(using Monitor): CachedFile raises IoError raises StreamError raises CancelError =
+    val file = path.as[File]
+    val lastModified = file.lastModified
+    def text() = async(file.readAs[Text])
+    
+    def cachedFile() =
+      val async = text()
+      CachedFile(lastModified, async, async.map(_.digest[Sha2[256]]))
+
+    val cached = files.getOrElseUpdate(path, cachedFile())
+      
+    if cached.lastModified == lastModified then cached else cachedFile().tap: entry =>
+      files(path) = entry
 
   def clear(): Unit =
     ecosystems.clear()
@@ -140,20 +152,6 @@ object Cache:
     if cacheTime == lastModified then workspace else async(Workspace(path)).tap: async =>
       workspaces(path) = (lastModified, async)
       
-  def file(path: Path)(using Monitor): CachedFile raises IoError raises StreamError raises CancelError =
-    val file = path.as[File]
-    val lastModified = file.lastModified
-    def text() = async(file.readAs[Text])
-    
-    def cachedFile() =
-      val async = text()
-      CachedFile(lastModified, async, async.map(_.digest[Sha2[256]]))
-
-    val cached = files.getOrElseUpdate(path, cachedFile())
-      
-    if cached.lastModified == lastModified then cached else cachedFile().tap: entry =>
-      files(path) = entry
-
 case class VaultError() extends Error(msg"the vault file is not valid")
 
 given Realm = realm"fury"

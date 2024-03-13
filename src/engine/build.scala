@@ -36,13 +36,14 @@ import galilei.*, filesystemOptions.{createNonexistent,
 import gastronomy.*, alphabets.base32.zBase32Unpadded
 import gossamer.*
 import acyclicity.*
-import hieroglyph.*, charEncoders.utf8, charDecoders.utf8, badEncodingHandlers.skip
+import hieroglyph.*, charEncoders.utf8, charDecoders.utf8, badEncodingHandlers.skip, textMetrics.uniform
 import guillotine.*
 import hellenism.*
 import telekinesis.*
 import hypotenuse.*
 import inimitable.*
 import feudalism.*
+import harlequin.*
 import nettlesome.*
 import octogenarian.*
 import parasite.*
@@ -279,6 +280,10 @@ class Builder():
             else
               val work = (installation.work / PathName(Uuid().show)).as[Directory]
               val baseClasspath = LocalClasspath(List(ClasspathEntry.Jarfile(unsafely(Basis.Tools().path.show))))
+              val syntax: scc.TrieMap[Text, Async[IArray[Seq[Token]]]] = scc.TrieMap()
+              
+              def highlight(filename: Text): Async[IArray[Seq[Token]]] raises CancelError raises StreamError =
+                async(ScalaSyntax.highlight(sourceMap(filename)))
 
               val allBinaries = classpath.flatMap(phases(_).binaries).map(outputDirectory(_) / p"library.jar")
               Log.info(t"Binaries: ${allBinaries.debug}")
@@ -324,19 +329,22 @@ class Builder():
 
                   async:
                     process.notices.each: notice =>
-                      val prefix = notice.importance match
-                        case Importance.Error   => errorRibbon.fill(e"$target", notice.file.display)
-                        case Importance.Warning => warningRibbon.fill(e"$target", notice.file.display)
-                        case Importance.Info    => infoRibbon.fill(e"$target", notice.file.display)
+                      notice.importance match
+                        case Importance.Error   => info(errorRibbon.fill(e"$target", notice.file.display))
+                        case Importance.Warning => info(warningRibbon.fill(e"$target", notice.file.display))
+                        case Importance.Info    => info(infoRibbon.fill(e"$target", notice.file.display))
 
                       notice.codeRange.let: code =>
-                        info(prefix)
-                        info(e"${Bg(rgb"#003333")}(  ) <code goes here>")
+                        val highlighted = highlight(notice.file).await()
+                        val numberLength = code.endLine.show.length
+                        for line <- (code.startLine - 1).max(0) to code.endLine
+                        do info(e"${Bg(rgb"#003333")}(${rgb"#99cc99"}(${line.show.pad(numberLength, Rtl)})${rgb"#336666"}(┋)) ${highlighted(line)}")
+
                         if code.startLine == code.endLine
-                        then info(e"   ${t" "*code.startColumn}${rgb"#CC0033"}(${t"‾"*(code.endColumn - code.startColumn).max(1)})")
-                        else info(e"   multiline code")
+                        then info(e"${t" "*(code.startColumn + numberLength + 2)}${rgb"#ff0033"}(${t"‾"*(code.endColumn - code.startColumn).max(1)})")
 
                         info(e"$Italic(${notice.message})")
+                        info(t"")
                   
                   process.complete()
                   
@@ -519,3 +527,22 @@ extension (basis: Basis)
 val errorRibbon = Ribbon(rgb"#990033", rgb"#CC0033")
 val warningRibbon = Ribbon(rgb"#FFCC00", rgb"#FFCC99")
 val infoRibbon = Ribbon(rgb"#006666", rgb"#6699CC")
+
+given display: Displayable[Seq[Token]] = tokens =>
+  import Accent.*
+  
+  tokens.map:
+    case Token.Unparsed(text)       => text.display
+    case Token.Markup(text)         => text.display
+    case Token.Newline              => e"\n"
+    case Token.Code(text, Error)    => e"${rgb"#cc0033"}($text)"
+    case Token.Code(text, Number)   => e"${rgb"#cc3366"}($text)"
+    case Token.Code(text, Modifier) => e"${rgb"#ff9966"}($text)"
+    case Token.Code(text, Keyword)  => e"${rgb"#ff6633"}($text)"
+    case Token.Code(text, Ident)    => e"${rgb"#ffcc33"}($text)"
+    case Token.Code(text, Term)     => e"${rgb"#ffff33"}($text)"
+    case Token.Code(text, Type)     => e"${rgb"#00cc99"}($text)"
+    case Token.Code(text, String)   => e"${rgb"#99ffff"}($text)"
+    case Token.Code(text, Parens)   => e"${rgb"#cc6699"}($text)"
+    case Token.Code(text, Symbol)   => e"${rgb"#cc3366"}($text)"
+  .join
