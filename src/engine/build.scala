@@ -336,12 +336,15 @@ class Builder():
 
                       notice.codeRange.let: code =>
                         val highlighted = highlight(notice.file).await()
-                        val numberLength = code.endLine.show.length
+                        val numberLength = (code.endLine + 1).show.length
                         for line <- (code.startLine - 1).max(0) to code.endLine
-                        do info(e"${Bg(rgb"#003333")}(${rgb"#99cc99"}(${line.show.pad(numberLength, Rtl)})${rgb"#336666"}(┋)) ${highlighted(line)}")
+                        do info(e"${Bg(rgb"#003333")}(${rgb"#99cc99"}(${(line + 1).show.pad(numberLength, Rtl)})${rgb"#336666"}(┋)) ${highlighted(line)}")
 
                         if code.startLine == code.endLine
-                        then info(e"${t" "*(code.startColumn + numberLength + 2)}${rgb"#ff0033"}(${t"‾"*(code.endColumn - code.startColumn).max(1)})")
+                        then
+                          if code.startColumn == code.endColumn
+                          then info(e"${t" "*(code.startColumn + numberLength + 1)}${rgb"#ff0033"}(╱╲)")
+                          else info(e"${t" "*(code.startColumn + numberLength + 2)}${rgb"#ff0033"}(${t"‾"*(code.endColumn - code.startColumn)})")
 
                         info(e"$Italic(${notice.message})")
                         info(t"")
@@ -539,8 +542,8 @@ given display: Displayable[Seq[Token]] = tokens =>
     case Token.Code(text, Number)   => e"${rgb"#cc3366"}($text)"
     case Token.Code(text, Modifier) => e"${rgb"#ff9966"}($text)"
     case Token.Code(text, Keyword)  => e"${rgb"#ff6633"}($text)"
-    case Token.Code(text, Ident)    => e"${rgb"#ffcc33"}($text)"
-    case Token.Code(text, Term)     => e"${rgb"#ffff33"}($text)"
+    case Token.Code(text, Ident)    => e"${rgb"#ffcc99"}($text)"
+    case Token.Code(text, Term)     => e"${rgb"#ffcc33"}($text)"
     case Token.Code(text, Type)     => e"${rgb"#00cc99"}($text)"
     case Token.Code(text, String)   => e"${rgb"#99ffff"}($text)"
     case Token.Code(text, Parens)   => e"${rgb"#cc6699"}($text)"
