@@ -35,6 +35,28 @@ project fury
     sources  src/model
     main     fury.Main
 
+  module engine
+    sources  src/engine
+    include  fury/model
+    include  feudalism/core
+    include  anthology/scala
+    include  revolution/core
+    include  harlequin/core
+    include  dendrology/dag
+    include  zeppelin/core
+    include  ethereal/core
+
+  module cli
+    sources  src/cli
+    include  fury/engine
+    include  hallucination/core
+    include  eucalyptus/ansi
+
+  artifact executable
+    basis    tools
+    path     fury.jar
+    include  fury/engine
+
 ##
 
 code=H4sIAAAAAAAAA1WQzW6CUBCF9zzF5IagpuFH8KINwU1t04XGB5Au4P4IkQsUvdUmrPpEfbI+QwdITLubmZM558vhMTFf97tn12Epy4Urdf\
