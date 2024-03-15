@@ -1,0 +1,91 @@
+}
+
+handle() {
+  # shellcheck disable=SC2317
+  case "$1" in
+    TERM) continue=0 ;;
+  esac
+  # shellcheck disable=SC2317
+  printf "s\n%s\n%s\n" "$pid" "$1" >"/dev/tcp/localhost/$port"
+}
+
+extract() {
+  local -i offset fileSize
+  local dir
+  mkdir -p "$dataHomeDir/java"
+  fileSize=$(wc -c "$script" | cut -d' ' -f1)
+  offset=$((fileSize - jarSize - payloadSize + 1))
+  tail -c +"$offset" "$script" | tar xz -C "$dataHomeDir/java" 2> /dev/null
+  dir="$(tail -c +"$offset" "$script" | tar tzf - 2> /dev/null | head -n1)"
+  mv "$dataHomeDir/java/$dir" "$javaHome"
+}
+
+terminate() {
+  exec 6<> /dev/tcp/localhost/$port
+  printf "x\n%s\n" "$pid" >&6
+  exit "$(cat <&6 2> /dev/null || echo '1')"
+}
+
+test -t 0 && ttystate="$(stty -g)"
+mkdir -p "$baseDir"
+backOut
+
+flock -n "$portFile" rm "$portFile"
+
+if [ -s "$portFile" ]
+then
+  setup
+  
+  if [ $version -ne $buildId ]
+  then
+    rm -f "$portFile"
+    sleep 0.1
+  fi
+fi
+
+test -s "$portFile" || launch
+backOut
+
+tmpPipe="$(mktemp -u)"
+mkfifo -m 600 "$tmpPipe" && exec 3<> "$tmpPipe" && rm "$tmpPipe"
+test -t 0 && stty "${sttyOptions[@]}" > /dev/null 2>&1
+exec 7<> /dev/tcp/localhost/$port
+test -t 0 && printf "i\nt\n" >&7 || printf "i\np\n" >&7
+printf "%s\n%s\n" "$pid" "$script" >&7
+pwd >&7
+printf "%s\n" "$argCount" >&7
+printf '%s\0' "${args[@]}" >&7
+printf "\n##\n" >&7
+env -0 >&7
+printf "\n##\n" >&7
+cat >&7 <&0 2> /dev/null &
+stdoutPid=$!
+cat <&7 2> /dev/null &
+pipePid=$!
+
+if [ "$stderr" = "1" ]
+then
+  exec 5<> /dev/tcp/localhost/$port
+  printf "e\n%s\n" "$pid" >&5
+  cat >&2 <&5 &
+  stderrPid=$!
+fi
+
+# shellcheck disable=SC2064
+for signal in "${signals[@]}"
+do trap "handle $signal" "$signal"
+done
+
+while [ $continue = 1 ]
+do
+  wait $pipePid
+  kill -0 $pipePid 2> /dev/null || continue=0
+done
+
+test -t 0 && stty "$ttystate"
+kill $launchPid 2> /dev/null
+kill $stdoutPid 2> /dev/null
+kill $stderrPid 2> /dev/null
+terminate
+exit 1
+

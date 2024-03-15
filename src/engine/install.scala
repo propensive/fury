@@ -28,11 +28,12 @@ import contingency.*
 import rudiments.*
 import serpentine.*, hierarchies.unixOrWindows
 import spectacular.*
+import exoskeleton.*
 import turbulence.*
 import vacuous.*
 
 object Installation:
-  def apply()(using HomeDirectory): Installation raises ConfigError =
+  def apply()(using HomeDirectory, SystemProperties): Installation raises ConfigError =
     import badEncodingHandlers.strict
 
     given (ConfigError fixes StreamError) = error => ConfigError(msg"The stream was cut while reading a file")
@@ -57,8 +58,8 @@ object Installation:
     given (ConfigError fixes PathError) =
       case PathError(path, reason) => ConfigError(msg"The path $path was not valid because $reason")
     
-    val cache: Directory = (Xdg.cacheHome[Path] / p"fury").as[Directory]
-    val configPath: Path = Home.Config() / p"fury"
+    val cache: Directory = (Xdg.cacheHome[Path] / unsafely(PathName(Properties.ethereal.name[Text]()))).as[Directory]
+    val configPath: Path = Home.Config() / unsafely(PathName(Properties.ethereal.name[Text]()))
     val config: Config = Codl.read[Config]((configPath / p"config.codl").as[File])
     val vault: Directory = (cache / p"vault").as[Directory]
     val snapshots: Directory = (cache / p"repos").as[Directory]

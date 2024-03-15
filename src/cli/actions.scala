@@ -149,7 +149,7 @@ object actions:
       info(msg"Creating a new build in $directory")
       ExitStatus.Ok
 
-    def run(target: Target, watch: Boolean)
+    def run(target: Target, watch: Boolean, repeatable: Boolean)
        (using CliFrontEnd,
               WorkingDirectory,
               Monitor,
@@ -181,7 +181,7 @@ object actions:
         val builder = Builder()
         val hash = builder.build(target).await()
         summon[FrontEnd].graph(builder.buildGraph(hash))
-        builder.run(hash)
+        builder.run(hash, repeatable)
         builder.watchDirectories(hash).map(_.as[Directory])
       
       if !watch then build()

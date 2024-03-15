@@ -60,6 +60,7 @@ object cli:
   val Benchmarks = Switch(t"benchmark", false, List('b'), t"Run with OS settings for benchmarking")
   val Discover = Switch(t"discover", false, List('D'), t"Try to discover build details from the directory")
   val Force = Switch(t"force", false, List('F'), t"Overwrite existing files if necessary")
+  val Repeatable = Switch(t"repeatable", false, List('R'), t"Try to build without nondeterminism")
   def Dir(using Raises[PathError]) = Flag[Path](t"dir", false, List('d'), t"Specify the working directory")
   val Offline = Switch(t"offline", false, List('o'), t"Work offline, if possible")
   val Watch = Switch(t"watch", false, List('w'), t"Watch source directories for changes")
@@ -176,6 +177,8 @@ def main(): Unit =
                 case target :: _ =>
                   val online = Offline().absent
                   val watch = Watch().present
+                  val repeatable = Repeatable().present
+
                   given (UserError fixes IoError)   = accede
                   given (UserError fixes PathError) = accede
                   given (UserError fixes ExecError) = accede
@@ -194,7 +197,7 @@ def main(): Unit =
                     internet(online):
                       frontEnd:
                         val buildAsync = async:
-                          actions.build.run(target().decodeAs[Target], watch)
+                          actions.build.run(target().decodeAs[Target], watch, repeatable)
 
                         daemon:
                           terminal.events.each:
@@ -262,6 +265,7 @@ def main(): Unit =
                 val workspace = safely(Workspace())
                 val online = Offline().absent
                 val watch = Watch().present
+                val repeatable = Repeatable().present
                 
                 workspace.let: workspace =>
                   subcommand.let(_.suggest(previous ++ workspace.build.actions.map(_.suggestion)))
@@ -277,7 +281,7 @@ def main(): Unit =
                       async:
                         internet(online):
                           frontEnd:
-                            action.modules.each(actions.build.run(_, watch))
+                            action.modules.each(actions.build.run(_, watch, repeatable))
                             ExitStatus.Ok
                       .await()
                     .or:
@@ -346,4 +350,3 @@ def about()(using Stdio): ExitStatus =
       e"  ${Italic}(${Properties.os.name()} ${Properties.os.version()}, ${Properties.os.arch()})\n"
   
   ExitStatus.Ok
-

@@ -27,6 +27,7 @@ import gastronomy.*
 import gossamer.*
 import hieroglyph.*, charEncoders.utf8, charDecoders.utf8, badEncodingHandlers.strict
 import iridescence.*
+import digression.*
 import kaleidoscope.*
 import nettlesome.*
 import octogenarian.*
@@ -66,7 +67,7 @@ case class Release
      date:        Date,
      lifetime:    Int,
      repo:        Snapshot,
-     packages:    List[Package],
+     packages:    List[Fqcn],
      keywords:    List[Keyword])
 derives Debug:
 
@@ -167,19 +168,28 @@ enum Basis:
 
 object Artifact:
   given relabelling: CodlRelabelling[Artifact] = () =>
-    Map(t"kind" -> t"type", t"includes" -> t"include")
+    Map
+     (t"kind"      -> t"type",
+      t"includes"  -> t"include",
+      t"resources" -> t"resource",
+      t"prefixes"  -> t"prefix",
+      t"suffixes"  -> t"suffix")
 
 case class Artifact
     (id:         GoalId,
      path:       WorkPath,
      basis:      Optional[Basis],
      includes:   List[Target],
-     main:       Optional[Package],
-     prefix:     Optional[WorkPath],
-     suffix:     Optional[WorkPath],
+     main:       Optional[Fqcn],
+     prefixes:   List[WorkPath],
+     suffixes:   List[WorkPath],
+     counter:    Optional[WorkPath],
      executable: Optional[Boolean],
-     manifest:   List[ManifestEntry])
+     manifest:   List[ManifestEntry],
+     resources:  List[Resource])
 derives Debug, CodlEncoder
+
+case class Resource(path: WorkPath, jarPath: WorkPath) derives Debug, CodlEncoder
 
 case class ManifestEntry(key: Text, value: Text) derives Debug, CodlEncoder
 
@@ -214,12 +224,12 @@ case class Module
      includes:     List[Target],
      requirements: List[Target],
      sources:      List[WorkPath],
-     packages:     List[Package],
+     packages:     List[Fqcn],
      usages:       List[Target],
      omissions:    List[Target],
      assists:      List[Assist],
      compiler:     Optional[Text],
-     main:         Optional[ClassName],
+     main:         Optional[Fqcn],
      coverage:     Optional[Target])
 derives Debug, CodlEncoder
 
@@ -315,6 +325,9 @@ object Workspace:
 
     given (WorkspaceError fixes PathError) =
       case pathError: PathError => WorkspaceError(WorkspaceError.Reason.Explanation(pathError.message))
+
+    given (WorkspaceError fixes FqcnError) =
+      case error: FqcnError => WorkspaceError(WorkspaceError.Reason.Explanation(error.message))
 
     given (WorkspaceError fixes InvalidRefError) =
       case InvalidRefError(text, _) => WorkspaceError(WorkspaceError.Reason.BadData(text))

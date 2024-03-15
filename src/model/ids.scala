@@ -48,11 +48,6 @@ object Ids:
   opaque type EcosystemId = Text
   opaque type StreamId    = Text
   opaque type ProjectId   = Text
-  
-  @targetName("Pkg")
-  opaque type Package = Text
-  
-  opaque type ClassName  = Text
   opaque type ActionName = Text
   opaque type Keyword    = Text
   opaque type LicenseId  = Text
@@ -87,14 +82,6 @@ object Ids:
       
       value.asInstanceOf[Type]
   
-  @targetName("Pkg")
-  object Package extends RefType(t"package name"):
-    def apply(value: Text)(using Raises[InvalidRefError]): Package = value match
-      case r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*" => value.asInstanceOf[Package]
-      
-      case _ =>
-        raise(InvalidRefError(value, this))(value.asInstanceOf[Package])
-
   object LicenseId extends RefType(t"license ID"):
     def unsafe(value: Text) = value.asInstanceOf[LicenseId]
     def apply(value: Text)(using Raises[InvalidRefError]): LicenseId = value match
@@ -103,14 +90,6 @@ object Ids:
       case _ =>
         raise(InvalidRefError(value, this))(value.asInstanceOf[LicenseId])
   
-  object ClassName extends RefType(t"class name"):
-    def apply(value: Text)(using Raises[InvalidRefError]): Package = value match
-      case r"[a-z][a-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)*" => value.asInstanceOf[ClassName]
-      
-      case _ =>
-        raise(InvalidRefError(value, this))(value.asInstanceOf[ClassName])
-
-
   given ecosystemIdShow: Show[EcosystemId] = identity(_)
   given ecosystemIdEncoder: Encoder[EcosystemId] = identity(_)
   given ecosystemIdDecoder(using Raises[InvalidRefError]): Decoder[EcosystemId] = EcosystemId(_)
@@ -130,16 +109,6 @@ object Ids:
   given licenseIdEncoder: Encoder[LicenseId] = identity(_)
   given licenseIdDecoder(using Raises[InvalidRefError]): Decoder[LicenseId] = LicenseId(_)
   given licenseIdDigestible: Digestible[LicenseId] = (acc, licenseId) => acc.append(licenseId.bytes)
-  
-  given pkgShow: Show[Package] = identity(_)
-  given pkgEncoder: Encoder[Package] = identity(_)
-  given pkgDecoder(using Raises[InvalidRefError]): Decoder[Package] = Package(_)
-  given pkgDigestible: Digestible[Package] = (acc, pkg) => acc.append(pkg.bytes)
-  
-  given classNameShow: Show[ClassName] = identity(_)
-  given classNameEncoder: Encoder[ClassName] = identity(_)
-  given classNameDecoder(using Raises[InvalidRefError]): Decoder[ClassName] = ClassName(_)
-  given classNameDigestible: Digestible[ClassName] = (acc, className) => acc.append(className.bytes)
   
   given actionNameShow: Show[ActionName] = identity(_)
   given actionNameEncoder: Encoder[ActionName] = identity(_)

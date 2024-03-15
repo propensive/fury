@@ -46,6 +46,7 @@ import feudalism.*
 import harlequin.*
 import nettlesome.*
 import octogenarian.*
+import revolution.*
 import parasite.*
 import iridescence.*
 import contingency.*
@@ -76,12 +77,12 @@ class Builder():
   private val builds: scc.TrieMap[Target, Async[Hash]] = scc.TrieMap()
   private val tasks: scc.TrieMap[Hash, Async[PhaseResult]] = scc.TrieMap()
 
-  def task(hash: Hash)
+  def task(hash: Hash, repeatable: Boolean)
       (using Monitor, Environment, FrontEnd, Log[Display], SystemProperties, Installation, DaemonService[?], Internet)
           : Async[PhaseResult] =
 
     tasks.synchronized:
-      tasks.getOrElseUpdate(hash, async(phases(hash).run(hash)))
+      tasks.getOrElseUpdate(hash, async(phases(hash).run(hash, repeatable)))
 
   extension (library: Library)
     def phase(workspace: Workspace, target: Target)
@@ -100,11 +101,30 @@ class Builder():
       val destination: Path = workspace(artifact.path)
       val antecedents: List[Hash] = artifact.includes.map(build(_)).map(_.await())
       val classpath: List[Hash] = antecedents.map(phases(_)).flatMap(_.runtimeClasspath).to(Set).to(List)
-      val prefixPath = artifact.prefix.let(workspace(_))
-      val suffixPath = artifact.suffix.let(workspace(_))
-      val watches = Set(prefixPath, suffixPath).compact
+      val prefixPaths = artifact.prefixes.map(workspace(_))
+      val suffixPaths = artifact.suffixes.map(workspace(_))
+      val counterPath = artifact.counter.let(workspace(_))
+      
+      val resourceMap: Map[Path, SafeLink] =
+        artifact.resources.map: resource =>
+          val path = workspace(resource.path)
+          (path, resource.jarPath.lay(? / unsafely(PathName(path.name)))(_.link))
+        .to(Map)
 
-      ArtifactPhase(installation.build, artifact, target, destination, antecedents, classpath, prefixPath, suffixPath, watches)
+      val watches = Set(prefixPaths, suffixPaths).compact.flatten
+
+      ArtifactPhase
+       (installation.build,
+        artifact,
+        target,
+        destination,
+        antecedents,
+        classpath,
+        prefixPaths,
+        suffixPaths,
+        counterPath,
+        resourceMap,
+        watches)
 
   extension (module: Module)
     def phase(workspace: Workspace, target: Target)
@@ -142,7 +162,7 @@ class Builder():
     lazy val output: Path = digest.bytes.encodeAs[Base32].pipe: hash =>
       unsafely(build / PathName(hash.take(2)) / PathName(hash.drop(2)))
 
-    def run(hash: Hash)
+    def run(hash: Hash, repeatable: Boolean)
         (using FrontEnd, Log[Display], DaemonService[?], Installation, Monitor, SystemProperties, Environment, Internet)
             : PhaseResult
 
@@ -153,8 +173,10 @@ class Builder():
       destination: Path,
       antecedents: List[Hash],
       classpath:   List[Hash],
-      prefixPath:  Optional[Path],
-      suffixPath:  Optional[Path],
+      prefixPaths: List[Path],
+      suffixPaths: List[Path],
+      counterPath: Optional[Path],
+      resourceMap: Map[Path, SafeLink],
       watches:     Set[Path])
   extends Phase:
 
@@ -162,7 +184,7 @@ class Builder():
     val digest = antecedents.digest[Sha2[256]]
     val binaries: List[Hash] = Nil
     
-    def run(hash: Hash)
+    def run(hash: Hash, repeatable: Boolean)
         (using FrontEnd, Log[Display], DaemonService[?], Installation, Monitor, SystemProperties, Environment, Internet)
             : PhaseResult =
 
@@ -177,7 +199,10 @@ class Builder():
           given (BuildError fixes WorkspaceError) = error => BuildError()
           given (BuildError fixes CancelError) = error => BuildError()
  
-          val inputs = antecedents.map(task(_))
+          val inputs =
+            if repeatable then antecedents.map(task(_, true).tap(_.await()))
+            else antecedents.map(task(_, false))
+          
           val checksumPath = output / p"checksum"
    
           def checksumsDiffer(): Boolean =
@@ -191,23 +216,48 @@ class Builder():
               basis().copyTo(tmpPath)
               ZipFile(tmpPath.as[File])
 
+
             (dag(hash) - this).sorted.map(_.digest).each: hash =>
               tasks(hash).await().map: directory =>
                 val entries = directory.descendants.filter(_.is[File]).map: path =>
                   ZipEntry(ZipRef(t"/"+path.relativeTo(directory.path).show), path.as[File])
 
-                zipFile.append(entries, Epoch)
+                val manifestEntry = artifact.main.lay(LazyList()): mainClass =>
+                  val manifest: Manifest =
+                    Manifest
+                     (manifestAttributes.ManifestVersion(VersionNumber(1, 0)),
+                      manifestAttributes.CreatedBy(t"Fury"),
+                      manifestAttributes.MainClass(mainClass))
+                  LazyList(ZipEntry(ZipRef(t"/META-INF/MANIFEST.MF"), manifest))
+
+                val resourceEntries = resourceMap.flatMap: (source, destination) =>
+                  if source.is[Directory]
+                  then source.as[Directory].descendants.filter(_.is[File]).map: descendant =>
+                    ZipEntry(ZipRef(descendant.relativeTo(source).show), descendant.as[File])
+                  else Iterable(ZipEntry(ZipRef(t"/$destination"), source.as[File]))
+
+                zipFile.append(manifestEntry ++ entries ++ resourceEntries, Epoch)
+            
             
             tmpPath.as[File].tap: file =>
               output.as[Directory]
-              prefixPath.let: prefix =>
-                val tmpPath2 = unsafely(installation.work / PathName(Uuid().show))
-                val tmpFile = prefix.as[File].copyTo(tmpPath2).as[File]
-                file.stream[Bytes].appendTo(tmpFile)
+
+              if prefixPaths.isEmpty && suffixPaths.isEmpty then file else
+                val prefixBytes: LazyList[Bytes] = prefixPaths.to(LazyList).flatMap(_.as[File].stream[Bytes]).or(LazyList())
+                val suffixBytes: LazyList[Bytes] = suffixPaths.to(LazyList).flatMap(_.as[File].stream[Bytes]).or(LazyList())
+
+                val tmpFile = unsafely(installation.work / PathName(Uuid().show)).as[File]
+                (prefixBytes ++ file.stream[Bytes] ++ suffixBytes).writeTo(tmpFile)
+                file.delete()
                 tmpFile.moveTo(file.path)
                 
               file.stream[Bytes].digest[Sha2[256]].bytes.encodeAs[Base32].writeTo(checksumPath.as[File])
+
               if executable.or(false) then file.executable() = true
+
+              counterPath.let: counter =>
+                safely(counter.as[File].readAs[Text].trim.decodeAs[Int]).let: count =>
+                  (count + 1).show.writeTo(counter.as[File])
               
               file.moveTo(destination)
         
@@ -220,7 +270,7 @@ class Builder():
     val digest: Hash = library.url.show.digest[Sha2[256]]
     val binaries: List[Hash] = List(digest)
 
-    def run(hash: Hash)
+    def run(hash: Hash, repeatable: Boolean)
         (using FrontEnd, Log[Display], DaemonService[?], Installation, Monitor, SystemProperties, Environment, Internet)
             : PhaseResult =
 
@@ -252,8 +302,15 @@ class Builder():
     val digest = (sourceMap.values.to(List), antecedents).digest[Sha2[256]]
     val binaries: List[Hash] = Nil
     
-    def run(hash: Hash)
-        (using FrontEnd, Log[Display], DaemonService[?], Installation, Monitor, SystemProperties, Environment, Internet)
+    def run(hash: Hash, repeatable: Boolean)
+        (using FrontEnd,
+               Log[Display],
+               DaemonService[?],
+               Installation,
+               Monitor,
+               SystemProperties,
+               Environment,
+               Internet)
             : PhaseResult =
 
       attempt[AggregateError[BuildError]]:
@@ -268,7 +325,7 @@ class Builder():
           given (BuildError fixes WorkspaceError) = error => BuildError()
           given (BuildError fixes CancelError)    = error => BuildError()
 
-          val inputs = antecedents.map(task(_)).map(_.await())
+          val inputs = antecedents.map(task(_, repeatable)).map(_.await())
           if !summon[FrontEnd].continue then abort(BuildError())
 
           if output.exists() then output.as[Directory].tap(_.touch())
@@ -410,12 +467,12 @@ class Builder():
   def outputDirectory(hash: Hash)(using Installation): Path = hash.bytes.encodeAs[Base32].pipe: hash =>
     unsafely(installation.build / PathName(hash.take(2)) / PathName(hash.drop(2)))
 
-  def run(hash: Hash)
+  def run(hash: Hash, repeatable: Boolean)
       (using Log[Display], DaemonService[?], Installation, FrontEnd, Monitor, SystemProperties, Environment, Internet)
           : PhaseResult raises CancelError raises StreamError raises
              ZipError raises IoError raises PathError raises BuildError raises ScalacError =
 
-    task(hash).await()
+    task(hash, repeatable).await()
 
 extension (workspace: Workspace)
   def locals(ancestors: Set[Path] = Set())
@@ -499,6 +556,8 @@ extension (basis: Basis)
           t"/module-info.class",
           t"/org/",
           t"/scala-asm.properties",
+          t"/com/vladsch/",             // FIXME: Remove this when 
+          t"/gesticulate/media.types",  // FIXME: Remove this
           t"/xsbti/")
   
   def exclusions: Set[Text] = basis match

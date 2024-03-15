@@ -53,9 +53,17 @@ project fury
     include  eucalyptus/ansi
 
   artifact executable
-    basis    tools
-    path     fury.jar
-    include  fury/engine
+    basis       tools
+    path        dist/fury
+    main        fury.main
+    counter     res/build.id
+    prefix      etc/prefix1
+    prefix      res/build.id
+    prefix      etc/prefix2
+    executable  yes
+    resource    res/logo.png  logo.png
+    resource    res/build.id  build.id
+    include     fury/cli
 
 ##
 

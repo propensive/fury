@@ -30,6 +30,7 @@ import guillotine.*
 import fulminate.*
 import punctuation.*
 import gossamer.*
+import digression.*
 import gastronomy.*
 import escapade.*
 import rudiments.*
@@ -124,6 +125,7 @@ object Cache:
       given (VaultError fixes HostnameError)        = error => VaultError()
       given (VaultError fixes UndecodableCharError) = error => VaultError()
       given (VaultError fixes PathError)            = error => VaultError()
+      given (VaultError fixes FqcnError)            = error => VaultError()
       given (VaultError fixes CodlReadError)        = error => VaultError()
       given (VaultError fixes MarkdownError)        = error => VaultError()
 
