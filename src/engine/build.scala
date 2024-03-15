@@ -257,8 +257,9 @@ class Builder():
 
               counterPath.let: counter =>
                 safely(counter.as[File].readAs[Text].trim.decodeAs[Int]).let: count =>
-                  (count + 1).show.writeTo(counter.as[File])
+                  t"${count + 1}\n".writeTo(counter.as[File])
               
+              destination.wipe()
               file.moveTo(destination)
         
           output.as[Directory]
