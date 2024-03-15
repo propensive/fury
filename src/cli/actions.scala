@@ -189,6 +189,7 @@ object actions:
         Watcher(build().to(List)*).pipe: watcher =>
           watcher.stream.head
           watcher.removeAll()
+          summon[FrontEnd].reset()
 
       ExitStatus.Ok
 

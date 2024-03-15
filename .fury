@@ -10,6 +10,12 @@
     
 ecosystem vent 6 https://github.com/propensive/vent main
 
+command dist fury/executable
+  description  Build the complete Fury distribution
+
+command compile fury/cli
+  description  Compile Fury's CLI module
+
 project fury
   name         Fury
   description  A build tool for Scala

@@ -202,7 +202,7 @@ def main(): Unit =
                         daemon:
                           terminal.events.each:
                             case Keypress.Escape | Keypress.Ctrl('C') =>
-                              Out.println(e"$Bold(Aborting the build.)")
+                              Out.println(e"$Bold(Aborting the build.)\e[K")
                               summon[FrontEnd].abort()
                             case other => ()
                         
@@ -278,12 +278,21 @@ def main(): Unit =
                   
                   workspace.lay(ExitStatus.Fail(2)): workspace =>
                     workspace.build.actions.find(_.name == ActionName(subcommand())).optional.let: action =>
-                      async:
-                        internet(online):
-                          frontEnd:
+                      internet(online):
+                        frontEnd:
+                          val buildAsync = async:
                             action.modules.each(actions.build.run(_, watch, repeatable))
-                            ExitStatus.Ok
-                      .await()
+  
+                          daemon:
+                            terminal.events.each:
+                              case Keypress.Escape | Keypress.Ctrl('C') =>
+                                Out.println(e"$Bold(Aborting the build.)\e[K")
+                                summon[FrontEnd].abort()
+                              case other => ()
+                          
+                          buildAsync.await().also(Out.print(t"\e[?25h"))
+                          ExitStatus.Ok
+
                     .or:
                       subcommand.let(frontEnd(actions.invalidSubcommand(_))).or:
                         Out.println(t"No subcommand was specified.")

@@ -45,15 +45,13 @@ def frontEnd[ResultType](lambda: CliFrontEnd ?=> Terminal ?=> ResultType)(using 
     val frontEnd = CliFrontEnd()
     var continue: Boolean = true
 
-    val loop = async:
-      while continue do
-        frontEnd.render()
-        sleep(50*Milli(Second))
+    val loop = async(while continue do frontEnd.render().also(sleep(50*Milli(Second))))
   
     lambda(using frontEnd).also:
       continue = false
       safely(loop.await())
       frontEnd.render(last = true)
+
 
 class CliFrontEnd()(using terminal: Terminal) extends FrontEnd:
   given stdio: Stdio = terminal.stdio
@@ -65,6 +63,13 @@ class CliFrontEnd()(using terminal: Terminal) extends FrontEnd:
   def schedule(task: Task): Unit = ()
   def update(task: Task): Unit = ()
   
+  def reset(): Unit =
+    diagram = Unset
+    indents = Map()
+    active.clear()
+    misc.clear()
+    Out.println(t"\e[1J")
+
   def info[InfoType: Printable](info: InfoType) =
     queue.add(summon[Printable[InfoType]].print(info, terminal.stdio.termcap))
   
@@ -102,7 +107,10 @@ class CliFrontEnd()(using terminal: Terminal) extends FrontEnd:
     
     Out.println(e"\e[K")
 
-    if last then Out.println(t"\e[?25h") else Out.println(t"\e[${diagram.size + 2}A")
+    if last then
+      Out.println(t"\e[?25h")
+      Out.println(t"----------")
+    else Out.println(t"\e[${diagram.size + 2}A")
 
 
 object ProgressBar:

@@ -329,7 +329,9 @@ class Builder():
           val inputs = antecedents.map(task(_, repeatable)).map(_.await())
           if !summon[FrontEnd].continue then abort(BuildError())
 
-          if output.exists() then output.as[Directory].tap(_.touch())
+          if output.exists() then
+            summon[FrontEnd](target) = 1.0
+            output.as[Directory].tap(_.touch())
           else
             if inputs.exists(_.failure)
             then
