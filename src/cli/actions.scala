@@ -36,6 +36,7 @@ import octogenarian.*
 import surveillance.*
 import parasite.*
 import profanity.*
+import quantitative.*
 import rudiments.*
 import serpentine.*, hierarchies.unixOrWindows
 import turbulence.*
@@ -142,6 +143,7 @@ object actions:
                    e"$DeepSkyBlue(${vault.name})")
         
         info(table.tabulate(projects))
+        info(table.tabulate(projects).layout(100))
         ExitStatus.Ok
 
   object build:
@@ -172,23 +174,23 @@ object actions:
       given (UserError fixes ZipError)       = accede
       given (UserError fixes StreamError)    = accede
       given (UserError fixes IoError)        = accede
+      given (UserError fixes WatchError)     = accede
       given (UserError fixes ScalacError)    = accede
 
       val workspace = Workspace()
       given universe: Universe = workspace.universe()
       
-      def build(): Set[Directory] =
+      def build(): Set[Path] =
         val builder = Builder()
         val hash = builder.build(target).await()
         summon[FrontEnd].graph(builder.buildGraph(hash))
         builder.run(hash, repeatable)
-        builder.watchDirectories(hash).map(_.as[Directory])
+        builder.watchDirectories(hash)
       
       if !watch then build()
       else while summon[FrontEnd].continue do
-        Watcher(build().to(List)*).pipe: watcher =>
-          watcher.stream.head
-          watcher.removeAll()
+        build().watch: watches =>
+          watches.stream.cluster(0.05*Second).head
           summon[FrontEnd].reset()
 
       ExitStatus.Ok

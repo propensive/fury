@@ -37,6 +37,7 @@ import rudiments.*
 import vacuous.*
 import serpentine.*, hierarchies.unixOrWindows
 import spectacular.*
+import surveillance.*
 import turbulence.*
 
 import scala.collection.concurrent as scc
@@ -50,6 +51,7 @@ object Cache:
   private val snapshots: scc.TrieMap[Snapshot, Async[Directory]] = scc.TrieMap()
   private val workspaces: scc.TrieMap[Path, (Instant, Async[Workspace])] = scc.TrieMap()
   private val files: scc.TrieMap[Path, CachedFile] = scc.TrieMap()
+  private val watches: scc.TrieMap[Path, Watch] = scc.TrieMap()
 
   def file(path: Path)(using Monitor): CachedFile raises IoError raises StreamError raises CancelError =
     val file = path.as[File]

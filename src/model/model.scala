@@ -115,7 +115,9 @@ case class Build
      default:   Optional[ActionName],
      projects:  List[Project],
      mounts:    List[Mount])
-derives Debug, CodlEncoder
+derives Debug, CodlEncoder:
+
+  def defaultAction: Optional[Action] = actions.where(_.name == default)
 
 
 case class Prelude(terminator: Text, comment: List[Text]) derives Debug, CodlEncoder

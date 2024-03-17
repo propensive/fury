@@ -261,7 +261,8 @@ def main(): Unit =
                   Out.println(Workspace().build.actions.headOption.optional.debug)
                   ExitStatus.Fail(1)
 
-              case subcommand :: _ =>
+              case subcommands =>
+                val subcommand = subcommands.headOption.optional
                 val workspace = safely(Workspace())
                 val online = Offline().absent
                 val watch = Watch().present
@@ -277,22 +278,23 @@ def main(): Unit =
                   given (UserError fixes PathError) = accede
                   
                   workspace.lay(ExitStatus.Fail(2)): workspace =>
-                    workspace.build.actions.find(_.name == ActionName(subcommand())).optional.let: action =>
-                      internet(online):
-                        frontEnd:
-                          val buildAsync = async:
-                            action.modules.each(actions.build.run(_, watch, repeatable))
+                    subcommand.let(_().populated).let(ActionName(_)).or(workspace.build.default).let: action =>
+                      workspace.build.actions.where(_.name == action).let: action =>
+                        internet(online):
+                          frontEnd:
+                            val buildAsync = async:
+                              action.modules.each(actions.build.run(_, watch, repeatable))
+    
+                            daemon:
+                              terminal.events.each:
+                                case Keypress.Escape | Keypress.Ctrl('C') =>
+                                  Out.println(e"$Bold(Aborting the build.)\e[K")
+                                  summon[FrontEnd].abort()
+                                case other => ()
+                            
+                            buildAsync.await().also(Out.print(t"\e[?25h"))
+                            ExitStatus.Ok
   
-                          daemon:
-                            terminal.events.each:
-                              case Keypress.Escape | Keypress.Ctrl('C') =>
-                                Out.println(e"$Bold(Aborting the build.)\e[K")
-                                summon[FrontEnd].abort()
-                              case other => ()
-                          
-                          buildAsync.await().also(Out.print(t"\e[?25h"))
-                          ExitStatus.Ok
-
                     .or:
                       subcommand.let(frontEnd(actions.invalidSubcommand(_))).or:
                         Out.println(t"No subcommand was specified.")

@@ -31,7 +31,7 @@ import hieroglyph.*, charEncoders.utf8
 export Ids.*
 
 case class InvalidRefError(id: Text, refType: RefType)
-extends Error(msg"The value $id is not a valid ${refType.name}")
+extends Error(msg"The value '$id' is not a valid ${refType.name}")
 
 case class AppError(userMessage: Message, underlyingCause: Optional[Error] = Unset)
 extends Error(userMessage)

@@ -16,6 +16,8 @@ command dist fury/executable
 command compile fury/cli
   description  Compile Fury's CLI module
 
+default compile
+
 project fury
   name         Fury
   description  A build tool for Scala
@@ -56,6 +58,7 @@ project fury
     sources  src/cli
     include  fury/engine
     include  hallucination/core
+    include  impressionism/core
     include  eucalyptus/ansi
 
   artifact executable
