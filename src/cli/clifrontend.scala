@@ -107,9 +107,7 @@ class CliFrontEnd()(using terminal: Terminal) extends FrontEnd:
     
     Out.println(e"\e[K")
 
-    if last then
-      Out.println(t"\e[?25h")
-      Out.println(t"----------")
+    if last then Out.println(t"\e[?25h")
     else Out.println(t"\e[${diagram.size + 2}A")
 
 
