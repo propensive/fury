@@ -119,5 +119,5 @@ object ProgressBar:
   
   val bars: IArray[Text] = IArray.from:
     (0 to 96).map: progress =>
-      unsafely(((t"█"*(progress/8))+partial(progress%8).show).fit(12))
+      unsafely(((t"█"*(progress/8))+partial.at(progress%8).vouch.show).fit(12))
 
