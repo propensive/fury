@@ -30,11 +30,7 @@ project fury
     include  cellulose/core
     include  escritoire/core
     include  exoskeleton/completions
-    include  galilei/core
-    include  gastronomy/core
-    include  imperial/core
     include  jacinta/core
-    include  nettlesome/url
     include  octogenarian/core
     include  punctuation/core
     include  telekinesis/client
@@ -46,7 +42,6 @@ project fury
   module engine
     sources  src/engine
     include  fury/model
-    include  feudalism/core
     include  anthology/scala
     include  revolution/core
     include  harlequin/core
