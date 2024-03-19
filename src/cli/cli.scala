@@ -60,7 +60,6 @@ object cli:
   val Benchmarks = Switch(t"benchmark", false, List('b'), t"Run with OS settings for benchmarking")
   val Discover = Switch(t"discover", false, List('D'), t"Try to discover build details from the directory")
   val Force = Switch(t"force", false, List('F'), t"Overwrite existing files if necessary")
-  val Repeatable = Switch(t"repeatable", false, List('R'), t"Try to build without nondeterminism")
   def Dir(using Raises[PathError]) = Flag[Path](t"dir", false, List('d'), t"Specify the working directory")
   val Offline = Switch(t"offline", false, List('o'), t"Work offline, if possible")
   val Watch = Switch(t"watch", false, List('w'), t"Watch source directories for changes")
@@ -81,9 +80,8 @@ object cli:
   val Graph          = Subcommand(t"graph",    e"Show a build graph")
   val Update         = Subcommand(t"update",   e"Update Fury")
   val Install        = Subcommand(t"install",  e"Install Fury")
-
-  val Clean = Subcommand(t"clean", e"Clean the cache")
-  val Details = Subcommand(t"info", e"Information about cache usage")
+  val Clean          = Subcommand(t"clean",    e"Clean the cache")
+  val Details        = Subcommand(t"info",     e"Information about cache usage")
 
 given (using Raises[UserError]): HomeDirectory =
   given (UserError fixes SystemPropertyError) =
@@ -177,7 +175,6 @@ def main(): Unit =
                 case target :: _ =>
                   val online = Offline().absent
                   val watch = Watch().present
-                  val repeatable = Repeatable().present
 
                   given (UserError fixes IoError)   = accede
                   given (UserError fixes PathError) = accede
@@ -196,8 +193,8 @@ def main(): Unit =
                     
                     internet(online):
                       frontEnd:
-                        val buildAsync = async:
-                          actions.build.run(target().decodeAs[Target], watch, repeatable)
+                        val buildTask = task(t"build"):
+                          actions.build.run(target().decodeAs[Target], watch)
 
                         daemon:
                           terminal.events.each:
@@ -206,7 +203,7 @@ def main(): Unit =
                               summon[FrontEnd].abort()
                             case other => ()
                         
-                        buildAsync.await().also(Out.print(t"\e[?25h"))
+                        buildTask.await().also(Out.print(t"\e[?25h"))
                   
               case Graph() :: Nil =>
                 val online = Offline().absent
@@ -231,15 +228,6 @@ def main(): Unit =
                 val generation: Optional[Int] = safely(Generation())
                 
                 subcommands match
-                  case UniverseSearch() :: _ =>
-                    execute:
-                      Out.println(t"TODO: Search the universe")
-                      ExitStatus.Ok
-                  
-                  case UniverseUpdate() :: _ =>
-                    execute:
-                      ExitStatus.Fail(1)
-
                   case Nil | (UniverseShow() :: _) =>
                     execute:
                       internet(online):
@@ -252,6 +240,7 @@ def main(): Unit =
                     ExitStatus.Fail(1)
                   
               case Shutdown() :: Nil => execute:
+                FrontEnd.terminateAll()
                 service.shutdown()
                 ExitStatus.Ok
               
@@ -266,7 +255,6 @@ def main(): Unit =
                 val workspace = safely(Workspace())
                 val online = Offline().absent
                 val watch = Watch().present
-                val repeatable = Repeatable().present
                 
                 workspace.let: workspace =>
                   subcommand.let(_.suggest(previous ++ workspace.build.actions.map(_.suggestion)))
@@ -282,17 +270,15 @@ def main(): Unit =
                       workspace.build.actions.where(_.name == action).let: action =>
                         internet(online):
                           frontEnd:
-                            val buildAsync = async:
-                              action.modules.each(actions.build.run(_, watch, repeatable))
+                            val buildTask = task(t"build"):
+                              action.modules.each(actions.build.run(_, watch))
     
                             daemon:
                               terminal.events.each:
-                                case Keypress.Escape | Keypress.Ctrl('C') =>
-                                  Out.println(e"$Bold(Aborting the build.)\e[K")
-                                  summon[FrontEnd].abort()
-                                case other => ()
+                                case Keypress.Escape | Keypress.Ctrl('C') => summon[FrontEnd].abort()
+                                case other                                => ()
                             
-                            buildAsync.await().also(Out.print(t"\e[?25h"))
+                            buildTask.await().also(Out.print(t"\e[?25h"))
                             ExitStatus.Ok
   
                     .or:

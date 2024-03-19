@@ -19,8 +19,13 @@ package fury
 import anticipation.*
 import parasite.*
 import dendrology.*
+import vacuous.*
+import quantitative.*
+import contingency.*
+import rudiments.*
 
 import scala.collection.concurrent as scc
+import scala.collection.mutable as scm
 
 enum Task:
   case Download(digest: Hash)
@@ -29,10 +34,29 @@ enum Task:
 
 def info[InfoType: Printable](info: InfoType)(using frontEnd: FrontEnd): Unit = frontEnd.info(info)
 
-trait FrontEnd:
+object FrontEnd:
+  private var frontEnds: Set[FrontEnd] = Set()
+  private var termination: Optional[Promise[Unit]] = Unset
+  
+  def register(frontEnd: FrontEnd): Unit = synchronized:
+    frontEnds += frontEnd
+  
+  def unregister(frontEnd: FrontEnd): Unit = synchronized:
+    frontEnds -= frontEnd
+    
+    termination.let: promise =>
+      if frontEnds.isEmpty then promise.offer(())
+  
+  def terminateAll(): Unit =
+    val promise = Promise[Unit]()
+    termination = promise
+    frontEnds.each(_.abort())
+    safely(promise.await(10*Second))
 
+trait FrontEnd:
   protected val active: scc.TrieMap[Target, Double] = scc.TrieMap()
   private val aborted: Promise[Unit] = Promise()
+
   def continue: Boolean = !aborted.ready
   def abort(): Unit = aborted.offer(())
   def schedule(task: Task): Unit

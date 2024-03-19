@@ -52,15 +52,15 @@ object Cache:
   private val workspaces: scc.TrieMap[Path, (Instant, Async[Workspace])] = scc.TrieMap()
   private val files: scc.TrieMap[Path, CachedFile] = scc.TrieMap()
   private val watches: scc.TrieMap[Path, Watch] = scc.TrieMap()
+  private val locals: scc.TrieMap[Workspace, Async[Map[ProjectId, Definition]]] = scc.TrieMap()
 
-  def file(path: Path)(using Monitor): CachedFile raises IoError raises StreamError raises CancelError =
+  def file(path: Path)(using Monitor, Log[Display]): CachedFile raises IoError raises StreamError raises CancelError =
     val file = path.as[File]
     val lastModified = file.lastModified
-    def text() = async(file.readAs[Text])
     
     def cachedFile() =
-      val async = text()
-      CachedFile(lastModified, async, async.map(_.digest[Sha2[256]]))
+      val task = async(file.readAs[Text])
+      CachedFile(lastModified, task, task.map(_.digest[Sha2[256]]))
 
     val cached = files.getOrElseUpdate(path, cachedFile())
       
@@ -155,7 +155,16 @@ object Cache:
       
     if cacheTime == lastModified then workspace else async(Workspace(path)).tap: async =>
       workspaces(path) = (lastModified, async)
+
+  def projectsMap(workspace: Workspace)(using Installation, Internet, Log[Display], Monitor, WorkingDirectory, GitCommand)
+          : Async[Map[ProjectId, Definition]] raises WorkspaceError raises CancelError =
+    
+    locals.getOrElseUpdate(workspace, async:
+      val maps: List[Map[ProjectId, Definition]] = workspace.local.let(_.forks).or(Nil).map: fork =>
+        Cache.workspace(fork.path).flatMap(projectsMap(_)).await()
       
+      maps.foldLeft(workspace.projects.view.mapValues(_.definition(workspace)).toMap)(_ ++ _))
+
 case class VaultError() extends Error(msg"the vault file is not valid")
 
 given Realm = realm"fury"

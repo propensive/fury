@@ -77,12 +77,12 @@ class Builder():
   private val builds: scc.TrieMap[Target, Async[Hash]] = scc.TrieMap()
   private val tasks: scc.TrieMap[Hash, Async[PhaseResult]] = scc.TrieMap()
 
-  def task(hash: Hash, repeatable: Boolean)
+  def task(hash: Hash)
       (using Monitor, Environment, FrontEnd, Log[Display], SystemProperties, Installation, DaemonService[?], Internet)
           : Async[PhaseResult] =
 
     tasks.synchronized:
-      tasks.getOrElseUpdate(hash, async(phases(hash).run(hash, repeatable)))
+      tasks.getOrElseUpdate(hash, async(phases(hash).run(hash)))
 
   extension (library: Library)
     def phase(workspace: Workspace, target: Target)
@@ -159,10 +159,11 @@ class Builder():
     def binaries: List[Hash]
     def digest: Hash
     def runtimeClasspath = digest :: classpath
+    
     lazy val output: Path = digest.bytes.encodeAs[Base32].pipe: hash =>
       unsafely(build / PathName(hash.take(2)) / PathName(hash.drop(2)))
 
-    def run(hash: Hash, repeatable: Boolean)
+    def run(hash: Hash)
         (using FrontEnd, Log[Display], DaemonService[?], Installation, Monitor, SystemProperties, Environment, Internet)
             : PhaseResult
 
@@ -184,7 +185,7 @@ class Builder():
     val digest = antecedents.digest[Sha2[256]]
     val binaries: List[Hash] = Nil
     
-    def run(hash: Hash, repeatable: Boolean)
+    def run(hash: Hash)
         (using FrontEnd, Log[Display], DaemonService[?], Installation, Monitor, SystemProperties, Environment, Internet)
             : PhaseResult =
 
@@ -199,9 +200,7 @@ class Builder():
           given (BuildError fixes WorkspaceError) = error => BuildError()
           given (BuildError fixes CancelError) = error => BuildError()
  
-          val inputs =
-            if repeatable then antecedents.map(task(_, true).tap(_.await()))
-            else antecedents.map(task(_, false))
+          val inputs = antecedents.map(task(_))
           
           val checksumPath = output / p"checksum"
    
@@ -271,7 +270,7 @@ class Builder():
     val digest: Hash = library.url.show.digest[Sha2[256]]
     val binaries: List[Hash] = List(digest)
 
-    def run(hash: Hash, repeatable: Boolean)
+    def run(hash: Hash)
         (using FrontEnd, Log[Display], DaemonService[?], Installation, Monitor, SystemProperties, Environment, Internet)
             : PhaseResult =
 
@@ -282,13 +281,19 @@ class Builder():
           given (BuildError fixes StreamError) = error => BuildError()
           given (BuildError fixes OfflineError) = error => BuildError()
           
-          summon[Internet].require: (online: Online) ?=> // FIXME: Why is this necessary?
-            summon[Online]
-            output.as[Directory]
-            val checksumPath = output / p"checksum"
-            val destination = (output / p"library.jar").as[File]
-            library.url.get().as[Bytes].writeTo(destination)
-            output.as[Directory]
+          output.as[Directory]
+          val checksum: Path = output / p"checksum"
+          val jarfile: Path = output / p"library.jar"
+          
+          def jarfileChecksum(): Text = jarfile.as[File].stream[Bytes].digest[Sha2[256]].bytes.encodeAs[Base32]
+          def storedChecksum(): Text = checksum.as[File].readAs[Text].trim
+          
+          if !(jarfile.exists() && checksum.exists() && jarfileChecksum() == storedChecksum()) then
+            summon[Internet].require: (online: Online) ?=> // FIXME: Why is this necessary?
+              library.url.get().as[Bytes].writeTo(jarfile.as[File])
+              jarfileChecksum().writeTo(checksum.as[File])
+              output.as[Directory]
+          else output.as[Directory]
 
   case class ModulePhase
      (build:       Path,
@@ -303,7 +308,7 @@ class Builder():
     val digest = (sourceMap.values.to(List), antecedents).digest[Sha2[256]]
     val binaries: List[Hash] = Nil
     
-    def run(hash: Hash, repeatable: Boolean)
+    def run(hash: Hash)
         (using FrontEnd,
                Log[Display],
                DaemonService[?],
@@ -316,7 +321,6 @@ class Builder():
 
       attempt[AggregateError[BuildError]]:
         validate[BuildError]:
-          given (BuildError fixes ExecError)      = error => BuildError()
           given (BuildError fixes GitError)       = error => BuildError()
           given (BuildError fixes PathError)      = error => BuildError()
           given (BuildError fixes ZipError)       = error => BuildError()
@@ -326,7 +330,7 @@ class Builder():
           given (BuildError fixes WorkspaceError) = error => BuildError()
           given (BuildError fixes CancelError)    = error => BuildError()
 
-          val inputs = antecedents.map(task(_, repeatable)).map(_.await())
+          val inputs = antecedents.map(task(_)).map(_.await())
           if !summon[FrontEnd].continue then abort(BuildError())
 
           if output.exists() then
@@ -336,7 +340,7 @@ class Builder():
             if inputs.exists(_.failure)
             then
               Log.info(t"One of the inputs did not complete")
-              abort(CancelError())
+              abort(BuildError())
             else
               val work = (installation.work / PathName(Uuid().show)).as[Directory]
               val baseClasspath = LocalClasspath(List(ClasspathEntry.Jarfile(unsafely(Basis.Tools().path.show))))
@@ -434,6 +438,7 @@ class Builder():
       builds.getOrElseUpdate
        (target,
         async:
+          Log.info(msg"build($target)")
           given (BuildError fixes GitError)        = error => BuildError()
           given (BuildError fixes ExecError)       = error => BuildError()
           given (BuildError fixes PathError)       = error => BuildError()
@@ -448,8 +453,9 @@ class Builder():
  
             case vault: Vault =>
               Workspace(Cache(vault.index.releases(target.projectId).repo).await().path)
+          Log.info(msg"calculated workspace for $target")
             
-          workspace(target.projectId)(target.goalId) match
+          val digest = workspace(target.projectId)(target.goalId) match
             case module: Module =>
               val phase = module.phase(workspace, target)
               phases(phase.digest) = phase
@@ -463,39 +469,42 @@ class Builder():
             case library: Library =>
               val phase = library.phase(workspace, target)
               phases(phase.digest) = phase
-              phase.digest)
+              phase.digest
+          
+          digest)
 
   def watchDirectories(hash: Hash): Set[Path] = dag(hash).keys.flatMap(_.watches)
 
   def outputDirectory(hash: Hash)(using Installation): Path = hash.bytes.encodeAs[Base32].pipe: hash =>
     unsafely(installation.build / PathName(hash.take(2)) / PathName(hash.drop(2)))
 
-  def run(hash: Hash, repeatable: Boolean)
+  def run(hash: Hash)
       (using Log[Display], DaemonService[?], Installation, FrontEnd, Monitor, SystemProperties, Environment, Internet)
           : PhaseResult raises CancelError raises StreamError raises
              ZipError raises IoError raises PathError raises BuildError raises ScalacError =
 
-    task(hash, repeatable).await()
+    task(hash).await()
 
 extension (workspace: Workspace)
-  def locals(ancestors: Set[Path] = Set())
+  def locals()
       (using Monitor, Log[Display], WorkingDirectory, Internet, Installation, GitCommand)
           : Map[ProjectId, Definition] raises CancelError raises WorkspaceError =
+    Cache.projectsMap(workspace).await()
+    Log.fine(msg"locals()")
 
     workspace.local.let: local =>
       local.forks.map: fork =>
         val workspace = Cache.workspace(fork.path).await()
         val projects = workspace.projects
-        workspace.locals(ancestors + fork.path)
+        workspace.locals()
         
     .or(Nil).foldRight(workspace.projects.view.mapValues(_.definition(workspace)).to(Map))(_ ++ _)
-  
+
   def universe()
       (using Monitor, Clock, Log[Display], WorkingDirectory, Internet, Installation, GitCommand)
           : Universe raises CancelError raises VaultError raises WorkspaceError =
 
     given Timezone = tz"Etc/UTC"
-
     val vaultProjects = Cache(workspace.ecosystem).await()
     val localProjects = locals()
     
@@ -503,6 +512,7 @@ extension (workspace: Workspace)
       vaultProjects.releases.filter(_.expiry <= today()).map: release =>
         (release.id, release.definition(vaultProjects))
       .to(Map)
+    Log.info(t"Post-projects")
     
     Universe(projects -- localProjects.keySet ++ localProjects)
 

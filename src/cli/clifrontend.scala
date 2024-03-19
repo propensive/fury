@@ -40,17 +40,19 @@ import java.util.concurrent as juc
 
 def frontEnd[ResultType](lambda: CliFrontEnd ?=> Terminal ?=> ResultType)(using Cli, Log[Display], Monitor)
         : ResultType =
-
   terminal:
     val frontEnd = CliFrontEnd()
-    var continue: Boolean = true
-
-    val loop = async(while continue do frontEnd.render().also(sleep(50*Milli(Second))))
+    FrontEnd.register(frontEnd)
+    try
+      var continue: Boolean = true
   
-    lambda(using frontEnd).also:
-      continue = false
-      safely(loop.await())
-      frontEnd.render(last = true)
+      val loop = async(while continue do frontEnd.render().also(sleep(50*Milli(Second))))
+    
+      lambda(using frontEnd).also:
+        continue = false
+        safely(loop.await())
+        frontEnd.render(last = true)
+    finally FrontEnd.unregister(frontEnd)
 
 
 class CliFrontEnd()(using terminal: Terminal) extends FrontEnd:

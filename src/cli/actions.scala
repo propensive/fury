@@ -17,6 +17,7 @@
 package fury
 
 import ambience.*
+import aviation.*
 import anticipation.*, filesystemInterfaces.galileiApi
 import contingency.*
 import anthology.*
@@ -27,6 +28,7 @@ import eucalyptus.*
 import exoskeleton.*
 import fulminate.*
 import galilei.*
+import gossamer.*
 import guillotine.*
 import hieroglyph.*, textMetrics.eastAsianScripts
 import iridescence.*, colors.*
@@ -151,7 +153,7 @@ object actions:
       info(msg"Creating a new build in $directory")
       ExitStatus.Ok
 
-    def run(target: Target, watch: Boolean, repeatable: Boolean)
+    def run(target: Target, watch: Boolean)
        (using CliFrontEnd,
               WorkingDirectory,
               Monitor,
@@ -178,13 +180,15 @@ object actions:
       given (UserError fixes ScalacError)    = accede
 
       val workspace = Workspace()
+      Log.info(t"Pre-universe:")
       given universe: Universe = workspace.universe()
+      Log.info(t"Post-universe:")
       
       def build(): Set[Path] =
         val builder = Builder()
         val hash = builder.build(target).await()
         summon[FrontEnd].graph(builder.buildGraph(hash))
-        builder.run(hash, repeatable)
+        builder.run(hash)
         builder.watchDirectories(hash)
       
       if !watch then build()

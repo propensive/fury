@@ -289,8 +289,12 @@ case class WorkPath(descent: List[PathName[GeneralForbidden]]) derives Debug, Co
   def link: SafeLink = SafeLink(0, descent)
 
 case class Definition
-    (name: Text, description: InlineMd, website: Optional[HttpUrl], license: Optional[LicenseId],
-        keywords: List[Keyword], source: Vault | Workspace)
+    (name:        Text,
+     description: InlineMd,
+     website:     Optional[HttpUrl],
+     license:     Optional[LicenseId],
+     keywords:    List[Keyword],
+     source:      Vault | Workspace)
 derives Debug
 
 object Workspace:
