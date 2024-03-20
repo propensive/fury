@@ -186,7 +186,14 @@ class Builder():
     val binaries: List[Hash] = Nil
     
     def run(hash: Hash)
-        (using FrontEnd, Log[Display], DaemonService[?], Installation, Monitor, SystemProperties, Environment, Internet)
+        (using FrontEnd,
+               Log[Display],
+               DaemonService[?],
+               Installation,
+               Monitor,
+               SystemProperties,
+               Environment,
+               Internet)
             : PhaseResult =
 
       attempt[AggregateError[BuildError]]:
@@ -201,14 +208,15 @@ class Builder():
           given (BuildError fixes CancelError) = error => BuildError()
  
           val inputs = antecedents.map(task(_))
-          
           val checksumPath = output / p"checksum"
-   
-          def checksumsDiffer(): Boolean =
-            val currentHash = destination.as[File].stream[Bytes].digest[Sha2[256]].bytes.encodeAs[Base32]
-            checksumPath.as[File].readAs[Text] != currentHash
+
+          def savedChecksum = if checksumPath.exists() then checksumPath.as[File].readAs[Text] else Unset
           
-          if !destination.exists() || checksumPath.exists() && checksumsDiffer() then
+          def fileChecksum = if !destination.exists() then Unset else
+            destination.as[File].stream[Bytes].digest[Sha2[256]].bytes.encodeAs[Base32]
+          
+          if savedChecksum.absent || fileChecksum.absent || savedChecksum != fileChecksum || counterPath.present
+          then
             val tmpPath = unsafely(installation.work / PathName(Uuid().show))
             
             val zipFile = basis.lay(ZipFile.create(tmpPath)): basis =>
