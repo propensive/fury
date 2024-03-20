@@ -350,7 +350,6 @@ class Builder():
                 async(ScalaSyntax.highlight(sourceMap(filename)))
 
               val allBinaries = classpath.flatMap(phases(_).binaries).map(outputDirectory(_) / p"library.jar")
-              Log.info(t"Binaries: ${allBinaries.debug}")
               
               (classpath.map(outputDirectory(_)) ++ allBinaries).foldLeft(baseClasspath)(_ + _).pipe: classpath =>
                 if sourceMap.isEmpty then output.as[Directory] else
@@ -438,7 +437,6 @@ class Builder():
       builds.getOrElseUpdate
        (target,
         async:
-          Log.info(msg"build($target)")
           given (BuildError fixes GitError)        = error => BuildError()
           given (BuildError fixes ExecError)       = error => BuildError()
           given (BuildError fixes PathError)       = error => BuildError()
@@ -453,7 +451,6 @@ class Builder():
  
             case vault: Vault =>
               Workspace(Cache(vault.index.releases(target.projectId).repo).await().path)
-          Log.info(msg"calculated workspace for $target")
             
           val digest = workspace(target.projectId)(target.goalId) match
             case module: Module =>
@@ -490,15 +487,6 @@ extension (workspace: Workspace)
       (using Monitor, Log[Display], WorkingDirectory, Internet, Installation, GitCommand)
           : Map[ProjectId, Definition] raises CancelError raises WorkspaceError =
     Cache.projectsMap(workspace).await()
-    Log.fine(msg"locals()")
-
-    workspace.local.let: local =>
-      local.forks.map: fork =>
-        val workspace = Cache.workspace(fork.path).await()
-        val projects = workspace.projects
-        workspace.locals()
-        
-    .or(Nil).foldRight(workspace.projects.view.mapValues(_.definition(workspace)).to(Map))(_ ++ _)
 
   def universe()
       (using Monitor, Clock, Log[Display], WorkingDirectory, Internet, Installation, GitCommand)
