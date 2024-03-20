@@ -143,10 +143,8 @@ object actions:
                  
                  case vault: Vault =>
                    e"$DeepSkyBlue(${vault.name})")
-        info(t"Universe:")
+        
         info(table.tabulate(projects))
-        info(t"Universe done")
-        info(table.tabulate(projects).layout(100))
         ExitStatus.Ok
 
   object build:
