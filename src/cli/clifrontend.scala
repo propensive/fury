@@ -86,31 +86,32 @@ class CliFrontEnd()(using terminal: Terminal) extends FrontEnd:
     
   val edge: Display = e"${colors.Gray}(│)"
 
-  def render(last: Boolean = false): Unit = diagram.let: diagram =>
-    Out.print(t"\e[?25l")
-
+  def render(last: Boolean = false): Unit =
     for i <- 0 until queue.size do queue.poll().nn.cut(t"\n").each: line =>
       Out.println(line+t"\e[K")
-
-    diagram.render: target =>
-      active.get(target) match
-        case Some(1.0) =>
-          e"▪ $Bold(${colors.Gray}($target))${indents(target)}$edge${Bg(colors.MediumSeaGreen)}(     ${colors.Black}($Bold(OK))     )$edge"
-
-        case None =>
-          e"▪ ${colors.Gray}(${target.show})"
-          e"▪ $Bold(${colors.Gray}(${target}))${indents(target)}$edge            $edge"
-        
-        case Some(progress) =>
-          val highlight = if last then rgb"#990033" else colors.Gold
-          e"▪ $Bold($highlight(${target}))${indents(target)}$edge$highlight(${ProgressBar(progress)})$edge"
-
-    .each(Out.println(_))
-    
-    Out.println(e"\e[K")
-
-    if last then Out.println(t"\e[?25h")
-    else Out.println(t"\e[${diagram.size + 2}A")
+  
+    diagram.let: diagram =>
+      Out.print(t"\e[?25l")
+  
+      diagram.render: target =>
+        active.get(target) match
+          case Some(1.0) =>
+            e"▪ $Bold(${colors.Gray}($target))${indents(target)}$edge${Bg(colors.MediumSeaGreen)}(     ${colors.Black}($Bold(OK))     )$edge"
+  
+          case None =>
+            e"▪ ${colors.Gray}(${target.show})"
+            e"▪ $Bold(${colors.Gray}(${target}))${indents(target)}$edge            $edge"
+          
+          case Some(progress) =>
+            val highlight = if last then rgb"#990033" else colors.Gold
+            e"▪ $Bold($highlight(${target}))${indents(target)}$edge$highlight(${ProgressBar(progress)})$edge"
+  
+      .each(Out.println(_))
+      
+      Out.println(e"\e[K")
+  
+      if last then Out.println(t"\e[?25h")
+      else Out.println(t"\e[${diagram.size + 2}A")
 
 
 object ProgressBar:

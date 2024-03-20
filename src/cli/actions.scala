@@ -143,8 +143,9 @@ object actions:
                  
                  case vault: Vault =>
                    e"$DeepSkyBlue(${vault.name})")
-        
+        info(t"Universe:")
         info(table.tabulate(projects))
+        info(t"Universe done")
         info(table.tabulate(projects).layout(100))
         ExitStatus.Ok
 
@@ -180,9 +181,7 @@ object actions:
       given (UserError fixes ScalacError)    = accede
 
       val workspace = Workspace()
-      Log.info(t"Pre-universe:")
       given universe: Universe = workspace.universe()
-      Log.info(t"Post-universe:")
       
       def build(): Set[Path] =
         val builder = Builder()

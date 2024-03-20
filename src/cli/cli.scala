@@ -230,9 +230,11 @@ def main(): Unit =
                 subcommands match
                   case Nil | (UniverseShow() :: _) =>
                     execute:
+                      Out.println(t"0")
                       internet(online):
                         terminal:
                           frontEnd:
+                            Out.println(t"1")
                             actions.universe.show()
 
                   case command :: _ => execute:

@@ -500,7 +500,6 @@ extension (workspace: Workspace)
       vaultProjects.releases.filter(_.expiry <= today()).map: release =>
         (release.id, release.definition(vaultProjects))
       .to(Map)
-    Log.info(t"Post-projects")
     
     Universe(projects -- localProjects.keySet ++ localProjects)
 
