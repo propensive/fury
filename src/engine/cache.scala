@@ -76,12 +76,12 @@ object Cache:
     val dataSize = ByteSize(files.values.map { file => safely(file.text.await().length).or(0) }.sum)
     CacheInfo(ecosystems.size, snapshots.size, workspaces.size, files.size, dataSize)
 
-  def gitProgress(stream: LazyList[Progress]): LazyList[Activity] = stream.collect:
-    case Progress.Receiving(percent)         => Activity.Progress(t"receiving", percent)
-    case Progress.Unpacking(percent)         => Activity.Progress(t"unpacking", percent)
-    case Progress.Resolving(percent)         => Activity.Progress(t"resolving", percent)
-    case Progress.RemoteCounting(percent)    => Activity.Progress(t"counting", percent)
-    case Progress.RemoteCompressing(percent) => Activity.Progress(t"compressing", percent)
+  def gitProgress(stream: LazyList[Progress]): LazyList[Double] = stream.collect:
+    case Progress.Receiving(percent)         => percent/5.0
+    case Progress.Unpacking(percent)         => 0.2 + percent/5.0
+    case Progress.Resolving(percent)         => 0.4 + percent/5.0
+    case Progress.RemoteCounting(percent)    => 0.6 + percent/5.0
+    case Progress.RemoteCompressing(percent) => 0.8 + percent/5.0
 
   def apply(snapshot: Snapshot)
       (using Installation,
@@ -90,6 +90,7 @@ object Cache:
              Monitor,
              WorkingDirectory,
              GitCommand,
+             FrontEnd,
              Raises[ExecError],
              Raises[PathError],
              Raises[IoError],
@@ -102,7 +103,12 @@ object Cache:
       if destination.exists() then destination.as[Directory] else
         Log.info(msg"Cloning ${snapshot.url}")
         val process = Git.cloneCommit(snapshot.url, destination, snapshot.commit)
-        gitProgress(process.progress).map(_.debug).each(Log.info(_))
+        val target = unsafely(Target(ProjectId(t"git"), GoalId(snapshot.commit.show)))
+        summon[FrontEnd].start(target)
+        gitProgress(process.progress).each: progress =>
+          summon[FrontEnd](target) = progress
+          
+        summon[FrontEnd].stop(target)
         
         process.complete().workTree.vouch(using Unsafe).also:
           Log.info(msg"Finished cloning ${snapshot.url}")

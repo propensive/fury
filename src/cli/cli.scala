@@ -197,10 +197,8 @@ def main(): Unit =
                           actions.build.run(target().decodeAs[Target], watch)
 
                         daemon:
-                          terminal.events.each:
-                            case Keypress.Escape | Keypress.Ctrl('C') =>
-                              Out.println(e"$Bold(Aborting the build.)\e[K")
-                              summon[FrontEnd].abort()
+                          terminal.events.stream.each:
+                            case Keypress.Escape | Keypress.Ctrl('C') => summon[FrontEnd].abort()
                             case other => ()
                         
                         buildTask.await().also(Out.print(t"\e[?25h"))
@@ -229,7 +227,8 @@ def main(): Unit =
                 
                 subcommands match
                   case Nil | (UniverseShow() :: _) =>
-                    execute(internet(online)(frontEnd(actions.universe.show())))
+                    execute:
+                      internet(online)(frontEnd(actions.universe.show()))
 
                   case command :: _ => execute:
                     Out.println(e"Command $Italic(${command.vouch(using Unsafe)()}) was not recognized.")
@@ -272,7 +271,7 @@ def main(): Unit =
                               action.modules.each(actions.build.run(_, watch))
     
                             daemon:
-                              terminal.events.each:
+                              terminal.events.stream.each:
                                 case Keypress.Escape | Keypress.Ctrl('C') => summon[FrontEnd].abort()
                                 case other                                => ()
                             

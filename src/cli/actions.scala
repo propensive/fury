@@ -74,7 +74,7 @@ object actions:
       if directories.length <= 1 then Installer.install(force) else
         info(e"$Italic(Please choose an install location.)")
         val menu = SelectMenu(directories, directories.head)
-        val (target, events2) = menu.ask(terminal.events)
+        val (target, events2) = menu.ask(terminal.events.stream)
         info(e"Installing to $target/${service.scriptName}")
         info(Installer.install(force = true, target).communicate)
       
@@ -120,15 +120,10 @@ object actions:
       given (UserError fixes ExecError)      = accede
       given (UserError fixes VaultError)     = accede
         
-      Out.println(t"1")
       val rootWorkspace = Workspace()
-      Out.println(t"2")
       given universe: Universe = rootWorkspace.universe()
-      Out.println(t"3")
       val projects = universe.projects.to(List)
-      Out.println(t"4")
 
-      //daemon(terminal.events.each(_ => ()))
       val table =
         Table[(ProjectId, Definition)]
           (Column(e"$Bold(Project)"): (project, definition) =>
@@ -144,11 +139,7 @@ object actions:
                
                case vault: Vault =>
                  e"$DeepSkyBlue(${vault.name})")
-      
-      Out.println(t"5")
-      
-      table.tabulate(projects).layout(100).render.each(Out.println(_))
-      Out.println(t"6")
+      info(table.tabulate(projects))
       ExitStatus.Ok
 
   object build:
@@ -186,6 +177,7 @@ object actions:
       given universe: Universe = workspace.universe()
       
       def build(): Set[Path] =
+        info(msg"Starting $target build...")
         val builder = Builder()
         val hash = builder.build(target).await()
         summon[FrontEnd].setSchedule(builder.schedule(hash))

@@ -86,7 +86,7 @@ class Builder():
 
   extension (library: Library)
     def phase(workspace: Workspace, target: Target)
-        (using Installation, Internet, Monitor, WorkingDirectory, Log[Display], Universe, GitCommand)
+        (using Installation, Internet, Monitor, WorkingDirectory, Log[Display], Universe, GitCommand, FrontEnd)
             : LibraryPhase raises CancelError raises PathError raises GitError raises BuildError raises
                ExecError raises IoError =
       LibraryPhase(installation.build, library, target)
@@ -94,7 +94,7 @@ class Builder():
 
   extension (artifact: Artifact)
     def phase(workspace: Workspace, target: Target)
-        (using Installation, Internet, Monitor, WorkingDirectory, Log[Display], Universe, GitCommand)
+        (using Installation, Internet, Monitor, WorkingDirectory, Log[Display], Universe, GitCommand, FrontEnd)
             : ArtifactPhase raises CancelError raises PathError raises GitError raises BuildError raises
                ExecError raises IoError =
 
@@ -128,7 +128,7 @@ class Builder():
 
   extension (module: Module)
     def phase(workspace: Workspace, target: Target)
-        (using Installation, Internet, Universe, Monitor, WorkingDirectory, Log[Display])
+        (using Installation, Internet, Universe, Monitor, WorkingDirectory, Log[Display], FrontEnd)
             : ModulePhase raises CancelError raises GitError raises PathError raises ExecError raises
                IoError raises BuildError raises StreamError =
       
@@ -229,26 +229,32 @@ class Builder():
             
             todo.each: hash =>
               tasks(hash).await().map: directory =>
-                val entries = directory.descendants.filter(_.is[File]).map: path =>
-                  ZipEntry(ZipRef(t"/"+path.relativeTo(directory.path).show), path.as[File])
+                if summon[FrontEnd].continue then
+                  val entries = directory.descendants.filter(_.is[File]).map: path =>
+                    ZipEntry(ZipRef(t"/"+path.relativeTo(directory.path).show), path.as[File])
 
-                val manifestEntry = artifact.main.lay(LazyList()): mainClass =>
-                  val manifest: Manifest =
-                    Manifest
-                     (manifestAttributes.ManifestVersion(VersionNumber(1, 0)),
-                      manifestAttributes.CreatedBy(t"Fury"),
-                      manifestAttributes.MainClass(mainClass))
-                  LazyList(ZipEntry(ZipRef(t"/META-INF/MANIFEST.MF"), manifest))
+                  val manifestEntry = artifact.main.lay(LazyList()): mainClass =>
+                    val manifest: Manifest =
+                      Manifest
+                       (manifestAttributes.ManifestVersion(VersionNumber(1, 0)),
+                         manifestAttributes.CreatedBy(t"Fury"),
+                         manifestAttributes.MainClass(mainClass))
 
-                val resourceEntries = resourceMap.flatMap: (source, destination) =>
-                  if source.is[Directory]
-                  then source.as[Directory].descendants.filter(_.is[File]).map: descendant =>
-                    ZipEntry(ZipRef(descendant.relativeTo(source).show), descendant.as[File])
-                  else Iterable(ZipEntry(ZipRef(t"/$destination"), source.as[File]))
+                    LazyList(ZipEntry(ZipRef(t"/META-INF/MANIFEST.MF"), manifest))
 
-                zipFile.append(manifestEntry ++ entries ++ resourceEntries, Epoch)
-                done += 1
-                summon[FrontEnd](target) = done/total
+                  val resourceEntries = resourceMap.flatMap: (source, destination) =>
+                    if source.is[Directory]
+                    then source.as[Directory].descendants.filter(_.is[File]).map: descendant =>
+                      ZipEntry(ZipRef(descendant.relativeTo(source).show), descendant.as[File])
+                    else Iterable(ZipEntry(ZipRef(t"/$destination"), source.as[File]))
+
+                  zipFile.append(manifestEntry ++ entries ++ resourceEntries, Epoch)
+                  done += 1
+                  summon[FrontEnd](target) = done/total
+
+                else
+                  tmpPath.wipe()
+                  abort(BuildError())
             
             
             tmpPath.as[File].tap: file =>
@@ -460,7 +466,7 @@ class Builder():
   def schedule(digest: Hash): Dag[Target] = dag(digest).map(_.target)
 
   def build(target: Target)(using Universe)
-      (using Monitor, Clock, Log[Display], WorkingDirectory, Internet, Installation, GitCommand)
+      (using Monitor, Clock, Log[Display], WorkingDirectory, Internet, Installation, GitCommand, FrontEnd)
           : Async[Hash] raises BuildError =
 
     builds.synchronized:
@@ -541,6 +547,7 @@ extension (workspace: Workspace)
              Monitor,
              WorkingDirectory,
              Log[Display],
+             FrontEnd,
              Raises[CancelError],
              Raises[GitError],
              Raises[PathError],

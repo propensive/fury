@@ -46,10 +46,8 @@ def frontEnd[ResultType](lambda: CliFrontEnd ?=> Terminal ?=> ResultType)(using 
     FrontEnd.register(frontEnd)
     var continue: Boolean = true
     val loop = async(while continue.also(frontEnd.render()) do sleep(50*Milli(Second)))
-    try
-      lambda(using frontEnd).also:
-        continue = false
-    finally
+    
+    try lambda(using frontEnd).also { continue = false } finally
       safely(loop.await())
       safely(frontEnd.render(last = true))
       FrontEnd.unregister(frontEnd)
@@ -61,6 +59,10 @@ class CliFrontEnd()(using terminal: Terminal) extends FrontEnd:
   private val misc: scc.TrieMap[Target, Double] = scc.TrieMap()
   private var indents: Map[Target, Text] = Map()
   private val queue: juc.ConcurrentLinkedQueue[Text] = juc.ConcurrentLinkedQueue()
+
+  override def abort(): Unit =
+    info(e"$Bold(Aborting the build.)\e[K")
+    super.abort()
 
   def reset(): Unit =
     dag = Unset
