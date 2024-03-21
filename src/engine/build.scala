@@ -223,8 +223,11 @@ class Builder():
               basis().copyTo(tmpPath)
               ZipFile(tmpPath.as[File])
 
-
-            (dag(hash) - this).sorted.map(_.digest).each: hash =>
+            val todo = (dag(hash) - this).sorted.map(_.digest)
+            val total = todo.size.toDouble
+            var done = 0
+            
+            todo.each: hash =>
               tasks(hash).await().map: directory =>
                 val entries = directory.descendants.filter(_.is[File]).map: path =>
                   ZipEntry(ZipRef(t"/"+path.relativeTo(directory.path).show), path.as[File])
@@ -244,6 +247,8 @@ class Builder():
                   else Iterable(ZipEntry(ZipRef(t"/$destination"), source.as[File]))
 
                 zipFile.append(manifestEntry ++ entries ++ resourceEntries, Epoch)
+                done += 1
+                summon[FrontEnd](target) = done/total
             
             
             tmpPath.as[File].tap: file =>
@@ -268,7 +273,8 @@ class Builder():
               
               destination.wipe()
               file.moveTo(destination)
-        
+          else summon[FrontEnd](target) = -1.0
+
           output.as[Directory]
 
   case class LibraryPhase(build: Path, library: Library, target: Target) extends Phase:
@@ -288,6 +294,7 @@ class Builder():
           given (BuildError fixes IoError) = error => BuildError()
           given (BuildError fixes StreamError) = error => BuildError()
           given (BuildError fixes OfflineError) = error => BuildError()
+          given (BuildError fixes NumberError) = error => BuildError()
           
           output.as[Directory]
           val checksum: Path = output / p"checksum"
@@ -298,10 +305,24 @@ class Builder():
           
           if !(jarfile.exists() && checksum.exists() && jarfileChecksum() == storedChecksum()) then
             summon[Internet].require: (online: Online) ?=> // FIXME: Why is this necessary?
-              library.url.get().as[Bytes].writeTo(jarfile.as[File])
+              Log.info(t"Initiating $target")
+              val response: HttpResponse = library.url.get()
+              val size: Double = response(ResponseHeader.ContentLength).map(_.long.toDouble).lift(0).getOrElse(Double.MaxValue)
+              var count: Int = 0
+              
+              response.as[LazyList[Bytes]].map: bytes =>
+                count += bytes.length
+                Log.info(msg"Counted ${bytes.length}")
+                summon[FrontEnd](target) = count/size
+                bytes
+              .writeTo(jarfile.as[File])
+
+              Log.info(t"Downloaded ${target}")
               jarfileChecksum().writeTo(checksum.as[File])
               output.as[Directory]
-          else output.as[Directory]
+          else
+            summon[FrontEnd](target) = -1.0
+            output.as[Directory]
 
   case class ModulePhase
      (build:       Path,
@@ -342,7 +363,7 @@ class Builder():
           if !summon[FrontEnd].continue then abort(BuildError())
 
           if output.exists() then
-            summon[FrontEnd](target) = 1.0
+            summon[FrontEnd](target) = -1.0
             output.as[Directory].tap(_.touch())
           else
             if inputs.exists(_.failure)
@@ -435,7 +456,7 @@ class Builder():
   given expandable: Expandable[Phase] = _.antecedents.map(phases(_))
 
   def dag(digest: Hash): Dag[Phase] = Dag.create(phases(digest))(_.antecedents.to(Set).map(phases(_)))
-  def buildGraph(digest: Hash): DagDiagram[Target] = DagDiagram(dag(digest).map(_.target))
+  def schedule(digest: Hash): Dag[Target] = dag(digest).map(_.target)
 
   def build(target: Target)(using Universe)
       (using Monitor, Clock, Log[Display], WorkingDirectory, Internet, Installation, GitCommand)
@@ -574,23 +595,39 @@ extension (basis: Basis)
 
   def path(using Installation): Path = unsafely(installation.basis / PathName(basis.encode+t".jar"))
     
-  def apply()(using FrontEnd, Environment, Installation, DaemonService[?]): File raises BuildError =
+  def apply()(using FrontEnd, Environment, Installation, Log[Display], DaemonService[?]): File raises BuildError =
     basis.synchronized:
       given (BuildError fixes StreamError) = error => BuildError()
       given (BuildError fixes ZipError)    = error => BuildError()
       given (BuildError fixes IoError)     = error => BuildError()
 
       if !path.exists() then
+        val target = unsafely(Target(ProjectId(t"system"), GoalId(basis.encode)))
+        summon[FrontEnd].start(target)
         inclusions.pipe: inclusions =>
           exclusions.pipe: exclusions =>
-            val entries =
+            val entries: LazyList[ZipEntry] =
               ZipFile(service.script.as[File])
                .entries()
                .filter: entry =>
                   val name = entry.ref.show
                   inclusions.exists(name.starts(_)) && !exclusions.exists(name.starts(_))
-        
-            ZipFile.create(path.as[File].path).tap(_.append(entries, Epoch))
+            
+            val total: Double = entries.length/100.0
+            var done: Int = 0
+
+            val trackedEntries: LazyList[ZipEntry] = entries.map: entry =>
+              done += 1
+              if (done/total).toInt > ((done - 1)/total).toInt
+              then summon[FrontEnd](target) = (done/total)/100.0
+              
+              entry
+            
+            ZipFile.create(path.as[File].path).tap: zipFile =>
+              zipFile.append(trackedEntries, Epoch)
+
+        .also:
+          summon[FrontEnd].stop(target)
       
       path.as[File]
 

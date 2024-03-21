@@ -19,6 +19,7 @@ package fury
 import profanity.*, terminalOptions.terminalSizeDetection
 import turbulence.*
 import exoskeleton.*
+import acyclicity.*
 import contingency.*
 import parasite.*
 import dendrology.*, dagStyles.default
@@ -43,30 +44,26 @@ def frontEnd[ResultType](lambda: CliFrontEnd ?=> Terminal ?=> ResultType)(using 
   terminal:
     val frontEnd = CliFrontEnd()
     FrontEnd.register(frontEnd)
+    var continue: Boolean = true
+    val loop = async(while continue.also(frontEnd.render()) do sleep(50*Milli(Second)))
     try
-      var continue: Boolean = true
-  
-      val loop = async(while continue do frontEnd.render().also(sleep(50*Milli(Second))))
-    
       lambda(using frontEnd).also:
         continue = false
-        safely(loop.await())
-        frontEnd.render(last = true)
-    finally FrontEnd.unregister(frontEnd)
-
+    finally
+      safely(loop.await())
+      safely(frontEnd.render(last = true))
+      FrontEnd.unregister(frontEnd)
 
 class CliFrontEnd()(using terminal: Terminal) extends FrontEnd:
   given stdio: Stdio = terminal.stdio
+  private var dag: Optional[Dag[Target]] = Unset
   private var diagram: Optional[DagDiagram[Target]] = Unset
   private val misc: scc.TrieMap[Target, Double] = scc.TrieMap()
   private var indents: Map[Target, Text] = Map()
   private val queue: juc.ConcurrentLinkedQueue[Text] = juc.ConcurrentLinkedQueue()
 
-  def schedule(task: Task): Unit = ()
-  def update(task: Task): Unit = ()
-  
   def reset(): Unit =
-    diagram = Unset
+    dag = Unset
     indents = Map()
     active.clear()
     misc.clear()
@@ -75,43 +72,46 @@ class CliFrontEnd()(using terminal: Terminal) extends FrontEnd:
   def info[InfoType: Printable](info: InfoType) =
     queue.add(summon[Printable[InfoType]].print(info, terminal.stdio.termcap))
   
-  def graph(diagram2: DagDiagram[Target]): Unit =
-    diagram = diagram2
-    
-    indents =
-      diagram2.nodes.reverse.zipWithIndex.map: (target, index) =>
-        val indent = terminal.knownColumns - diagram2.size*2 + index*2 - target.show.length - 14
-        (target, t" "*indent)
-      .to(Map)
+  def setSchedule(dag2: Dag[Target]): Unit =
+    dag = dag2
+    diagram = DagDiagram(dag2).tap: diagram =>
+      indents =
+        diagram.nodes.reverse.zipWithIndex.map: (target, index) =>
+          val indent = terminal.knownColumns - diagram.size*2 + index*2 - target.show.length - 14
+          (target, t" "*indent)
+        .to(Map)
     
   val edge: Display = e"${colors.Gray}(│)"
+
+  def showItem(target: Target, last: Boolean): Display =
+    val prefix = indents.at(target).or(t" "*(terminal.knownColumns - target.show.length - 16))
+
+    active.at(target) match
+      case 1.0 =>
+        e"▪ $Bold(${colors.Gray}($target))$prefix$edge${Bg(rgb"#009966")}(     ${colors.Black}($Bold(OK))     )$edge"
+      
+      case -1.0 =>
+        e"▪ $Bold(${colors.Gray}($target))$prefix$edge${Bg(rgb"#003333")}(            )$edge"
+
+      case Unset =>
+        e"▪ ${colors.Gray}(${target.show})"
+        e"▪ $Bold(${colors.Gray}(${target}))$prefix$edge            $edge"
+      
+      case progress: Double =>
+        val highlight = if last then rgb"#990033" else colors.Gold
+        e"▪ $Bold($highlight(${target}))$prefix$edge$highlight(${ProgressBar(progress)})$edge"
 
   def render(last: Boolean = false): Unit =
     for i <- 0 until queue.size do queue.poll().nn.cut(t"\n").each: line =>
       Out.println(line+t"\e[K")
-  
+    
+    unscheduled.each { target => Out.println(showItem(target, last)) }
+
     diagram.let: diagram =>
       Out.print(t"\e[?25l")
-  
-      diagram.render: target =>
-        active.get(target) match
-          case Some(1.0) =>
-            e"▪ $Bold(${colors.Gray}($target))${indents(target)}$edge${Bg(colors.MediumSeaGreen)}(     ${colors.Black}($Bold(OK))     )$edge"
-  
-          case None =>
-            e"▪ ${colors.Gray}(${target.show})"
-            e"▪ $Bold(${colors.Gray}(${target}))${indents(target)}$edge            $edge"
-          
-          case Some(progress) =>
-            val highlight = if last then rgb"#990033" else colors.Gold
-            e"▪ $Bold($highlight(${target}))${indents(target)}$edge$highlight(${ProgressBar(progress)})$edge"
-  
-      .each(Out.println(_))
-      
+      diagram.render { target => showItem(target, last) }.each(Out.println(_))
       Out.println(e"\e[K")
-  
-      if last then Out.println(t"\e[?25h")
-      else Out.println(t"\e[${diagram.size + 2}A")
+      Out.println(if last then t"\e[?25h" else t"\e[${diagram.size + unscheduled.size + 2}A")
 
 
 object ProgressBar:

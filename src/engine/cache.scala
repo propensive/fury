@@ -51,7 +51,6 @@ object Cache:
   private val snapshots: scc.TrieMap[Snapshot, Async[Directory]] = scc.TrieMap()
   private val workspaces: scc.TrieMap[Path, (Instant, Async[Workspace])] = scc.TrieMap()
   private val files: scc.TrieMap[Path, CachedFile] = scc.TrieMap()
-  private val watches: scc.TrieMap[Path, Watch] = scc.TrieMap()
   private val locals: scc.TrieMap[Workspace, Async[Map[ProjectId, Definition]]] = scc.TrieMap()
 
   def file(path: Path)(using Monitor, Log[Display]): CachedFile raises IoError raises StreamError raises CancelError =
@@ -156,7 +155,8 @@ object Cache:
     if cacheTime == lastModified then workspace else async(Workspace(path)).tap: async =>
       workspaces(path) = (lastModified, async)
 
-  def projectsMap(workspace: Workspace)(using Installation, Internet, Log[Display], Monitor, WorkingDirectory, GitCommand)
+  def projectsMap(workspace: Workspace)
+      (using Installation, Internet, Log[Display], Monitor, WorkingDirectory, GitCommand)
           : Async[Map[ProjectId, Definition]] raises WorkspaceError raises CancelError =
     
     locals.getOrElseUpdate(workspace, async:

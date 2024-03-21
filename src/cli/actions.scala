@@ -112,8 +112,7 @@ object actions:
       ExitStatus.Ok
 
   object universe:
-    def show()(using Internet, WorkingDirectory, Monitor, Log[Display], FrontEnd): ExitStatus raises UserError =
-
+    def show()(using Internet, WorkingDirectory, Monitor, Log[Display], FrontEnd, Stdio): ExitStatus raises UserError =
       given (UserError fixes PathError)      = accede
       given (UserError fixes CancelError)    = accede
       given (UserError fixes IoError)        = accede
@@ -121,31 +120,36 @@ object actions:
       given (UserError fixes ExecError)      = accede
       given (UserError fixes VaultError)     = accede
         
-      internet(online):
-        val rootWorkspace = Workspace()
-        given universe: Universe = rootWorkspace.universe()
-        val projects = universe.projects.to(List)
+      Out.println(t"1")
+      val rootWorkspace = Workspace()
+      Out.println(t"2")
+      given universe: Universe = rootWorkspace.universe()
+      Out.println(t"3")
+      val projects = universe.projects.to(List)
+      Out.println(t"4")
 
-        //Async(terminal.events.each(_ => ()))
-          
-        val table =
-          Table[(ProjectId, Definition)]
-            (Column(e"$Bold(Project)"): (project, definition) =>
-               e"${definition.name}",
-               // definition.website.lay(e"${definition.name}"): website =>
-               //   e"${escapes.link(website, definition.name)}",
-             Column(e"$Bold(ID)")(_(0)),
-             Column(e"$Bold(Description)", sizing = columnar.Prose)(_(1).description),
-             Column(e"$Bold(Source)"): (_, definition) =>
-               definition.source match
-                 case workspace: Workspace =>
-                   e"$Aquamarine(${workspace.directory.path.relativeTo(rootWorkspace.directory.path)})"
-                 
-                 case vault: Vault =>
-                   e"$DeepSkyBlue(${vault.name})")
-        
-        info(table.tabulate(projects))
-        ExitStatus.Ok
+      //daemon(terminal.events.each(_ => ()))
+      val table =
+        Table[(ProjectId, Definition)]
+          (Column(e"$Bold(Project)"): (project, definition) =>
+             e"${definition.name}",
+             // definition.website.lay(e"${definition.name}"): website =>
+             //   e"${escapes.link(website, definition.name)}",
+           Column(e"$Bold(ID)")(_(0)),
+           Column(e"$Bold(Description)", sizing = columnar.Prose)(_(1).description),
+           Column(e"$Bold(Source)"): (_, definition) =>
+             definition.source match
+               case workspace: Workspace =>
+                 e"$Aquamarine(${workspace.directory.path.relativeTo(rootWorkspace.directory.path)})"
+               
+               case vault: Vault =>
+                 e"$DeepSkyBlue(${vault.name})")
+      
+      Out.println(t"5")
+      
+      table.tabulate(projects).layout(100).render.each(Out.println(_))
+      Out.println(t"6")
+      ExitStatus.Ok
 
   object build:
     def initialize(directory: Path)(using FrontEnd): ExitStatus raises UserError =
@@ -184,7 +188,7 @@ object actions:
       def build(): Set[Path] =
         val builder = Builder()
         val hash = builder.build(target).await()
-        summon[FrontEnd].graph(builder.buildGraph(hash))
+        summon[FrontEnd].setSchedule(builder.schedule(hash))
         builder.run(hash)
         builder.watchDirectories(hash)
       

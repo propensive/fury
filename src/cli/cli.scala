@@ -229,20 +229,16 @@ def main(): Unit =
                 
                 subcommands match
                   case Nil | (UniverseShow() :: _) =>
-                    execute:
-                      Out.println(t"0")
-                      internet(online):
-                        terminal:
-                          frontEnd:
-                            Out.println(t"1")
-                            actions.universe.show()
+                    execute(internet(online)(frontEnd(actions.universe.show())))
 
                   case command :: _ => execute:
                     Out.println(e"Command $Italic(${command.vouch(using Unsafe)()}) was not recognized.")
                     ExitStatus.Fail(1)
                   
               case Shutdown() :: Nil => execute:
-                FrontEnd.terminateAll()
+                frontEnd:
+                  FrontEnd.terminateAll()
+                
                 service.shutdown()
                 ExitStatus.Ok
               

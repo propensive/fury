@@ -23,6 +23,7 @@ import vacuous.*
 import quantitative.*
 import contingency.*
 import rudiments.*
+import acyclicity.*
 
 import scala.collection.concurrent as scc
 import scala.collection.mutable as scm
@@ -51,19 +52,21 @@ object FrontEnd:
     val promise = Promise[Unit]()
     termination = promise
     frontEnds.each(_.abort())
-    safely(promise.await(10*Second))
+    safely(promise.await(5*Second))
 
 trait FrontEnd:
   protected val active: scc.TrieMap[Target, Double] = scc.TrieMap()
+  protected val unscheduled: scm.LinkedHashSet[Target] = scm.LinkedHashSet()
   private val aborted: Promise[Unit] = Promise()
 
-  def continue: Boolean = !aborted.ready
-  def abort(): Unit = aborted.offer(())
-  def schedule(task: Task): Unit
-  def update(task: Task): Unit
-  def graph(diagram: DagDiagram[Target]): Unit
+  def setSchedule(diagram: Dag[Target]): Unit
+  def start(target: Target): Unit = unscheduled.add(target)
+  def stop(target: Target): Unit = unscheduled.remove(target)
   def info[InfoType: Printable](info: InfoType): Unit
+  
+  def abort(): Unit = aborted.offer(())
   def attend(): Unit = aborted.attend()
+  def continue: Boolean = !aborted.ready
 
   def update(target: Target, progress: Double) = active(target) = progress
 
