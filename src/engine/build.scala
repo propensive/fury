@@ -220,7 +220,7 @@ class Builder():
             val tmpPath = unsafely(installation.work / PathName(Uuid().show))
             
             val zipFile = basis.lay(ZipFile.create(tmpPath)): basis =>
-              basis().copyTo(tmpPath)
+              basis().await().copyTo(tmpPath)
               ZipFile(tmpPath.as[File])
 
             val todo = (dag(hash) - this).sorted.map(_.digest)
@@ -372,7 +372,8 @@ class Builder():
               abort(BuildError())
             else
               val work = (installation.work / PathName(Uuid().show)).as[Directory]
-              val baseClasspath = LocalClasspath(List(ClasspathEntry.Jarfile(unsafely(Basis.Tools().path.show))))
+              val basis = unsafely(Basis.Tools().await().path.show)
+              val baseClasspath = LocalClasspath(List(ClasspathEntry.Jarfile(basis)))
               val syntax: scc.TrieMap[Text, Async[IArray[Seq[Token]]]] = scc.TrieMap()
               
               def highlight(filename: Text): Async[IArray[Seq[Token]]] raises CancelError raises StreamError =
@@ -595,41 +596,43 @@ extension (basis: Basis)
 
   def path(using Installation): Path = unsafely(installation.basis / PathName(basis.encode+t".jar"))
     
-  def apply()(using FrontEnd, Environment, Installation, Log[Display], DaemonService[?]): File raises BuildError =
-    basis.synchronized:
-      given (BuildError fixes StreamError) = error => BuildError()
-      given (BuildError fixes ZipError)    = error => BuildError()
-      given (BuildError fixes IoError)     = error => BuildError()
-
-      if !path.exists() then
-        val target = unsafely(Target(ProjectId(t"system"), GoalId(basis.encode)))
-        summon[FrontEnd].start(target)
-        inclusions.pipe: inclusions =>
-          exclusions.pipe: exclusions =>
-            val entries: LazyList[ZipEntry] =
-              ZipFile(service.script.as[File])
-               .entries()
-               .filter: entry =>
-                  val name = entry.ref.show
-                  inclusions.exists(name.starts(_)) && !exclusions.exists(name.starts(_))
-            
-            val total: Double = entries.length/100.0
-            var done: Int = 0
-
-            val trackedEntries: LazyList[ZipEntry] = entries.map: entry =>
-              done += 1
-              if (done/total).toInt > ((done - 1)/total).toInt
-              then summon[FrontEnd](target) = (done/total)/100.0
+  def apply()(using FrontEnd, Monitor, Environment, Installation, Log[Display], DaemonService[?])
+          : Async[File] raises BuildError =
+    async:
+      basis.synchronized:
+        given (BuildError fixes StreamError) = error => BuildError()
+        given (BuildError fixes ZipError)    = error => BuildError()
+        given (BuildError fixes IoError)     = error => BuildError()
+  
+        if !path.exists() then
+          val target = unsafely(Target(ProjectId(t"system"), GoalId(basis.encode)))
+          summon[FrontEnd].start(target)
+          inclusions.pipe: inclusions =>
+            exclusions.pipe: exclusions =>
+              val entries: LazyList[ZipEntry] =
+                ZipFile(service.script.as[File])
+                 .entries()
+                 .filter: entry =>
+                    val name = entry.ref.show
+                    inclusions.exists(name.starts(_)) && !exclusions.exists(name.starts(_))
               
-              entry
-            
-            ZipFile.create(path.as[File].path).tap: zipFile =>
-              zipFile.append(trackedEntries, Epoch)
-
-        .also:
-          summon[FrontEnd].stop(target)
-      
-      path.as[File]
+              val total: Double = entries.length/100.0
+              var done: Int = 0
+  
+              val trackedEntries: LazyList[ZipEntry] = entries.map: entry =>
+                done += 1
+                if (done/total).toInt > ((done - 1)/total).toInt
+                then summon[FrontEnd](target) = (done/total)/100.0
+                
+                entry
+              
+              ZipFile.create(path.as[File].path).tap: zipFile =>
+                zipFile.append(trackedEntries, Epoch)
+  
+          .also:
+            summon[FrontEnd].stop(target)
+        
+        path.as[File]
 
 val errorRibbon = Ribbon(rgb"#990033", rgb"#CC0033")
 val warningRibbon = Ribbon(rgb"#FFCC00", rgb"#FFCC99")
