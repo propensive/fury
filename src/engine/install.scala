@@ -58,21 +58,20 @@ object Installation:
     given (ConfigError fixes PathError) =
       case PathError(path, reason) => ConfigError(msg"The path $path was not valid because $reason")
     
-    val cache: Directory = (Xdg.cacheHome[Path] / unsafely(PathName(Properties.ethereal.name[Text]()))).as[Directory]
-    val configPath: Path = Home.Config() / unsafely(PathName(Properties.ethereal.name[Text]()))
+    val script = unsafely(Properties.ethereal.name[Text]())
+    val cache: Directory = (Xdg.cacheHome[Path] / PathName(script)).as[Directory]
+    val configPath: Path = Home.Config() / PathName(script)
     val config: Config = Codl.read[Config]((configPath / p"config.codl").as[File])
     val vault: Directory = (cache / p"vault").as[Directory]
     val snapshots: Directory = (cache / p"repos").as[Directory]
-    val lib: Directory = (cache / p"lib").as[Directory]
     val tmp: Directory = (cache / p"tmp").as[Directory]
     
-    Installation(config, cache, vault, lib, tmp, snapshots)
+    Installation(config, cache, vault, tmp, snapshots)
     
 case class Installation
    (config:    Config,
     cache:     Directory,
     vault:     Directory,
-    lib:       Directory,
     tmp:       Directory,
     snapshots: Directory):
 

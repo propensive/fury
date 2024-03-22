@@ -157,9 +157,11 @@ def main(): Unit =
                     info(installation.config.debug)
                     ExitStatus.Ok
 
+              case Clean() :: Nil =>
+                execute(frontEnd(actions.clean()))
+              
               case Cache() :: subcommands => subcommands match
-                case Clean() :: Nil   => execute(frontEnd(actions.cache.clean()))
-                case Nil | Details() :: Nil => execute(frontEnd(actions.cache.about()))
+                case Nil => execute(frontEnd(actions.cache.about()))
                 
                 case other :: _ =>
                   execute(frontEnd(other.let(actions.invalidSubcommand(_)).or(actions.missingSubcommand())))

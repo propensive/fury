@@ -100,6 +100,16 @@ object actions:
       if !noTabCompletions then info(TabCompletions.install(force = true).communicate)
       ExitStatus.Ok
 
+  def clean()(using FrontEnd, Installation): ExitStatus raises UserError =
+    import filesystemOptions.doNotCreateNonexistent
+    import filesystemOptions.doNotDereferenceSymlinks
+    import filesystemOptions.deleteRecursively
+    val size0 = safely(installation.cache.as[Directory].size()).or(0.b)
+    safely(installation.cache.delete())
+    val size = safely(size0 - installation.cache.as[Directory].size()).or(0.b)
+    info(t"$size was cleaned up")
+    ExitStatus.Ok
+  
   object cache:
     def clean()(using FrontEnd): ExitStatus raises UserError =
       info(msg"Cleaning the cache")
