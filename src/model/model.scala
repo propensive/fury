@@ -128,8 +128,10 @@ object Project:
     Map
      (t"modules"    -> t"module",
       t"artifacts"  -> t"artifact",
+      t"loads"      -> t"load",
       t"libraries"  -> t"library",
       t"containers" -> t"container",
+      t"variables"  -> t"set",
       t"execs"      -> t"exec")
 
 case class Project
@@ -140,6 +142,8 @@ case class Project
      libraries:   List[Library],
      artifacts:   List[Artifact],
      containers:  List[Container],
+     loads:       List[Load],
+     variables:   List[Variable],
      execs:       List[Exec],
      website:     HttpUrl,
      license:     Optional[LicenseId],
@@ -236,6 +240,16 @@ case class Module
 derives Debug, CodlEncoder
 
 case class Library(id: GoalId, url: HttpUrl) derives Debug, CodlEncoder
+
+case class Load(id: GoalId, path: WorkPath) derives Debug, CodlEncoder
+case class Variable(id: GoalId, value: Text) derives Debug, CodlEncoder
+
+case class Replacement(pattern: Text, variable: GoalId)
+
+object Content:
+  given relabelling: CodlRelabelling[Content] = () => Map(t"replacements" -> t"replace")
+
+case class Content(path: WorkPath, replacements: List[Replacement])
 
 object Target extends RefType(t"target"):
   given moduleRefEncoder: Encoder[Target] = _.show

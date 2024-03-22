@@ -90,7 +90,6 @@ class Builder():
             : LibraryPhase raises CancelError raises PathError raises GitError raises BuildError raises
                ExecError raises IoError =
       LibraryPhase(installation.build, library, target)
-      
 
   extension (artifact: Artifact)
     def phase(workspace: Workspace, target: Target)
@@ -511,11 +510,12 @@ class Builder():
   def outputDirectory(hash: Hash)(using Installation): Path = hash.bytes.encodeAs[Base32].pipe: hash =>
     unsafely(installation.build / PathName(hash.take(2)) / PathName(hash.drop(2)))
 
-  def run(hash: Hash)
+  def run(hash: Hash, force: Boolean)
       (using Log[Display], DaemonService[?], Installation, FrontEnd, Monitor, SystemProperties, Environment, Internet)
           : PhaseResult raises CancelError raises StreamError raises
              ZipError raises IoError raises PathError raises BuildError raises ScalacError =
 
+    if force then safely(outputDirectory(hash).as[Directory].delete())
     task(hash).await()
 
 extension (workspace: Workspace)
