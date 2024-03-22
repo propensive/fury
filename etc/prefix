@@ -1,7 +1,71 @@
+#!/bin/bash
+
+declare portFile ttystate script tmpPipe javaVersion dataHomeDir data stderr
+declare -i pid port version buildId stdoutPid stderrPid continue pipePid argCount launchPid payloadSize jarSize
+declare -a args signals sttyOptions
+
+# The TTY settings to use for terminal input
+sttyOptions=(intr undef -echo icanon raw opost)
+
+# The set of signals which should be captured and forwarded to the JVM process
+signals=(INT WINCH TERM)
+
+name="$(basename "$0")"
+baseDir="${XDG_RUNTIME_DIR:-$HOME/.local/state}/$name"
+dataHomeDir="${XDG_DATA_HOME:-$HOME/.local/share}"
+portFile="$baseDir/port"
+pidFile="$baseDir/pid"
+failFile="$baseDir/fail"
+script="$(realpath "$0")"
+javaVersion="21"
+javaHome="$dataHomeDir/java/$javaVersion"
+continue=1
+
+
+pid=$$
+args=("$@")
+argCount=$#
+payloadSize=0
+jarSize=0
+
+backout() {
+  if [ -f "$failFile" ]
+  then
+    test -t 0 && stty "$ttystate"
+    printf "\nThe %s daemon process failed to start.\n" "$name" >&2
+    printf "Remove the file %s before trying again.\n" "$failFile" >&2
+    exit 1
+  fi
+}
+
+abort() {
+  touch "$failFile"
+}
+
+launch() {
+  startTime="$(date +%s%3N)"
+  test -x "$javaHome/bin/java" || extract
+  (nohup "$javaHome/bin/java" -Dethereal.startTime="$startTime" -Dethereal.name="$name" -Dethereal.script="$script" -Dethereal.payloadSize=$payloadSize -Dethereal.jarSize=$jarSize -Dethereal.command="$(command -v "$name")" -Dethereal.fpath="$(zsh -c 'printf "%s\n" $fpath' 2> /dev/null || echo '')" -jar "$script" > /dev/null 2>&1 || abort) &
+  launchPid=$!
+
+  while [[ ! -s "$portFile" ]] && [[ ! -f "$failFile" ]]
+  do sleep 0.05
+  done
+
+  backout
+  setup
+}
+
+setup() {
+  data="$(<"$portFile")"
+  port=${data%% *}
+  data2="${data#* }"
+  stderr=${data2#* }
+  version=${data2% *}
+  buildId=%%BUILDID%%
 }
 
 handle() {
-  logger "handle()"
   # shellcheck disable=SC2317
   case "$1" in
     TERM) continue=0 ;;
@@ -11,7 +75,6 @@ handle() {
 }
 
 extract() {
-  logger "extract()"
   local -i offset fileSize
   local dir
   mkdir -p "$dataHomeDir/java"
@@ -23,7 +86,6 @@ extract() {
 }
 
 terminate() {
-  logger "terminate()"
   exec 6<> /dev/tcp/localhost/$port
   printf "x\n%s\n" "$pid" >&6
   exit "$(cat <&6 2> /dev/null || echo '1')"
@@ -49,7 +111,8 @@ active() {
   local path
   local -i pid
   path="$1"
-  [ -s "$pidFile" ] && kill -0 $(<"$pidFile")
+  pid="$(<"$pidFile")"
+  kill -0 $pid
 }
 
 checkState() {
@@ -58,7 +121,7 @@ checkState() {
   if active "$pidFile"
   then # Process is active
     if [ -s "$portFile" ]
-    then
+    then # server is running
       setup
       if [ $version -ne $buildId ]
       then
@@ -74,20 +137,20 @@ checkState() {
   fi
 }
 
-[ -t 0 ] && ttystate="$(stty -g)"
+test -t 0 && ttystate="$(stty -g)"
 mkdir -p "$baseDir"
 backout
+
 checkState
 
-logger "starting"
-[ -s "$pidFile" ] || launch
+[ -s "$portFile" ] || launch
 backout
 
 tmpPipe="$(mktemp -u)"
 mkfifo -m 600 "$tmpPipe" && exec 3<> "$tmpPipe" && rm "$tmpPipe"
-[ -t 0 ] && stty "${sttyOptions[@]}" > /dev/null 2>&1
+test -t 0 && stty "${sttyOptions[@]}" > /dev/null 2>&1
 exec 7<> /dev/tcp/localhost/$port
-[ -t 0 ] && printf "i\nt\n" >&7 || printf "i\np\n" >&7
+test -t 0 && printf "i\nt\n" >&7 || printf "i\np\n" >&7
 printf "%s\n%s\n" "$pid" "$script" >&7
 pwd >&7
 printf "%s\n" "$argCount" >&7
@@ -119,7 +182,7 @@ do
   kill -0 $pipePid 2> /dev/null || continue=0
 done
 
-[ -t 0 ] && stty "$ttystate"
+test -t 0 && stty "$ttystate"
 kill $launchPid 2> /dev/null
 kill $stdoutPid 2> /dev/null
 kill $stderrPid 2> /dev/null

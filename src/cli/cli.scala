@@ -101,7 +101,7 @@ given installation(using Raises[UserError]): Installation =
 @main
 def main(): Unit =
   import cli.*
-  val initTime: Instant = safely(Instant(Properties.ethereal.startTime[Long]())).or(now())
+  val initTime: Optional[Instant] = safely(Instant(Properties.ethereal.startTime[Long]()))
 
   attempt[InitError]:
     given (InitError fixes CancelError) = error => InitError(msg"A thread was cancelled")
@@ -124,7 +124,8 @@ def main(): Unit =
         Log.route: 
           case _ => installation.config.log.path.as[File]
       
-      Log.info(msg"Initialized Fury in ${(now() - initTime).show}")
+      initTime.let: initTime =>
+        Log.info(msg"Initialized Fury in ${(now() - initTime).show}")
 
       cliService[BusMessage]:
         attempt[UserError]:

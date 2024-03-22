@@ -55,6 +55,7 @@ project fury
     include  hallucination/core
     include  impressionism/core
     include  eucalyptus/ansi
+    include  eucalyptus/syslog
 
   artifact executable
     basis       tools
