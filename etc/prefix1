@@ -49,7 +49,7 @@ launch() {
   startTime="$(date +%s%3N)"
   echo "$pid" > "$pidFile"
   [ -x "$javaHome/bin/java" ] || extract
-  (nohup "$javaHome/bin/java" -Dethereal.startTime="$startTime" -Dethereal.name="$name" -Dethereal.script="$script" -Dethereal.payloadSize=$payloadSize -Dethereal.jarSize=$jarSize -Dethereal.command="$(command -v "$name")" -Dethereal.fpath="$(zsh -c 'printf "%s\n" $fpath' 2> /dev/null || echo '')" -jar "$script" > /dev/null 2>&1 || abort) &
+  (nohup "java" -Dethereal.startTime="$startTime" -Dethereal.name="$name" -Dethereal.script="$script" -Dethereal.payloadSize=$payloadSize -Dethereal.jarSize=$jarSize -Dethereal.command="$(command -v "$name")" -Dethereal.fpath="$(zsh -c 'printf "%s\n" $fpath' 2> /dev/null || echo '')" -jar "$script" > /dev/null 2>&1 || abort) &
   launchPid=$!
   
   while [[ ! -s "$portFile" ]] && [[ ! -f "$failFile" ]]
