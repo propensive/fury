@@ -51,7 +51,7 @@ case class InitError(initMessage: Message) extends Error(initMessage)
 
 object actions:
   object install:
-    def interactive(force: Boolean, noTabCompletions: Boolean)
+    def installInteractive(force: Boolean, noTabCompletions: Boolean)
         (using DaemonService[?],
                Log[Display],
                SystemProperties,
@@ -59,7 +59,7 @@ object actions:
                WorkingDirectory,
                HomeDirectory,
                Effectful,
-               FrontEnd,
+               CliFrontEnd,
                Terminal,
                Stdio)
             : ExitStatus raises UserError =
@@ -73,10 +73,11 @@ object actions:
       
       if directories.length <= 1 then Installer.install(force) else
         info(e"$Italic(Please choose an install location.)")
-        val menu = SelectMenu(directories, directories.head)
-        val (target, events2) = menu.ask(terminal.events.stream)
-        info(e"Installing to $target/${service.scriptName}")
-        info(Installer.install(force = true, target).communicate)
+        
+        interactive:
+          SelectMenu(directories, directories.head).ask: target =>
+            info(e"Installing to $target/${service.scriptName}")
+            info(Installer.install(force = true, target).communicate)
       
       if !noTabCompletions then Out.println(TabCompletions.install(force = true).communicate)
 
@@ -153,8 +154,18 @@ object actions:
       ExitStatus.Ok
 
   object build:
-    def initialize(directory: Path)(using FrontEnd): ExitStatus raises UserError =
+    def initialize(directory: Path)(using CliFrontEnd): ExitStatus raises UserError =
+      given (UserError fixes DismissError) = accede
+      if (directory / p".fury").exists() then abort(UserError(msg"A build already exists in this directory"))
       info(msg"Creating a new build in $directory")
+      
+      interactive:
+        info(e"$Italic(Please enter the project name:)")
+        LineEditor(t"hello-world", 11).ask: choice =>
+          info(e"You chose $Bold($choice)")
+      //val (name, events2) = LineEditor(t"hello-world").ask(events)
+      //info(e"Project has the name $name")
+      
       ExitStatus.Ok
 
     def run(target: Target, watch: Boolean, force: Boolean)

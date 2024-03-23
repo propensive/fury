@@ -201,12 +201,17 @@ case class ManifestEntry(key: Text, value: Text) derives Debug, CodlEncoder
 
 object Container:
   given relabelling: CodlRelabelling[Container] = () =>
-    Map(t"copies" -> t"copy")
+    Map(t"insertions" -> t"copy")
 
 case class Insertion(source: WorkPath, destination: WorkPath) derives Debug, CodlEncoder
 case class Extraction(source: WorkPath, destination: WorkPath) derives Debug, CodlEncoder
 
-case class Container(id: GoalId, path: WorkPath, insertions: List[Insertion], extractions: List[Extraction])
+case class Container
+    (id:          GoalId,
+     dockerfile:  WorkPath,
+     root:        WorkPath,
+     insertions:  List[Insertion],
+     extractions: List[Extraction])
 derives Debug, CodlEncoder
 
 object Exec:

@@ -138,20 +138,19 @@ def main(): Unit =
                 
                 execute:
                   frontEnd:
-                    if interactive then actions.install.interactive(force, noTabCompletions)
+                    if interactive then actions.install.installInteractive(force, noTabCompletions)
                     else actions.install.batch(force, noTabCompletions)
                   
                   service.shutdown()
                   ExitStatus.Ok
                   
               case Init() :: Nil =>
-                val dir: Optional[Path] = safely(Dir()).or(safely(workingDirectory))
-                val discover = Discover()
                 
                 execute:
                   frontEnd:
-                    dir.let(actions.build.initialize(_)).or:
+                    val directory = safely(workingDirectory).or:
                       abort(UserError(msg"The working directory could not be determined."))
+                    actions.build.initialize(directory)
 
               case Config() :: Nil =>
                 execute:

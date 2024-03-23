@@ -29,6 +29,7 @@ import escapade.*
 import anticipation.*
 import iridescence.*
 import gossamer.*
+import profanity.*
 import rudiments.*
 import spectacular.*
 import quantitative.*
@@ -52,7 +53,13 @@ def frontEnd[ResultType](lambda: CliFrontEnd ?=> Terminal ?=> ResultType)(using 
       safely(frontEnd.render(last = true))
       FrontEnd.unregister(frontEnd)
 
-class CliFrontEnd()(using terminal: Terminal) extends FrontEnd:
+def interactive[ResultType](using frontEnd: CliFrontEnd)
+    (block: Stdio ?=> Interactivity[TerminalEvent] ?=> ResultType)
+        : ResultType =
+  block(using frontEnd.terminal.stdio)(using frontEnd.terminal)
+
+class CliFrontEnd()(using Terminal) extends FrontEnd:
+  def terminal = summon[Terminal]
   given stdio: Stdio = terminal.stdio
   private var dag: Optional[Dag[Target]] = Unset
   private var diagram: Optional[DagDiagram[Target]] = Unset
