@@ -37,7 +37,7 @@ import inimitable.*
 import iridescence.*, colors.*
 import kaleidoscope.*
 import nettlesome.*
-import parasite.*, threadModels.platform
+import parasite.*, threadModels.virtual
 import profanity.*, terminalOptions.terminalSizeDetection
 import quantitative.*
 import rudiments.*, homeDirectories.virtualMachine
