@@ -157,12 +157,10 @@ object actions:
     def initialize(directory: Path)(using CliFrontEnd): ExitStatus raises UserError =
       given (UserError fixes DismissError) = accede
       if (directory / p".fury").exists() then abort(UserError(msg"A build already exists in this directory"))
-      info(msg"Creating a new build in $directory")
-      
       interactive:
-        info(e"$Italic(Please enter the project name:)")
-        LineEditor(t"hello-world", 11).ask: choice =>
-          info(e"You chose $Bold($choice)")
+        Out.print(e"$Italic(Please enter the project name:) ")
+        LineEditor(t"hello-world", 0).ask: choice =>
+          Out.println(e"You chose $Bold($choice)")
       //val (name, events2) = LineEditor(t"hello-world").ask(events)
       //info(e"Project has the name $name")
       
