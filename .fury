@@ -48,6 +48,7 @@ project fury
     include  dendrology/dag
     include  zeppelin/core
     include  ethereal/core
+    include  embarcadero/core
 
   module cli
     sources  src/cli
