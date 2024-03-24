@@ -24,7 +24,7 @@ extract() {
 
 terminate() {
   logger "terminate()"
-  exec 6<> /dev/tcp/localhost/$port
+  exec 2> /dev/null 6<> /dev/tcp/localhost/$port || exit 2
   printf "x\n%s\n" "$pid" >&6
   exit "$(cat <&6 2> /dev/null || echo '1')"
 }
@@ -84,9 +84,9 @@ logger "starting"
 backout
 
 tmpPipe="$(mktemp -u)"
-mkfifo -m 600 "$tmpPipe" && exec 3<> "$tmpPipe" && rm "$tmpPipe"
+mkfifo -m 600 "$tmpPipe" && exec 2> /dev/null 3<> "$tmpPipe" && rm "$tmpPipe" || exit 2
 [ -t 0 ] && stty "${sttyOptions[@]}" > /dev/null 2>&1
-exec 7<> /dev/tcp/localhost/$port
+exec 2> /dev/null 7<> /dev/tcp/localhost/$port || exit 2
 [ -t 0 ] && printf "i\nt\n" >&7 || printf "i\np\n" >&7
 printf "%s\n%s\n" "$pid" "$script" >&7
 pwd >&7
@@ -102,7 +102,7 @@ pipePid=$!
 
 if [ "$stderr" = "1" ]
 then
-  exec 5<> /dev/tcp/localhost/$port
+  exec 2> /dev/null 5<> /dev/tcp/localhost/$port || exit 2
   printf "e\n%s\n" "$pid" >&5
   cat >&2 <&5 &
   stderrPid=$!
