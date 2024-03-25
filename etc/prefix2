@@ -1,7 +1,6 @@
 }
 
 handle() {
-  logger "handle()"
   # shellcheck disable=SC2317
   case "$1" in
     TERM) continue=0 ;;
@@ -11,7 +10,6 @@ handle() {
 }
 
 extract() {
-  logger "extract()"
   local -i offset fileSize
   local dir
   mkdir -p "$dataHomeDir/java"
@@ -23,7 +21,6 @@ extract() {
 }
 
 terminate() {
-  logger "terminate()"
   exec 2> /dev/null 6<> /dev/tcp/localhost/$port || exit 2
   printf "x\n%s\n" "$pid" >&6
   exit "$(cat <&6 2> /dev/null || echo '1')"
@@ -53,7 +50,6 @@ active() {
 }
 
 checkState() {
-  local -i count
   # Check the consistency of the PID file and Port file
   if active "$pidFile"
   then # Process is active
@@ -79,7 +75,6 @@ mkdir -p "$baseDir"
 backout
 checkState
 
-logger "starting"
 [ -s "$pidFile" ] || launch
 backout
 

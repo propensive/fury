@@ -1,7 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-declare portFile pidFile ttystate script tmpPipe javaVersion dataHomeDir data stderr
-declare -i pid port version buildId stdoutPid stderrPid continue pipePid argCount launchPid payloadSize jarSize
+declare javaCmd portFile pidFile ttystate script tmpPipe dataHomeDir data stderr javaBundle
+declare -i doDownload minimumJava preferredJava pid port version buildId stdoutPid stderrPid continue pipePid argCount launchPid payloadSize jarSize
 declare -a args signals sttyOptions
 
 # The TTY settings to use for terminal input
@@ -16,11 +16,17 @@ dataHomeDir="${XDG_DATA_HOME:-$HOME/.local/share}"
 portFile="$baseDir/port"
 pidFile="$baseDir/pid"
 failFile="$baseDir/fail"
-script="$(realpath "$0")"
-javaVersion="21"
-javaHome="$dataHomeDir/java/$javaVersion"
+invocation="$0"
+script="$(realpath "$invocation")"
+doDownload=0
+minimumJava=21
+preferredJava=21
+javaHome="$dataHomeDir/java"
+javaBundle="jre"
+javaDefault="${javaHome}/${preferredJava}-${javaBundle}"
 continue=1
 
+[[ "$1" = "--download" ]] && doDownload=1 && shift
 pid=$$
 args=("$@")
 argCount=$#
@@ -28,10 +34,8 @@ payloadSize=0
 jarSize=0
 
 backout() {
-  logger "backout()"
   if [ -f "$failFile" ]
   then
-    logger "failFile exists"
     [ -t 0 ] && stty "$ttystate"
     printf "\nThe %s daemon process failed to start.\n" "$name" >&2
     printf "Remove the file %s before trying again.\n" "$failFile" >&2
@@ -40,31 +44,133 @@ backout() {
 }
 
 abort() {
-  logger "abort()"
   touch "$failFile"
 }
 
+operatingSystem() {
+  case "$(uname -s)" in
+    Linux|GNU*)       printf "linux"        ;;
+    Win*|Cygwin|Msys) printf "windows"      ;;
+    Mac*|Darwin*)     printf "mac"          ;;
+    SunOS)            printf "solaris"      ;;
+
+    *) printf "Did not recognized the operating system '%s'." "$(uname -s)" && exit 1 ;;
+  esac
+}
+
+arch() {
+  case "$(uname -m)" in
+    x86_64|amd64|i686-64)                   printf "x64"     ;;
+    x86|i686|i386|i86pc)                    printf "x86"     ;;
+    aarch64_be|aarch64|armv8b|armv8l|arm64) printf "aarch64" ;;
+
+    *) printf "Did not recognized the processor architecture '%s'." "$(uname -m)" && exit 1 ;;
+  esac
+}
+
+adoptiumUrl() {
+  local baseUrl access force
+  baseUrl="https://api.adoptium.net"
+  access="ga"
+  os="$(operatingSystem)"
+  arch="$(arch)"
+  printf "%s/v3/binary/latest/%s/%s/%s/%s/%s/hotspot/normal/eclipse" "$baseUrl" "$preferredJava" "$access" "$os" "$arch" "$javaBundle"
+}
+
+download() {
+  local tmpDir
+  mkdir -p "$dataHomeDir/tmp"
+  tmpDir="$(mktemp -d "$dataHomeDir/tmp/XXXXXX")"
+  url="$(adoptiumUrl)"
+  
+  if command -v curl > /dev/null 2>&1
+  then
+    printf "Downloading Java %s from %s\n" "$preferredJava" "$url"
+    curl -sL "$url" | tar xz -C "$tmpDir" 2> /dev/null || (printf "The download failed.\n" && exit 1)
+    printf "Download complete\n"
+  elif command -v wget > /dev/null 2>&1
+  then
+    printf "Downloading Java %s from %s\n" "$preferredJava" "$url"
+    wget -q -O - "${LINK}" | tar xz -C "$tmpDir" 2> /dev/null || (printf "The download failed." && exit 1)
+    printf "Download complete\n"
+  else
+    rmdir "$tmpDir" > /dev/null 2>&1
+    printf "Could not download the file because neither \e[1mcurl\e[0m nor \e[1mwget\e[0m was on the path."
+  fi
+
+  dir="$(dirname "$(find "${tmpDir}" -name release | head -n1)")"
+  echo dir=$dir
+  fullVersion="$(source "${dir}/release" ; printf "%s" "${JAVA_VERSION}")"
+  targetDir="${javaHome}/${fullVersion}-${javaBundle}"
+  rm -rf "${targetDir}"
+  echo mv "${dir}" "${targetDir}"
+  mkdir -p "${javaHome}"
+  mv "${dir}" "${targetDir}"
+  rm -rf "${tmpDir}"
+  (cd "${javaHome}" && ln -s "${fullVersion}-${javaBundle}" "${preferredJava}-${javaBundle}")
+  javaCmd="${targetDir}/bin/java"
+}
+
+checkJavaVersion() {
+  local -i version
+  local javaExec
+  javaExec="$1"
+  version=$("$javaExec" -version 2>&1 | grep version | cut -d'"' -f2 | cut -d. -f1)
+  [[ $version -ge $minimumJava ]]
+}
+
+findJava() {
+  if checkJavaVersion "$(command -v java)"
+  then javaCmd="$(command -v java)" && return
+  elif [ -x "${javaDefault}/bin/java" ]
+  then javaCmd="${javaDefault}/bin/java" && return
+  fi
+
+  if update-alternatives --list java > /dev/null 2>&1
+  then
+    for candidate in $(update-alternatives --list java 2> /dev/null)
+    do checkJavaVersion "$candidate" && javaCmd="$candidate" && return
+    done
+  fi
+
+  for candidate in $(/usr/libexec/java_home "-v${minimumJava}" 2> /dev/null)
+  do checkJavaVersion "$candidate/bin/java" && javaCmd="$candidate/bin/java" && return
+  done
+
+  [[ $payloadSize > 0 ]] && extract && javaCmd="$javaHome/bin/java" && return
+  [[ $doDownload = 1 ]] && download && return
+
+  printf "\nJava $minimumJava or later is required, but no suitable version of Java was found.\n" >&2
+  printf "You can install \e[1mjava\e[0m with:\n\n" >&2
+  command -v pacman > /dev/null && printf "  \e[1mpacman -S jre-openjdk\e[0m\n" >&2
+  command -v emerge > /dev/null && printf "  \e[1memerge dev-java/openjdk-${minimumJava}\e[0m\n" >&2
+  command -v yum > /dev/null    && printf "  \e[1myum install java-${minimumJava}-openjdk\e[0m\n" >&2
+  command -v dnf > /dev/null    && printf "  \e[1mdnf install java-${minimumJava}-openjdk\e[0m\n" >&2
+  command -v apt > /dev/null    && printf "  \e[1mapt update && apt install openjdk-${minimumJava}-jre\e[0m\n" >&2
+  command -v zypper > /dev/null && printf "  \e[1mzypper install openjdk-${minimumJava}-headless\e[0m\n" >&2
+  command -v brew > /dev/null   && printf "  \e[1mbrew update && brew install java\e[0m\n" >&2
+  printf "  \e[1m$invocation --download\e[0m\n\n" >&2
+
+  exit 1
+}
+
 launch() {
-  logger "launch()"
+  findJava
   startTime="$(date +%s%3N)"
   echo "$pid" > "$pidFile"
-  [ -x "$javaHome/bin/java" ] || extract
-  (nohup "java" -Dethereal.startTime="$startTime" -Dethereal.name="$name" -Dethereal.script="$script" -Dethereal.payloadSize=$payloadSize -Dethereal.jarSize=$jarSize -Dethereal.command="$(command -v "$name")" -Dethereal.fpath="$(zsh -c 'printf "%s\n" $fpath' 2> /dev/null || echo '')" -jar "$script" > /dev/null 2>&1 || abort) &
+  [ -x "$javaCmd" ] || extract
+  (nohup "$javaCmd" -Dethereal.startTime="$startTime" -Dethereal.name="$name" -Dethereal.script="$script" -Dethereal.payloadSize=$payloadSize -Dethereal.jarSize=$jarSize -Dethereal.command="$(command -v "$name")" -Dethereal.fpath="$(zsh -c 'printf "%s\n" $fpath' 2> /dev/null || echo '')" -jar "$script" > /dev/null 2>&1 || abort) &
   launchPid=$!
   
   while [[ ! -s "$portFile" ]] && [[ ! -f "$failFile" ]]
-  do
-    logger "waiting..."
-    sleep 0.05
+  do sleep 0.05
   done
 
   backout
-
   setup
 }
 
 setup() {
-  logger "setup()"
   data="$(<"$portFile")"
   port=${data%% *}
   data2="${data#* }"
