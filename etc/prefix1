@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-declare javaCmd portFile pidFile ttystate script tmpPipe dataHomeDir data stderr javaBundle
+declare javaCmd portFile pidFile ttystate script tmpPipe dataHomeDir data stderr javaBundle pendingUpdate
 declare -i doDownload minimumJava preferredJava pid port version buildId stdoutPid stderrPid continue pipePid argCount launchPid payloadSize jarSize
 declare -a args signals sttyOptions
 
@@ -25,6 +25,7 @@ javaHome="$dataHomeDir/java"
 javaBundle="jre"
 javaDefault="${javaHome}/${preferredJava}-${javaBundle}"
 continue=1
+pendingUpdate="${dataHomeDir}/${name}/.pending"
 
 [[ "$1" = "--download" ]] && doDownload=1 && shift
 pid=$$
@@ -45,6 +46,16 @@ backout() {
 
 abort() {
   touch "$failFile"
+}
+
+checkUpdates() {
+  if [ -s "${pendingUpdate}" ]
+  then
+    chmod +x "${pendingUpdate}"
+    mv "${invocation}" "${dataHomeDir}/${name}.old"
+    mv "${pendingUpdate}" "${invocation}"
+    exec "${invocation}" "${args[@]}"
+  fi
 }
 
 operatingSystem() {
@@ -155,6 +166,7 @@ findJava() {
 }
 
 launch() {
+  checkUpdates
   findJava
   startTime="$(date +%s%3N)"
   echo "$pid" > "$pidFile"
