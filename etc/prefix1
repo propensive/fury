@@ -110,11 +110,9 @@ download() {
   fi
 
   dir="$(dirname "$(find "${tmpDir}" -name release | head -n1)")"
-  echo dir=$dir
   fullVersion="$(source "${dir}/release" ; printf "%s" "${JAVA_VERSION}")"
   targetDir="${javaHome}/${fullVersion}-${javaBundle}"
   rm -rf "${targetDir}"
-  echo mv "${dir}" "${targetDir}"
   mkdir -p "${javaHome}"
   mv "${dir}" "${targetDir}"
   rm -rf "${tmpDir}"
