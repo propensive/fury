@@ -44,7 +44,7 @@ project fury
     include  fury/model
     include  anthology/scala
     include  revolution/core
-    include  harlequin/core
+    include  harlequin/ansi
     include  dendrology/dag
     include  zeppelin/core
     include  ethereal/core

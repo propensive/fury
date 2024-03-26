@@ -43,7 +43,7 @@ import telekinesis.*
 import hypotenuse.*
 import inimitable.*
 import feudalism.*
-import harlequin.*
+import harlequin.*, syntaxHighlighting.numbered
 import nettlesome.*
 import octogenarian.*
 import revolution.*
@@ -381,8 +381,8 @@ class Builder():
               val baseClasspath = LocalClasspath(List(ClasspathEntry.Jarfile(basis)))
               val syntax: scc.TrieMap[Text, Async[IArray[Seq[Token]]]] = scc.TrieMap()
               
-              def highlight(filename: Text): Async[IArray[Seq[Token]]] raises CancelError raises StreamError =
-                async(ScalaSyntax.highlight(sourceMap(filename)))
+              def highlight(filename: Text): Async[ScalaSource] raises CancelError raises StreamError =
+                async(ScalaSource.highlight(sourceMap(filename)))
 
               val allBinaries = classpath.flatMap(phases(_).binaries).map(outputDirectory(_) / p"library.jar")
               
@@ -433,19 +433,14 @@ class Builder():
                         case Importance.Info    => info(infoRibbon.fill(e"$target", notice.file.display))
 
                       notice.codeRange.let: code =>
-                        val highlighted = highlight(notice.file).await()
-                        val numberLength = (code.endLine + 1).show.length
-                        for line <- (code.startLine - 1).max(0) to code.endLine
-                        do info(e"${Bg(rgb"#003333")}(${rgb"#99cc99"}(${(line + 1).show.pad(numberLength, Rtl)})${rgb"#336666"}(┋)) ${highlighted(line)}")
-
-                        if code.startLine == code.endLine
-                        then
-                          if code.startColumn == code.endColumn
-                          then info(e"${t" "*(code.startColumn + numberLength + 1)}${rgb"#ff0033"}(╱╲)")
-                          else info(e"${t" "*(code.startColumn + numberLength + 2)}${rgb"#ff0033"}(${t"‾"*(code.endColumn - code.startColumn)})")
-
-                        info(e"$Italic(${notice.message})")
-                        info(t"")
+                        val source: ScalaSource = highlight(notice.file).await()
+                        val focus = ((code.startLine + 1, code.startColumn), (code.endLine + 1, code.endColumn))
+                        val fragment = source.fragment(code.startLine, code.endLine + 1, focus)
+                        val margin = (code.endLine + 1).show.length
+                        info(fragment.display)
+                      
+                      info(e"$Italic(${notice.message})")
+                      info(t"")
                   
                   process.complete()
                   
@@ -453,11 +448,6 @@ class Builder():
                   val warnCount = process.notices.count(_.importance == Importance.Warning)
        
                   if errorCount == 0 then work.moveTo(output).as[Directory] else abort(BuildError())
-
-
-  // case class ContainerPhase(container: Container, target: Target, watches: Set[Path], dockerfile: Path)
-  // extends Phase:
-  //   export container.*
 
   given expandable: Expandable[Phase] = _.antecedents.map(phases(_))
 
@@ -644,22 +634,3 @@ extension (basis: Basis)
 val errorRibbon = Ribbon(rgb"#990033", rgb"#CC0033")
 val warningRibbon = Ribbon(rgb"#FFCC00", rgb"#FFCC99")
 val infoRibbon = Ribbon(rgb"#006666", rgb"#6699CC")
-
-given display: Displayable[Seq[Token]] = tokens =>
-  import Accent.*
-  
-  tokens.map:
-    case Token.Unparsed(text)       => text.display
-    case Token.Markup(text)         => text.display
-    case Token.Newline              => e"\n"
-    case Token.Code(text, Error)    => e"${rgb"#cc0033"}($text)"
-    case Token.Code(text, Number)   => e"${rgb"#cc3366"}($text)"
-    case Token.Code(text, Modifier) => e"${rgb"#ff9966"}($text)"
-    case Token.Code(text, Keyword)  => e"${rgb"#ff6633"}($text)"
-    case Token.Code(text, Ident)    => e"${rgb"#ffcc99"}($text)"
-    case Token.Code(text, Term)     => e"${rgb"#ffcc33"}($text)"
-    case Token.Code(text, Type)     => e"${rgb"#00cc99"}($text)"
-    case Token.Code(text, String)   => e"${rgb"#99ffff"}($text)"
-    case Token.Code(text, Parens)   => e"${rgb"#cc6699"}($text)"
-    case Token.Code(text, Symbol)   => e"${rgb"#cc3366"}($text)"
-  .join
