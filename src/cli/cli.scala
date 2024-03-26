@@ -248,11 +248,11 @@ def main(): Unit =
               case Nil =>
                 given (UserError fixes WorkspaceError) = error => UserError(error.message)
                 execute:
-                  Out.println(Workspace().build.actions.headOption.optional.debug)
+                  Out.println(Workspace().build.actions.prim.debug)
                   ExitStatus.Fail(1)
 
               case subcommands =>
-                val subcommand = subcommands.headOption.optional
+                val subcommand = subcommands.filter(!_().starts(t"-")).prim
                 val workspace = safely(Workspace())
                 val online = Offline().absent
                 val watch = Watch().present
@@ -268,20 +268,21 @@ def main(): Unit =
                   given (UserError fixes PathError) = accede
                   
                   workspace.lay(ExitStatus.Fail(2)): workspace =>
-                    subcommand.let(_().populated).let(ActionName(_)).or(workspace.build.default).let: action =>
-                      workspace.build.actions.where(_.name == action).let: action =>
-                        internet(online):
-                          frontEnd:
-                            val buildTask = task(t"build"):
-                              action.modules.each(actions.build.run(_, watch, force))
-    
-                            daemon:
-                              terminal.events.stream.each:
-                                case Keypress.Escape | Keypress.Ctrl('C') => summon[FrontEnd].abort()
-                                case other                                => ()
-                            
-                            buildTask.await().also(Out.print(t"\e[?25h"))
-                            ExitStatus.Ok
+                    subcommand.let: subcommand =>
+                      subcommand().populated.let(ActionName(_)).or(workspace.build.default).let: action =>
+                        workspace.build.actions.where(_.name == action).let: action =>
+                          internet(online):
+                            frontEnd:
+                              val buildTask = task(t"build"):
+                                action.modules.each(actions.build.run(_, watch, force))
+      
+                              daemon:
+                                terminal.events.stream.each:
+                                  case Keypress.Escape | Keypress.Ctrl('C') => summon[FrontEnd].abort()
+                                  case other                                => ()
+                              
+                              buildTask.await().also(Out.print(t"\e[?25h"))
+                              ExitStatus.Ok
   
                     .or:
                       subcommand.let(frontEnd(actions.invalidSubcommand(_))).or:

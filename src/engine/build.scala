@@ -432,12 +432,9 @@ class Builder():
                         case Importance.Warning => info(warningRibbon.fill(e"$target", notice.file.display))
                         case Importance.Info    => info(infoRibbon.fill(e"$target", notice.file.display))
 
-                      notice.codeRange.let: code =>
+                      notice.codeRange.let: range =>
                         val source: ScalaSource = highlight(notice.file).await()
-                        val focus = ((code.startLine + 1, code.startColumn), (code.endLine + 1, code.endColumn))
-                        val fragment = source.fragment(code.startLine, code.endLine + 1, focus)
-                        val margin = (code.endLine + 1).show.length
-                        info(fragment.display)
+                        info(range.of(source).display)
                       
                       info(e"$Italic(${notice.message})")
                       info(t"")

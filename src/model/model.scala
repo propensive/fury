@@ -281,7 +281,7 @@ object Action:
 
 case class Action(name: ActionName, modules: List[Target], description: Optional[Text])
 derives Debug:
-  def suggestion: Suggestion = Suggestion(name.show, description.let { text => e"${colors.Khaki}($text)"} )
+  def suggestion: Suggestion = Suggestion(name.show, description.let { text => e"$Italic($text)"} )
 
 object WorkPath:
   given navigable: Navigable[WorkPath, GeneralForbidden, Unit] with

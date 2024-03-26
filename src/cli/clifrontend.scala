@@ -122,7 +122,6 @@ class CliFrontEnd()(using Terminal) extends FrontEnd:
       Out.println(e"\e[K")
       Out.println(if last then t"\e[?25h" else t"\e[${diagram.size + unscheduled.size + 2}A")
 
-
 object ProgressBar:
   def apply(double: Double): Text = bars((double*96).toInt.min(96).max(0))
   val partial: Text = t" ▎▍▌▋▊▉█"
