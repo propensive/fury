@@ -25,38 +25,41 @@ project fury
   website      https://fury.build/
   
   module model
-    include  acyclicity/core
-    include  aviation/core
-    include  cellulose/core
-    include  escritoire/core
-    include  exoskeleton/completions
-    include  jacinta/core
-    include  octogenarian/core
-    include  punctuation/core
-    include  telekinesis/client
-    include  xylophone/core
-    
-    sources  src/model
-    main     fury.Main
+    compiler  scala
+    include   acyclicity/core
+    include   aviation/core
+    include   cellulose/core
+    include   escritoire/core
+    include   exoskeleton/completions
+    include   jacinta/core
+    include   octogenarian/core
+    include   punctuation/core
+    include   telekinesis/client
+    include   xylophone/core
+    sources   src/model
+    main      fury.Main
 
   module engine
-    sources  src/engine
-    include  fury/model
-    include  anthology/scala
-    include  revolution/core
-    include  harlequin/ansi
-    include  dendrology/dag
-    include  zeppelin/core
-    include  ethereal/core
-    include  embarcadero/core
+    compiler  scala
+    sources   src/engine
+    include   fury/model
+    include   anthology/scala
+    include   anthology/java
+    include   revolution/core
+    include   harlequin/ansi
+    include   dendrology/dag
+    include   zeppelin/core
+    include   ethereal/core
+    include   embarcadero/core
 
   module cli
-    sources  src/cli
-    include  fury/engine
-    include  hallucination/core
-    include  impressionism/core
-    include  eucalyptus/ansi
-    include  eucalyptus/syslog
+    compiler  scala
+    sources   src/cli
+    include   fury/engine
+    include   hallucination/core
+    include   impressionism/core
+    include   eucalyptus/ansi
+    include   eucalyptus/syslog
 
   artifact executable
     basis       tools
@@ -67,8 +70,9 @@ project fury
     prefix      res/build.id
     prefix      etc/prefix2
     executable  yes
-    resource    res/logo.png  logo.png
-    resource    res/build.id  build.id
+    resource    res/logo.png   logo.png
+    resource    res/logo2.png  logo2.png
+    resource    res/build.id   build.id
     include     fury/cli
 
 ##

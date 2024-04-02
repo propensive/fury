@@ -22,43 +22,57 @@ import punctuation.*
 import gossamer.*
 
 enum LicenseGroup:
-  case Afl, Apache, Artistic, Bsl, Bsd, Cc, Wtfpl, Ecl, Epl, Eupl, Agpl, Gpl, Lgpl, Isc, Lppl, Ms, Mit, Mpl,
-      Osl, PostgreSql, Ofl, Ncsa, Unlicense, Zlib
+  case Afl, Apache, Artistic, Bsl, Bsd, Cc, Wtfpl, Ecl, Epl, Eupl, Agpl, Gpl, Lgpl, Isc, Lppl, Ms,
+      Mit, Mpl, Osl, PostgreSql, Ofl, Ncsa, Unlicense, Zlib
 
 enum License(name: InlineMd, id: LicenseId, group: LicenseGroup):
-  case Afl3 extends License(md"Academic Free License v3.0", LicenseId.unsafe(t"afl-3.0"), LicenseGroup.Afl)
-  case Apache2 extends License(md"Apache license 2.0", LicenseId.unsafe(t"apache-2.0"), LicenseGroup.Apache)
+  case Afl3
+  extends License(md"Academic Free License v3.0", LicenseId.unsafe(t"afl-3.0"), LicenseGroup.Afl)
+  
+  case Apache2
+  extends License(md"Apache license 2.0", LicenseId.unsafe(t"apache-2.0"), LicenseGroup.Apache)
   
   case Artistic2
-  extends License(md"Artistic license 2.0", LicenseId.unsafe(t"artistic-2.0"), LicenseGroup.Artistic)
+  extends License
+   (md"Artistic license 2.0", LicenseId.unsafe(t"artistic-2.0"), LicenseGroup.Artistic)
   
-  case Bsl1 extends License(md"Boost Software License 1.0", LicenseId.unsafe(t"bsl-1.0"), LicenseGroup.Bsl)
+  case Bsl1
+  extends License(md"Boost Software License 1.0", LicenseId.unsafe(t"bsl-1.0"), LicenseGroup.Bsl)
   
   case Bsd2Clause
-  extends License(md"BSD 2-clause _Simplified_ license", LicenseId.unsafe(t"bsd-2-clause"), LicenseGroup.Bsd)
+  extends License
+   (md"BSD 2-clause _Simplified_ license", LicenseId.unsafe(t"bsd-2-clause"), LicenseGroup.Bsd)
   
   case Bsd3Clause
   extends License
-      (md"BSD 3-clause _New_ or _Revised_ license", LicenseId.unsafe(t"bsd-3-clause"), LicenseGroup.Bsd)
+   (md"BSD 3-clause _New_ or _Revised_ license",
+    LicenseId.unsafe(t"bsd-3-clause"),
+    LicenseGroup.Bsd)
 
   case Bsd3ClauseClear
-  extends License(md"BSD 3-clause Clear license", LicenseId.unsafe(t"bsd-3-clause-clear"), LicenseGroup.Bsd)
+  extends License
+   (md"BSD 3-clause Clear license", LicenseId.unsafe(t"bsd-3-clause-clear"), LicenseGroup.Bsd)
   
-  case Cc extends License(md"Creative Commons license family", LicenseId.unsafe(t"cc"), LicenseGroup.Cc)
+  case Cc
+  extends License(md"Creative Commons license family", LicenseId.unsafe(t"cc"), LicenseGroup.Cc)
   
   case Cc01
-  extends License(md"Creative Commons Zero v1.0 Universal", LicenseId.unsafe(t"cc0-1.0"), LicenseGroup.Cc)
+  extends License
+   (md"Creative Commons Zero v1.0 Universal", LicenseId.unsafe(t"cc0-1.0"), LicenseGroup.Cc)
   
   case CcBy4
-  extends License(md"Creative Commons Attribution 4.0", LicenseId.unsafe(t"cc-by-4.0"), LicenseGroup.Cc)
+  extends License
+   (md"Creative Commons Attribution 4.0", LicenseId.unsafe(t"cc-by-4.0"), LicenseGroup.Cc)
   
   case CcBySa4
   extends License
-      (md"Creative Commons Attribution Share Alike 4.0", LicenseId.unsafe(t"cc-by-sa-4.0"), LicenseGroup.Cc)
+   (md"Creative Commons Attribution Share Alike 4.0",
+    LicenseId.unsafe(t"cc-by-sa-4.0"),
+    LicenseGroup.Cc)
 
   case Wtfpl
   extends License
-      (md"Do What The F*ck You Want To Public License", LicenseId.unsafe(t"wtfpl"), LicenseGroup.Wtfpl)
+   (md"Do What The F*ck You Want To Public License", LicenseId.unsafe(t"wtfpl"), LicenseGroup.Wtfpl)
   
   case Ecl2
   extends License(md"Educational Community License v2.0", LicenseId.unsafe(t"ecl-2.0"), LicenseGroup.Ecl)

@@ -36,7 +36,8 @@ extends Error(msg"The value '$id' is not a valid ${refType.name}")
 case class AppError(userMessage: Message, underlyingCause: Optional[Error] = Unset)
 extends Error(userMessage)
 
-case class UnknownRefError(ref: ProjectId) extends Error(msg"the reference ${ref.show} could not be resolved")
+case class UnknownRefError(ref: ProjectId)
+extends Error(msg"the reference ${ref.show} could not be resolved")
 
 case class BuildfileError(path: Path, issues: List[Error])
 extends Error(msg"There were problems with the build file $path")
@@ -54,8 +55,8 @@ object Ids:
 
   class Id[IdType]() extends RefType(t"ID"):
     def apply(value: Text)(using Raises[InvalidRefError]): IdType = value match
-      case r"[a-z]([-]?[a-z0-9])*" => value.asInstanceOf[IdType]
-      case _                       => raise(InvalidRefError(value, this))(value.asInstanceOf[IdType])
+      case r"[a-z](-?[a-z0-9])*" => value.asInstanceOf[IdType]
+      case _                     => raise(InvalidRefError(value, this))(value.asInstanceOf[IdType])
     
     def unapply(value: Text): Option[IdType] = safely(Some(apply(value))).or(None)
 
@@ -93,7 +94,9 @@ object Ids:
   given ecosystemIdShow: Show[EcosystemId] = identity(_)
   given ecosystemIdEncoder: Encoder[EcosystemId] = identity(_)
   given ecosystemIdDecoder(using Raises[InvalidRefError]): Decoder[EcosystemId] = EcosystemId(_)
-  given ecosystemIdDigestible: Digestible[EcosystemId] = (acc, ecosystemId) => acc.append(ecosystemId.bytes)
+  
+  given ecosystemIdDigestible: Digestible[EcosystemId] =
+    (acc, ecosystemId) => acc.append(ecosystemId.bytes)
   
   given projectIdShow: Show[ProjectId] = identity(_)
   given projectIdEncoder: Encoder[ProjectId] = identity(_)
@@ -113,7 +116,9 @@ object Ids:
   given actionNameShow: Show[ActionName] = identity(_)
   given actionNameEncoder: Encoder[ActionName] = identity(_)
   given actionNameDecoder(using Raises[InvalidRefError]): Decoder[ActionName] = ActionName(_)
-  given actionNameDigestible: Digestible[ActionName] = (acc, actionName) => acc.append(actionName.bytes)
+  
+  given actionNameDigestible: Digestible[ActionName] =
+    (acc, actionName) => acc.append(actionName.bytes)
 
   given keywordShow: Show[Keyword] = identity(_)
   given keywordEncoder: Encoder[Keyword] = identity(_)

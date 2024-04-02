@@ -20,7 +20,10 @@ import ambience.*, environments.virtualMachine, systemProperties.virtualMachine
 import anticipation.*, filesystemInterfaces.galileiApi
 import cellulose.*
 import fulminate.*
-import galilei.*, filesystemOptions.{createNonexistent, createNonexistentParents, dereferenceSymlinks}
+
+import galilei.*, filesystemOptions.{createNonexistent, createNonexistentParents,
+    dereferenceSymlinks}
+
 import gossamer.*
 import hieroglyph.*, charDecoders.utf8
 import imperial.*
@@ -36,7 +39,8 @@ object Installation:
   def apply()(using HomeDirectory, SystemProperties): Installation raises ConfigError =
     import badEncodingHandlers.strict
 
-    given (ConfigError fixes StreamError) = error => ConfigError(msg"The stream was cut while reading a file")
+    given (ConfigError fixes StreamError) = error =>
+      ConfigError(msg"The stream was cut while reading a file")
     
     given (ConfigError fixes EnvironmentError) =
       case EnvironmentError(variable) =>
@@ -53,7 +57,8 @@ object Installation:
       case IoError(path) => ConfigError(msg"An I/O error occurred while trying to access $path")
     
     given (ConfigError fixes CodlReadError) =
-      case CodlReadError(label) => ConfigError(msg"The field ${label.or(t"unknown")} could not be read")
+      case CodlReadError(label) =>
+        ConfigError(msg"The field ${label.or(t"unknown")} could not be read")
     
     given (ConfigError fixes PathError) =
       case PathError(path, reason) => ConfigError(msg"The path $path was not valid because $reason")

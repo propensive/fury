@@ -125,7 +125,7 @@ object actions:
   object universe:
     def show()(using Internet, WorkingDirectory, Monitor, Log[Display], FrontEnd, Stdio): ExitStatus raises UserError =
       given (UserError fixes PathError)      = accede
-      given (UserError fixes CancelError)    = accede
+      given (UserError fixes ConcurrencyError)    = accede
       given (UserError fixes IoError)        = accede
       given (UserError fixes WorkspaceError) = accede
       given (UserError fixes ExecError)      = accede
@@ -156,20 +156,22 @@ object actions:
   object build:
     def initialize(directory: Path)(using CliFrontEnd): ExitStatus raises UserError =
       given (UserError fixes DismissError) = accede
-      if (directory / p".fury").exists() then abort(UserError(msg"A build already exists in this directory"))
-      val nameSuggestion = directory.name
+      
+      if (directory / p".fury").exists()
+      then abort(UserError(msg"A build already exists in this directory"))
+      
       interactive:
-        Out.print(e"         $Italic(Project ID:) ")
-        LineEditor(nameSuggestion).ask: id =>
-          Out.print(e"       $Italic(Project name:) ")
+        Out.print(e"           $Italic(Project ID:) ")
+        LineEditor(directory.name).ask: id =>
+          Out.print(e"         $Italic(Project name:) ")
           LineEditor(id.capitalize).ask: name =>
-            Out.print(e"$Italic(Project description:) ")
+            Out.print(e"  $Italic(Project description:) ")
             LineEditor(t"").ask: description =>
               Out.println(e"You chose $Bold($id), $Bold($name), and $Bold($description)")
       
       ExitStatus.Ok
 
-    def run(target: Target, watch: Boolean, force: Boolean)
+    def run(target: Target, watch: Boolean, force: Boolean, concise: Boolean)
        (using CliFrontEnd,
               WorkingDirectory,
               Monitor,
@@ -184,26 +186,33 @@ object actions:
 
       import filesystemOptions.doNotCreateNonexistent
       import filesystemOptions.dereferenceSymlinks
-      given (UserError fixes WorkspaceError) = accede
-      given (UserError fixes BuildError)     = accede
-      given (UserError fixes VaultError)     = accede
-      given (UserError fixes CancelError)    = accede
-      given (UserError fixes PathError)      = accede
-      given (UserError fixes ZipError)       = accede
-      given (UserError fixes StreamError)    = accede
-      given (UserError fixes IoError)        = accede
-      given (UserError fixes WatchError)     = accede
-      given (UserError fixes ScalacError)    = accede
 
+      given (UserError fixes WorkspaceError)   = accede
+      given (UserError fixes BuildError)       = accede
+      given (UserError fixes VaultError)       = accede
+      given (UserError fixes ConcurrencyError) = accede
+      given (UserError fixes PathError)        = accede
+      given (UserError fixes ZipError)         = accede
+      given (UserError fixes StreamError)      = accede
+      given (UserError fixes IoError)          = accede
+      given (UserError fixes WatchError)       = accede
+      given (UserError fixes CompileError)     = accede
+
+      Log.info(msg"Trying to construct workspace")
       val workspace = Workspace()
+      Log.info(msg"Finished constructing workspace")
       given universe: Universe = workspace.universe()
       
       def build(): Set[Path] =
-        info(msg"Starting $target build...")
+        Log.info(msg"Starting $target build...")
         val builder = Builder()
+        Log.info(msg"Constructed the builder")
         val hash = builder.build(target).await()
-        summon[FrontEnd].setSchedule(builder.schedule(hash))
+        Log.info(msg"Calculated hash")
+        if !concise then summon[FrontEnd].setSchedule(builder.schedule(hash))
+        Log.info(msg"Invoking run")
         builder.run(hash, force)
+        Log.info(msg"Returning watch directories")
         builder.watchDirectories(hash)
       
       if !watch then build()

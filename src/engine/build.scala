@@ -60,12 +60,15 @@ import zeppelin.*
 
 import scala.collection.concurrent as scc
 
+export parasite.asyncOptions.{cancelOrphans, escalateExceptions}
+
 case class ConfigError(msg: Message) extends Error(msg)
 
 case class Config(log: LogConfig = LogConfig())
 case class LogConfig(path: Path = Unix / p"var" / p"log" / p"fury.log")
 
-case class BuildError() extends Error(msg"the build could not run")
+case class AbortError(n: Int) extends Error(msg"the build was aborted by the user ($n)")
+case class BuildError(error: Error) extends Error(msg"the build could not run because ${error.message}")
 
 val Isolation: Semaphore = Semaphore()
 val Epoch: LocalTime = 2000-Jan-1 at 0.00.am in tz"Etc/UTC"
@@ -81,20 +84,21 @@ class Builder():
       (using Monitor, Environment, FrontEnd, Log[Display], SystemProperties, Installation, DaemonService[?], Internet)
           : Async[PhaseResult] =
 
+    Log.info(t"Building task for $hash")
     tasks.synchronized:
       tasks.getOrElseUpdate(hash, async(phases(hash).run(hash)))
 
   extension (library: Library)
     def phase(workspace: Workspace, target: Target)
         (using Installation, Internet, Monitor, WorkingDirectory, Log[Display], Universe, GitCommand, FrontEnd)
-            : LibraryPhase raises CancelError raises PathError raises GitError raises BuildError raises
+            : LibraryPhase raises ConcurrencyError raises PathError raises GitError raises BuildError raises
                ExecError raises IoError =
       LibraryPhase(installation.build, library, target)
 
   extension (artifact: Artifact)
     def phase(workspace: Workspace, target: Target)
         (using Installation, Internet, Monitor, WorkingDirectory, Log[Display], Universe, GitCommand, FrontEnd)
-            : ArtifactPhase raises CancelError raises PathError raises GitError raises BuildError raises
+            : ArtifactPhase raises ConcurrencyError raises PathError raises GitError raises BuildError raises
                ExecError raises IoError =
 
       val destination: Path = workspace(artifact.path)
@@ -128,23 +132,29 @@ class Builder():
   extension (module: Module)
     def phase(workspace: Workspace, target: Target)
         (using Installation, Internet, Universe, Monitor, WorkingDirectory, Log[Display], FrontEnd)
-            : ModulePhase raises CancelError raises GitError raises PathError raises ExecError raises
+            : ModulePhase raises ConcurrencyError raises GitError raises PathError raises ExecError raises
                IoError raises BuildError raises StreamError =
       
       val antecedents: List[Hash] = module.includes.map(build(_)).map(_.await())
       val classpath: List[Hash] = antecedents.map(phases(_)).flatMap(_.runtimeClasspath).to(Set).to(List)
+      
+      val compiler = module.compiler match
+        case t"java"   => Compiler.Java
+        case t"kotlin" => Compiler.Kotlin
+        case _         => Compiler.Scala
+
       val sourceFiles: List[File] =
         module
          .sources
          .map(workspace(_).as[Directory])
          .flatMap(_.descendants.filter(_.is[File]))
-         .filter(_.name.ends(t".scala"))
+         .filter(compiler.compiles(_))
          .map(_.as[File])
       
       val sourceMap = sourceFiles.map { file => file.path.name -> Cache.file(file.path).text.await() }.to(Map)
       val watches = module.sources.map(workspace(_)).to(Set)
 
-      ModulePhase(installation.build, module, target, watches, sourceMap, antecedents, classpath)
+      ModulePhase(installation.build, compiler, module, target, watches, sourceMap, antecedents, classpath)
 
   object Phase:
     given show: Show[Phase] = _.target.show
@@ -197,14 +207,14 @@ class Builder():
 
       attempt[AggregateError[BuildError]]:
         validate[BuildError]:
-          given (BuildError fixes ExecError) = error => BuildError()
-          given (BuildError fixes GitError) = error => BuildError()
-          given (BuildError fixes PathError) = error => BuildError()
-          given (BuildError fixes ZipError) = error => BuildError()
-          given (BuildError fixes IoError) = error => BuildError()
-          given (BuildError fixes StreamError) = error => BuildError()
-          given (BuildError fixes WorkspaceError) = error => BuildError()
-          given (BuildError fixes CancelError) = error => BuildError()
+          given (BuildError fixes ExecError)      = BuildError(_)
+          given (BuildError fixes GitError)       = BuildError(_)
+          given (BuildError fixes PathError)      = BuildError(_)
+          given (BuildError fixes ZipError)       = BuildError(_)
+          given (BuildError fixes IoError)        = BuildError(_)
+          given (BuildError fixes StreamError)    = BuildError(_)
+          given (BuildError fixes WorkspaceError) = BuildError(_)
+          given (BuildError fixes ConcurrencyError)    = BuildError(_)
  
           val inputs = antecedents.map(task(_))
           val checksumPath = output / p"checksum"
@@ -253,7 +263,7 @@ class Builder():
 
                 else
                   tmpPath.wipe()
-                  abort(BuildError())
+                  abort(BuildError(AbortError(1)))
             
             
             tmpPath.as[File].tap: file =>
@@ -295,11 +305,11 @@ class Builder():
 
       attempt[AggregateError[BuildError]]:
         validate[BuildError]:
-          given (BuildError fixes HttpError) = error => BuildError()
-          given (BuildError fixes IoError) = error => BuildError()
-          given (BuildError fixes StreamError) = error => BuildError()
-          given (BuildError fixes OfflineError) = error => BuildError()
-          given (BuildError fixes NumberError) = error => BuildError()
+          given (BuildError fixes HttpError)    = BuildError(_)
+          given (BuildError fixes IoError)      = BuildError(_)
+          given (BuildError fixes StreamError)  = BuildError(_)
+          given (BuildError fixes OfflineError) = BuildError(_)
+          given (BuildError fixes NumberError)  = BuildError(_)
           
           output.as[Directory]
           val checksum: Path = output / p"checksum"
@@ -317,7 +327,6 @@ class Builder():
               
               response.as[LazyList[Bytes]].map: bytes =>
                 count += bytes.length
-                Log.info(msg"Counted ${bytes.length}")
                 summon[FrontEnd](target) = count/size
                 bytes
               .writeTo(jarfile.as[File])
@@ -331,6 +340,7 @@ class Builder():
 
   case class ModulePhase
      (build:       Path,
+      compiler:    Compiler,
       module:      Module,
       target:      Target,
       watches:     Set[Path],
@@ -338,7 +348,9 @@ class Builder():
       antecedents: List[Hash],
       classpath:   List[Hash])
   extends Phase:
-    export module.*
+
+    export module.{compiler as _, *}
+
     val digest = (sourceMap.values.to(List), antecedents).digest[Sha2[256]]
     val binaries: List[Hash] = Nil
     
@@ -355,67 +367,86 @@ class Builder():
 
       attempt[AggregateError[BuildError]]:
         validate[BuildError]:
-          given (BuildError fixes GitError)       = error => BuildError()
-          given (BuildError fixes PathError)      = error => BuildError()
-          given (BuildError fixes ZipError)       = error => BuildError()
-          given (BuildError fixes IoError)        = error => BuildError()
-          given (BuildError fixes StreamError)    = error => BuildError()
-          given (BuildError fixes ScalacError)    = error => BuildError()
-          given (BuildError fixes WorkspaceError) = error => BuildError()
-          given (BuildError fixes CancelError)    = error => BuildError()
-
+          given (BuildError fixes GitError)       = BuildError(_)
+          given (BuildError fixes PathError)      = BuildError(_)
+          given (BuildError fixes ZipError)       = BuildError(_)
+          given (BuildError fixes IoError)        = BuildError(_)
+          given (BuildError fixes StreamError)    = BuildError(_)
+          given (BuildError fixes CompileError)   = BuildError(_)
+          given (BuildError fixes WorkspaceError) = BuildError(_)
+          given (BuildError fixes ConcurrencyError)    = BuildError(_)
+          
+          Log.info(t"Starting to build")
           val inputs = antecedents.map(task(_)).map(_.await())
-          if !summon[FrontEnd].continue then abort(BuildError())
+          if !summon[FrontEnd].continue then abort(BuildError(AbortError(2)))
 
           if output.exists() then
             summon[FrontEnd](target) = -1.0
             output.as[Directory].tap(_.touch())
           else
+            inputs.filter(_.failure).each: input =>
+              input.acknowledge:
+                case AggregateError(errors) => errors.each:
+                  case BuildError(error) =>
+                    Log.warn(msg"There was a build error in an input to $target: ${error.message}")
+                    Log.warn(error.stackTrace.display)
+                  
             if inputs.exists(_.failure)
             then
               Log.info(t"One of the inputs did not complete")
-              abort(BuildError())
+              abort(BuildError(AbortError(3)))
             else
               val work = (installation.work / PathName(Uuid().show)).as[Directory]
               val basis = unsafely(Basis.Tools().await().path.show)
               val baseClasspath = LocalClasspath(List(ClasspathEntry.Jarfile(basis)))
               val syntax: scc.TrieMap[Text, Async[IArray[Seq[Token]]]] = scc.TrieMap()
               
-              def highlight(filename: Text): Async[ScalaSource] raises CancelError raises StreamError =
+              def highlight(filename: Text)
+                      : Async[ScalaSource] raises ConcurrencyError raises StreamError =
+
                 async(ScalaSource.highlight(sourceMap(filename)))
 
-              val allBinaries = classpath.flatMap(phases(_).binaries).map(outputDirectory(_) / p"library.jar")
+              val allBinaries =
+                classpath.flatMap(phases(_).binaries).map(outputDirectory(_) / p"library.jar")
               
               (classpath.map(outputDirectory(_)) ++ allBinaries).foldLeft(baseClasspath)(_ + _).pipe: classpath =>
                 if sourceMap.isEmpty then output.as[Directory] else
-                  val process: ScalacProcess =
+                  val process: CompileProcess =
                     Log.envelop(target):
-                      import scalacOptions.*
-                      Scalac[3.4]
-                       (List
-                         (language.experimental.fewerBraces,
-                          language.experimental.genericNumberLiterals,
-                          language.experimental.clauseInterleaving,
-                          language.experimental.into,
-                          language.experimental.erasedDefinitions,
-                          language.experimental.saferExceptions,
-                          language.experimental.namedTypeArguments,
-                          advanced.maxInlines(64),
-                          internal.requireTargetName,
-                          internal.explicitNulls,
-                          internal.checkPatterns,
-                          internal.safeInit,
-                          internal.ccNew,
-                          experimental,
-                          sourceFuture,
-                          newSyntax,
-                          warnings.lint.privateShadow,
-                          warnings.lint.typeParameterShadow,
-                          warnings.deprecation,
-                          warnings.feature,
-                          warnings.implausiblePatterns))
-                       (classpath)
-                       (sourceMap, work.path)
+                      compiler match
+                        case Compiler.Java =>
+                          Javac(Nil)(classpath)(sourceMap, work.path)
+                        
+                        case Compiler.Kotlin =>
+                          abort(BuildError(AbortError(4)))
+                          
+                        case Compiler.Scala =>
+                          import scalacOptions.*
+                          Scalac[3.4]
+                           (List
+                             (language.experimental.fewerBraces,
+                              language.experimental.genericNumberLiterals,
+                              language.experimental.clauseInterleaving,
+                              language.experimental.into,
+                              language.experimental.erasedDefinitions,
+                              language.experimental.saferExceptions,
+                              language.experimental.namedTypeArguments,
+                              advanced.maxInlines(64),
+                              internal.requireTargetName,
+                              internal.explicitNulls,
+                              internal.checkPatterns,
+                              internal.safeInit,
+                              internal.ccNew,
+                              experimental,
+                              sourceFuture,
+                              newSyntax,
+                              warnings.lint.privateShadow,
+                              warnings.lint.typeParameterShadow,
+                              warnings.deprecation,
+                              warnings.feature,
+                              warnings.implausiblePatterns))
+                           (classpath)
+                           (sourceMap, work.path)
                   
                   daemon:
                     summon[FrontEnd].attend()
@@ -428,9 +459,14 @@ class Builder():
                   async:
                     process.notices.each: notice =>
                       notice.importance match
-                        case Importance.Error   => info(errorRibbon.fill(e"$target", notice.file.display))
-                        case Importance.Warning => info(warningRibbon.fill(e"$target", notice.file.display))
-                        case Importance.Info    => info(infoRibbon.fill(e"$target", notice.file.display))
+                        case Importance.Error =>
+                          info(errorRibbon.fill(e"$target", notice.file.display))
+
+                        case Importance.Warning =>
+                          info(warningRibbon.fill(e"$target", notice.file.display))
+
+                        case Importance.Info =>
+                          info(infoRibbon.fill(e"$target", notice.file.display))
 
                       notice.codeRange.let: range =>
                         val source: ScalaSource = highlight(notice.file).await()
@@ -444,35 +480,48 @@ class Builder():
                   val errorCount = process.notices.count(_.importance == Importance.Error)
                   val warnCount = process.notices.count(_.importance == Importance.Warning)
        
-                  if errorCount == 0 then work.moveTo(output).as[Directory] else abort(BuildError())
+                  if errorCount == 0 then work.moveTo(output).as[Directory]
+                  else abort(BuildError(AbortError(5)))
 
   given expandable: Expandable[Phase] = _.antecedents.map(phases(_))
 
-  def dag(digest: Hash): Dag[Phase] = Dag.create(phases(digest))(_.antecedents.to(Set).map(phases(_)))
+  def dag(digest: Hash): Dag[Phase] =
+    Dag.create(phases(digest))(_.antecedents.to(Set).map(phases(_)))
+  
   def schedule(digest: Hash): Dag[Target] = dag(digest).map(_.target)
 
   def build(target: Target)(using Universe)
-      (using Monitor, Clock, Log[Display], WorkingDirectory, Internet, Installation, GitCommand, FrontEnd)
+      (using Monitor,
+             Clock,
+             Log[Display],
+             WorkingDirectory,
+             Internet,
+             Installation,
+             GitCommand,
+             FrontEnd)
           : Async[Hash] raises BuildError =
-
+    Log.info(t"Building target $target")
     builds.synchronized:
       builds.getOrElseUpdate
        (target,
         async:
-          given (BuildError fixes GitError)        = error => BuildError()
-          given (BuildError fixes ExecError)       = error => BuildError()
-          given (BuildError fixes PathError)       = error => BuildError()
-          given (BuildError fixes IoError)         = error => BuildError()
-          given (BuildError fixes UnknownRefError) = error => BuildError()
-          given (BuildError fixes WorkspaceError)  = error => BuildError()
-          given (BuildError fixes StreamError)     = error => BuildError()
-          given (BuildError fixes CancelError)     = error => BuildError()
+          Log.info(t"Starting new async for $target")
+          given (BuildError fixes GitError)         = BuildError(_)
+          given (BuildError fixes ExecError)        = BuildError(_)
+          given (BuildError fixes PathError)        = BuildError(_)
+          given (BuildError fixes IoError)          = BuildError(_)
+          given (BuildError fixes UnknownRefError)  = BuildError(_)
+          given (BuildError fixes WorkspaceError)   = BuildError(_)
+          given (BuildError fixes StreamError)      = BuildError(_)
+          given (BuildError fixes ConcurrencyError) = BuildError(_)
           
           val workspace = universe(target.projectId).source match
             case workspace: Workspace => workspace
  
             case vault: Vault =>
               Workspace(Cache(vault.index.releases(target.projectId).repo).await().path)
+          
+          Log.info(t"Calculated workspace for $target")
             
           val digest = workspace(target.projectId)(target.goalId) match
             case module: Module =>
@@ -490,39 +539,54 @@ class Builder():
               phases(phase.digest) = phase
               phase.digest
           
+          Log.info(t"Calculated digest for $target")
+          
           digest)
 
   def watchDirectories(hash: Hash): Set[Path] = dag(hash).keys.flatMap(_.watches)
 
-  def outputDirectory(hash: Hash)(using Installation): Path = hash.bytes.encodeAs[Base32].pipe: hash =>
-    unsafely(installation.build / PathName(hash.take(2)) / PathName(hash.drop(2)))
+  def outputDirectory(hash: Hash)(using Installation): Path =
+    hash.bytes.encodeAs[Base32].pipe: hash =>
+      unsafely(installation.build / PathName(hash.take(2)) / PathName(hash.drop(2)))
 
   def run(hash: Hash, force: Boolean)
-      (using Log[Display], DaemonService[?], Installation, FrontEnd, Monitor, SystemProperties, Environment, Internet)
-          : PhaseResult raises CancelError raises StreamError raises
-             ZipError raises IoError raises PathError raises BuildError raises ScalacError =
+      (using Log[Display],
+             DaemonService[?],
+             Installation,
+             FrontEnd,
+             Monitor,
+             SystemProperties,
+             Environment,
+             Internet)
+          : PhaseResult raises ConcurrencyError raises StreamError raises ZipError raises
+             IoError raises PathError raises BuildError raises CompileError =
 
-    if force then safely(outputDirectory(hash).as[Directory].delete())
+    if force then outputDirectory(hash).wipe()
     task(hash).await()
 
 extension (workspace: Workspace)
   def locals()
       (using Monitor, Log[Display], WorkingDirectory, Internet, Installation, GitCommand)
-          : Map[ProjectId, Definition] raises CancelError raises WorkspaceError =
+          : Map[ProjectId, Definition] raises ConcurrencyError raises WorkspaceError =
     Cache.projectsMap(workspace).await()
 
   def universe()
       (using Monitor, Clock, Log[Display], WorkingDirectory, Internet, Installation, GitCommand)
-          : Universe raises CancelError raises VaultError raises WorkspaceError =
+          : Universe raises ConcurrencyError raises VaultError raises WorkspaceError =
+    Log.info(msg"Constructing universe")
 
     given Timezone = tz"Etc/UTC"
+    Log.info(msg"Got timezone")
     val vaultProjects = Cache(workspace.ecosystem).await()
+    Log.info(msg"Got vaultProjects")
     val localProjects = locals()
+    Log.info(msg"Got locals")
     
     val projects: Map[ProjectId, Definition] =
       vaultProjects.releases.filter(_.expiry <= today()).map: release =>
         (release.id, release.definition(vaultProjects))
       .to(Map)
+    Log.info(msg"Got projects")
     
     Universe(projects -- localProjects.keySet ++ localProjects)
 
@@ -535,14 +599,14 @@ extension (workspace: Workspace)
              WorkingDirectory,
              Log[Display],
              FrontEnd,
-             Raises[CancelError],
+             Raises[ConcurrencyError],
              Raises[GitError],
              Raises[PathError],
              Raises[ExecError],
              Raises[IoError])
           : Path =
 
-    workspace.mounts.keys.find(_.precedes(path)).optional.lay(workspace.directory.path + path.link): mount =>
+    workspace.mounts.keys.where(_.precedes(path)).lay(workspace.directory.path + path.link): mount =>
       Cache(workspace.mounts(mount).repo).await().path + path.link
 
 def universe(using universe: Universe): Universe = universe
@@ -552,14 +616,14 @@ case class Universe(projects: Map[ProjectId, Definition]):
     projects.getOrElse(id, abort(UnknownRefError(id)))
 
 enum Compiler:
-  case Java(version: Int)
+  case Java
   case Scala
   case Kotlin
   
-  def sources(name: Text): Boolean = this match
-    case Java(_) => name.ends(t".java")
-    case Scala   => name.ends(t".scala")
-    case Kotlin  => name.ends(t".kt")
+  def compiles(path: Path): Boolean = this match
+    case Java    => path.name.ends(t".java")
+    case Scala   => path.name.ends(t".scala") || path.name.ends(t".java")
+    case Kotlin  => path.name.ends(t".kt")
 
 extension (basis: Basis)
   def classpath(using Installation): LocalClasspath =
@@ -594,9 +658,9 @@ extension (basis: Basis)
           : Async[File] raises BuildError =
     async:
       basis.synchronized:
-        given (BuildError fixes StreamError) = error => BuildError()
-        given (BuildError fixes ZipError)    = error => BuildError()
-        given (BuildError fixes IoError)     = error => BuildError()
+        given (BuildError fixes StreamError) = BuildError(_)
+        given (BuildError fixes ZipError)    = BuildError(_)
+        given (BuildError fixes IoError)     = BuildError(_)
   
         if !path.exists() then
           val target = unsafely(Target(ProjectId(t"system"), GoalId(basis.encode)))

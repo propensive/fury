@@ -53,7 +53,7 @@ object Cache:
   private val files: scc.TrieMap[Path, CachedFile] = scc.TrieMap()
   private val locals: scc.TrieMap[Workspace, Async[Map[ProjectId, Definition]]] = scc.TrieMap()
 
-  def file(path: Path)(using Monitor, Log[Display]): CachedFile raises IoError raises StreamError raises CancelError =
+  def file(path: Path)(using Monitor, Log[Display]): CachedFile raises IoError raises StreamError raises ConcurrencyError =
     val file = path.as[File]
     val lastModified = file.lastModified
     
@@ -117,8 +117,9 @@ object Cache:
   def apply(ecosystem: Ecosystem)
       (using Installation, Internet, Log[Display], Monitor, WorkingDirectory, GitCommand)
           : Async[Vault] raises VaultError =
-
+    
     ecosystems.getOrElseUpdate(ecosystem, async:
+      Log.info(t"Started async to fetch ecosystem")
 
       given (VaultError fixes UrlError)             = error => VaultError()
       given (VaultError fixes InvalidRefError)      = error => VaultError()
@@ -163,7 +164,7 @@ object Cache:
 
   def projectsMap(workspace: Workspace)
       (using Installation, Internet, Log[Display], Monitor, WorkingDirectory, GitCommand)
-          : Async[Map[ProjectId, Definition]] raises WorkspaceError raises CancelError =
+          : Async[Map[ProjectId, Definition]] raises WorkspaceError raises ConcurrencyError =
     
     locals.getOrElseUpdate(workspace, async:
       val maps: List[Map[ProjectId, Definition]] = workspace.local.let(_.forks).or(Nil).map: fork =>

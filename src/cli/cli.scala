@@ -20,6 +20,7 @@ import ambience.*, systemProperties.virtualMachine, environments.virtualMachine
 import anticipation.*
 import aviation.*
 import contingency.*
+import digression.*
 import escapade.*
 import escritoire.*, tableStyles.minimal, insufficientSpaceHandling.ignore
 import ethereal.*, daemonConfig.supportStderr
@@ -37,7 +38,7 @@ import inimitable.*
 import iridescence.*, colors.*
 import kaleidoscope.*
 import nettlesome.*
-import parasite.*, threadModels.virtual
+import parasite.*, threadModels.platform
 import profanity.*, terminalOptions.terminalSizeDetection
 import quantitative.*
 import rudiments.*, homeDirectories.virtualMachine
@@ -64,6 +65,7 @@ object cli:
   def Dir(using Raises[PathError]) = Flag[Path](t"dir", false, List('d'), t"Specify the working directory")
   val Offline = Switch(t"offline", false, List('o'), t"Work offline, if possible")
   val Watch = Switch(t"watch", false, List('w'), t"Watch source directories for changes")
+  val Concise = Switch(t"concise", false, List(), t"Produce less output")
   
   def Generation(using Raises[NumberError]) =
     Flag[Int](t"generation", false, List('g'), t"Use universe generation number")
@@ -104,13 +106,13 @@ def main(): Unit =
   val initTime: Optional[Instant] = safely(Instant(Properties.ethereal.startTime[Long]()))
 
   attempt[InitError]:
-    given (InitError fixes CancelError) = error => InitError(msg"A thread was cancelled")
+    given (InitError fixes ConcurrencyError) = error => InitError(msg"A thread was cancelled")
 
     supervise:
       given logFormat: LogFormat[File, Display] = logFormats.standardColor[File]
       given logFormat2: LogFormat[Err.type, Display] = logFormats.standardColor[Err.type]
       import filesystemOptions.{createNonexistent, createNonexistentParents}
-      
+
       given Log[Display] =
         given (InitError fixes IoError) =
           error => InitError(msg"An IO error occured when trying to create the log")
@@ -123,7 +125,12 @@ def main(): Unit =
         
         Log.route: 
           case _ => installation.config.log.path.as[File]
-      
+
+      /*given Mitigator = (path, error) =>
+        Log.warn(msg"Async error in ${path.map(_.text).join(t"/")}")
+        Log.info(error.stackTrace)
+        Mitigation.Escalate*/
+
       initTime.let: initTime =>
         Log.info(msg"Initialized Fury in ${(now() - initTime).show}")
 
@@ -141,7 +148,6 @@ def main(): Unit =
                     if interactive then actions.install.installInteractive(force, noTabCompletions)
                     else actions.install.batch(force, noTabCompletions)
                   
-                  service.shutdown()
                   ExitStatus.Ok
                   
               case Init() :: Nil =>
@@ -178,6 +184,7 @@ def main(): Unit =
                 case target :: _ =>
                   val online = Offline().absent
                   val watch = Watch().present
+                  val concise = Concise().present
                   val force = ForceRebuild().present
 
                   given (UserError fixes IoError)   = accede
@@ -198,7 +205,7 @@ def main(): Unit =
                     internet(online):
                       frontEnd:
                         val buildTask = task(t"build"):
-                          actions.build.run(target().decodeAs[Target], watch, force)
+                          actions.build.run(target().decodeAs[Target], watch, force, concise)
 
                         daemon:
                           terminal.events.stream.each:
@@ -212,7 +219,7 @@ def main(): Unit =
 
                 execute:
                   given (UserError fixes PathError)      = accede
-                  given (UserError fixes CancelError)    = accede
+                  given (UserError fixes ConcurrencyError)    = accede
                   given (UserError fixes IoError)        = accede
                   given (UserError fixes NumberError)    = accede
                   given (UserError fixes WorkspaceError) = accede
@@ -256,6 +263,7 @@ def main(): Unit =
                 val workspace = safely(Workspace())
                 val online = Offline().absent
                 val watch = Watch().present
+                val concise = Concise().present
                 val force = ForceRebuild().present
                 
                 workspace.let: workspace =>
@@ -274,7 +282,7 @@ def main(): Unit =
                           internet(online):
                             frontEnd:
                               val buildTask = task(t"build"):
-                                action.modules.each(actions.build.run(_, watch, force))
+                                action.modules.each(actions.build.run(_, watch, force, concise))
       
                               daemon:
                                 terminal.events.stream.each:
@@ -299,8 +307,12 @@ def main(): Unit =
     println(initError.message)
     ExitStatus.Fail(2)
 
-def about()(using Stdio): ExitStatus =
-  safely(Out.println(Image((Classpath / p"logo.png")()).render))
+def about()(using stdio: Stdio): ExitStatus =
+  safely:
+    Out.println:
+      stdio.termcap.color match
+        case ColorDepth.TrueColor => Image((Classpath / p"logo.png")()).render
+        case _                    => Image((Classpath / p"logo2.png")()).render
   
   val asciiArt =
       t"H4sIAAAAAAAA/31Ryw3AIAi9O8UbtfHcQw8wRrUzMUmTKlSx1HgA3ocXFT6FtulySUIZEIO49gllLcjIA62MmgkY"+
