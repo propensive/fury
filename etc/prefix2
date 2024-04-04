@@ -6,7 +6,7 @@ handle() {
     TERM) continue=0 ;;
   esac
   # shellcheck disable=SC2317
-  printf "s\n%s\n%s\n" "$pid" "$1" >"/dev/tcp/localhost/$port"
+  printf "s\n%s\n%s\n" "$pid" "$1" >"/dev/tcp/localhost/$port" || exit 1
 }
 
 extract() {

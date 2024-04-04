@@ -75,48 +75,76 @@ enum License(name: InlineMd, id: LicenseId, group: LicenseGroup):
    (md"Do What The F*ck You Want To Public License", LicenseId.unsafe(t"wtfpl"), LicenseGroup.Wtfpl)
   
   case Ecl2
-  extends License(md"Educational Community License v2.0", LicenseId.unsafe(t"ecl-2.0"), LicenseGroup.Ecl)
+  extends License
+   (md"Educational Community License v2.0", LicenseId.unsafe(t"ecl-2.0"), LicenseGroup.Ecl)
   
-  case Epl1 extends License(md"Eclipse Public License 1.0", LicenseId.unsafe(t"epl-1.0"), LicenseGroup.Epl)
-  case Epl2 extends License(md"Eclipse Public License 2.0", LicenseId.unsafe(t"epl-2.0"), LicenseGroup.Epl)
+  case Epl1
+  extends License (md"Eclipse Public License 1.0", LicenseId.unsafe(t"epl-1.0"), LicenseGroup.Epl)
+  
+  case Epl2
+  extends License(md"Eclipse Public License 2.0", LicenseId.unsafe(t"epl-2.0"), LicenseGroup.Epl)
   
   case Eupl11
-  extends License(md"European Union Public License 1.1", LicenseId.unsafe(t"eupl-1.1"), LicenseGroup.Eupl)
+  extends License
+   (md"European Union Public License 1.1", LicenseId.unsafe(t"eupl-1.1"), LicenseGroup.Eupl)
   
   case Agpl3
-  extends License(md"GNU Affero General Public License v3.0", LicenseId.unsafe(t"agpl-3.0"), LicenseGroup.Agpl)
+  extends License
+   (md"GNU Affero General Public License v3.0", LicenseId.unsafe(t"agpl-3.0"), LicenseGroup.Agpl)
   
-  case Gpl extends License(md"GNU General Public License family", LicenseId.unsafe(t"gpl"), LicenseGroup.Gpl)
-  case Gpl2 extends License(md"GNU General Public License v2.0", LicenseId.unsafe(t"gpl-2.0"), LicenseGroup.Gpl)
-  case Gpl3 extends License(md"GNU General Public License v3.0", LicenseId.unsafe(t"gpl-3.0"), LicenseGroup.Gpl)
+  case Gpl
+  extends License(md"GNU General Public License family", LicenseId.unsafe(t"gpl"), LicenseGroup.Gpl)
+  
+  case Gpl2
+  extends License
+   (md"GNU General Public License v2.0", LicenseId.unsafe(t"gpl-2.0"), LicenseGroup.Gpl)
+  
+  case Gpl3
+  extends License
+   (md"GNU General Public License v3.0", LicenseId.unsafe(t"gpl-3.0"), LicenseGroup.Gpl)
   
   case Lgpl
-  extends License(md"GNU Lesser General Public License family", LicenseId.unsafe(t"lgpl"), LicenseGroup.Lgpl)
+  extends License
+   (md"GNU Lesser General Public License family", LicenseId.unsafe(t"lgpl"), LicenseGroup.Lgpl)
   
   case Lgpl21
-  extends License(md"GNU Lesser General Public License v2.1", LicenseId.unsafe(t"lgpl-2.1"), LicenseGroup.Lgpl)
+  extends License
+   (md"GNU Lesser General Public License v2.1", LicenseId.unsafe(t"lgpl-2.1"), LicenseGroup.Lgpl)
   
   case Lgpl3
-  extends License(md"GNU Lesser General Public License v3.0", LicenseId.unsafe(t"lgpl-3.0"), LicenseGroup.Lgpl)
+  extends License
+   (md"GNU Lesser General Public License v3.0", LicenseId.unsafe(t"lgpl-3.0"), LicenseGroup.Lgpl)
   
   case Isc extends License(md"ISC", LicenseId.unsafe(t"isc"), LicenseGroup.Isc)
   
   case Lppl13c
-  extends License(md"LaTeX Project Public License v1.3c", LicenseId.unsafe(t"lppl-1.3c"), LicenseGroup.Lppl)
+  extends License
+   (md"LaTeX Project Public License v1.3c", LicenseId.unsafe(t"lppl-1.3c"), LicenseGroup.Lppl)
   
-  case MsPl extends License(md"Microsoft Public License", LicenseId.unsafe(t"ms-pl"), LicenseGroup.Ms)
+  case MsPl
+  extends License(md"Microsoft Public License", LicenseId.unsafe(t"ms-pl"), LicenseGroup.Ms)
+  
   case Mit extends License(md"MIT", LicenseId.unsafe(t"mit"), LicenseGroup.Mit)
-  case Mpl extends License(md"Mozilla Public License 2.0", LicenseId.unsafe(t"mpl-2.0"), LicenseGroup.Mpl)
-  case Osl3 extends License(md"Open Software License 3.0", LicenseId.unsafe(t"osl-3.0"), LicenseGroup.Osl)
+  
+  case Mpl
+  extends License(md"Mozilla Public License 2.0", LicenseId.unsafe(t"mpl-2.0"), LicenseGroup.Mpl)
+  
+  case Osl3
+  extends License(md"Open Software License 3.0", LicenseId.unsafe(t"osl-3.0"), LicenseGroup.Osl)
   
   case PostgreSql
   extends License(md"PostgreSQL License", LicenseId.unsafe(t"postgresql"), LicenseGroup.PostgreSql)
   
-  case Ofl11 extends License(md"SIL Open Font License 1.1", LicenseId.unsafe(t"ofl-1.1"), LicenseGroup.Ofl)
+  case Ofl11
+  extends License(md"SIL Open Font License 1.1", LicenseId.unsafe(t"ofl-1.1"), LicenseGroup.Ofl)
   
   case Ncsa
   extends License
-      (md"University of Illinois/NCSA Open Source License", LicenseId.unsafe(t"ncsa"), LicenseGroup.Ncsa)
+   (md"University of Illinois/NCSA Open Source License",
+    LicenseId.unsafe(t"ncsa"),
+    LicenseGroup.Ncsa)
   
-  case Unlicense extends License(md"The Unlicense", LicenseId.unsafe(t"unlicense"), LicenseGroup.Unlicense)
+  case Unlicense
+  extends License(md"The Unlicense", LicenseId.unsafe(t"unlicense"), LicenseGroup.Unlicense)
+  
   case Zlib extends License(md"zLib License", LicenseId.unsafe(t"zlib"), LicenseGroup.Zlib)

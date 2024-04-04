@@ -38,7 +38,7 @@ import inimitable.*
 import iridescence.*, colors.*
 import kaleidoscope.*
 import nettlesome.*
-import parasite.*, threadModels.platform
+import parasite.*, threadModels.virtual
 import profanity.*, terminalOptions.terminalSizeDetection
 import quantitative.*
 import rudiments.*, homeDirectories.virtualMachine
@@ -54,15 +54,26 @@ given Realm = realm"fury"
 given Decimalizer = Decimalizer(2)
 
 object cli:
-  val Version = Switch(t"version", false, List('v'), t"Show information about the current version of Fury")
+  val Version =
+    Switch(t"version", false, List('v'), t"Show information about the current version of Fury")
+  
   val Interactive = Switch(t"interactive", false, List('i'), t"Run the command interactively")
-  val NoTabCompletions = Switch(t"no-tab-completions", false, Nil, t"Do not install tab completions")
+  
+  val NoTabCompletions =
+    Switch(t"no-tab-completions", false, Nil, t"Do not install tab completions")
+  
   val Artifact = Switch(t"artifact", false, List('a'), t"Produce an artifact")
   val Benchmarks = Switch(t"benchmark", false, List('b'), t"Run with OS settings for benchmarking")
-  val Discover = Switch(t"discover", false, List('D'), t"Try to discover build details from the directory")
+  
+  val Discover =
+    Switch(t"discover", false, List('D'), t"Try to discover build details from the directory")
+  
   val Force = Switch(t"force", false, List('F'), t"Overwrite existing files if necessary")
   val ForceRebuild = Switch(t"force", false, List('f'), t"Force the module to be rebuilt")
-  def Dir(using Raises[PathError]) = Flag[Path](t"dir", false, List('d'), t"Specify the working directory")
+  
+  def Dir(using Raises[PathError]) =
+    Flag[Path](t"dir", false, List('d'), t"Specify the working directory")
+  
   val Offline = Switch(t"offline", false, List('o'), t"Work offline, if possible")
   val Watch = Switch(t"watch", false, List('w'), t"Watch source directories for changes")
   val Concise = Switch(t"concise", false, List(), t"Produce less output")
@@ -89,7 +100,8 @@ object cli:
 given (using Raises[UserError]): HomeDirectory =
   given (UserError fixes SystemPropertyError) =
     case SystemPropertyError(property) =>
-      UserError(msg"Could not access the home directory because the $property system property was not set.")
+      UserError:
+        msg"Could not access the home directory because the $property system property was not set."
 
   homeDirectories.virtualMachine
 
@@ -97,7 +109,9 @@ given (using Raises[UserError]): HomeDirectory =
 given (using Cli): WorkingDirectory = workingDirectories.daemonClient 
 
 given installation(using Raises[UserError]): Installation =
-  given (UserError fixes ConfigError) = error => UserError(msg"The configuration file could not be read.")
+  given (UserError fixes ConfigError) = error =>
+    UserError(msg"The configuration file could not be read.")
+  
   Installation()
 
 @main
@@ -171,7 +185,9 @@ def main(): Unit =
                 case Nil => execute(frontEnd(actions.cache.about()))
                 
                 case other :: _ =>
-                  execute(frontEnd(other.let(actions.invalidSubcommand(_)).or(actions.missingSubcommand())))
+                  execute:
+                    frontEnd:
+                      other.let(actions.invalidSubcommand(_)).or(actions.missingSubcommand())
                 
               case About() :: _ => execute(about())
               
@@ -196,7 +212,8 @@ def main(): Unit =
                       case workspace: Workspace => workspace.build.projects.flatMap(_.targets)
                     
                     target.let: target =>
-                      if target().contains(t"/") then target.suggest(previous ++ targets.map(_.suggestion))
+                      if target().contains(t"/")
+                      then target.suggest(previous ++ targets.map(_.suggestion))
                       else target.suggest(previous ++ targets.map(_.partialSuggestion))
                   
                   execute:
@@ -242,7 +259,9 @@ def main(): Unit =
                       internet(online)(frontEnd(actions.universe.show()))
 
                   case command :: _ => execute:
-                    Out.println(e"Command $Italic(${command.vouch(using Unsafe)()}) was not recognized.")
+                    Out.println:
+                      e"Command $Italic(${command.vouch(using Unsafe)()}) was not recognized."
+
                     ExitStatus.Fail(1)
                   
               case Shutdown() :: Nil => execute:
@@ -286,8 +305,11 @@ def main(): Unit =
       
                               daemon:
                                 terminal.events.stream.each:
-                                  case Keypress.Escape | Keypress.Ctrl('C') => summon[FrontEnd].abort()
-                                  case other                                => ()
+                                  case Keypress.Escape | Keypress.Ctrl('C') =>
+                                    summon[FrontEnd].abort()
+                                  
+                                  case other =>
+                                    ()
                               
                               buildTask.await().also(Out.print(t"\e[?25h"))
                               ExitStatus.Ok
@@ -342,7 +364,7 @@ def about()(using stdio: Stdio): ExitStatus =
   
   val software =
     List
-     (Software(t"Fury", t"1.0${buildId.lay(t"") { id => t", build $id"}}", t"2017-2024, Propensive"),
+     (Software(t"Fury", t"1.0${buildId.lay(t"") { id => t" build $id"}}", t"2017-2024, Propensive"),
       Software(t"Scala", scalaProperties(t"version.number"), scalaCopyright),
       unsafely(Software(t"Java distribution", Properties.java.version(), Properties.java.vendor())),
       Software(t"Java specification", jvmVersion, jvmVendor))

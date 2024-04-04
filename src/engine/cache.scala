@@ -53,7 +53,9 @@ object Cache:
   private val files: scc.TrieMap[Path, CachedFile] = scc.TrieMap()
   private val locals: scc.TrieMap[Workspace, Async[Map[ProjectId, Definition]]] = scc.TrieMap()
 
-  def file(path: Path)(using Monitor, Log[Display]): CachedFile raises IoError raises StreamError raises ConcurrencyError =
+  given supervisor: Supervisor = PlatformSupervisor
+
+  def file(path: Path)(using Log[Display]): CachedFile raises IoError raises StreamError raises ConcurrencyError =
     val file = path.as[File]
     val lastModified = file.lastModified
     
@@ -72,7 +74,7 @@ object Cache:
     workspaces.clear()
     files.clear()
 
-  def about(using Monitor): CacheInfo =
+  def about: CacheInfo =
     val dataSize = ByteSize(files.values.map { file => safely(file.text.await().length).or(0) }.sum)
     CacheInfo(ecosystems.size, snapshots.size, workspaces.size, files.size, dataSize)
 
@@ -87,7 +89,6 @@ object Cache:
       (using Installation,
              Internet,
              Log[Display],
-             Monitor,
              WorkingDirectory,
              GitCommand,
              FrontEnd,
@@ -115,7 +116,7 @@ object Cache:
     )
         
   def apply(ecosystem: Ecosystem)
-      (using Installation, Internet, Log[Display], Monitor, WorkingDirectory, GitCommand)
+      (using Installation, Internet, Log[Display], WorkingDirectory, GitCommand)
           : Async[Vault] raises VaultError =
     
     ecosystems.getOrElseUpdate(ecosystem, async:
@@ -150,7 +151,7 @@ object Cache:
       Codl.read[Vault]((destination / p"vault.codl").as[File])
     )
 
-  def workspace(path: Path)(using Installation, Internet, Log[Display], Monitor, WorkingDirectory, GitCommand)
+  def workspace(path: Path)(using Installation, Internet, Log[Display], WorkingDirectory, GitCommand)
           : Async[Workspace] raises WorkspaceError =
 
     given (WorkspaceError fixes IoError) =
@@ -163,7 +164,7 @@ object Cache:
       workspaces(path) = (lastModified, async)
 
   def projectsMap(workspace: Workspace)
-      (using Installation, Internet, Log[Display], Monitor, WorkingDirectory, GitCommand)
+      (using Installation, Internet, Log[Display], WorkingDirectory, GitCommand)
           : Async[Map[ProjectId, Definition]] raises WorkspaceError raises ConcurrencyError =
     
     locals.getOrElseUpdate(workspace, async:

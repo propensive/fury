@@ -169,7 +169,7 @@ launch() {
   startTime="$(date +%s%3N)"
   echo "$pid" > "$pidFile"
   [ -x "$javaCmd" ] || extract
-  (nohup "$javaCmd" -Dethereal.startTime="$startTime" -Dethereal.name="$name" -Dethereal.script="$script" -Dethereal.payloadSize=$payloadSize -Dethereal.jarSize=$jarSize -Dethereal.command="$(command -v "$name")" -Dethereal.fpath="$(zsh -c 'printf "%s\n" $fpath' 2> /dev/null || echo '')" -jar "$script" > /dev/null 2> >(logger -t "$name") || abort) &
+  (nohup "$javaCmd" -Djdk.trackAllThreads=true -Djdk.virtualThreadScheduler.parallelism=64 -Dethereal.startTime="$startTime" -Dethereal.name="$name" -Dethereal.script="$script" -Dethereal.payloadSize=$payloadSize -Dethereal.jarSize=$jarSize -Dethereal.command="$(command -v "$name")" -Dethereal.fpath="$(zsh -c 'printf "%s\n" $fpath' 2> /dev/null || echo '')" -jar "$script" > /dev/null 2> >(logger -t "$name") || abort) &
   launchPid=$!
   
   while [[ ! -s "$portFile" ]] && [[ ! -f "$failFile" ]]

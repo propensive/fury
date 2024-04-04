@@ -322,7 +322,8 @@ object Workspace:
       case IoError(path)        => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
 
     given (WorkspaceError fixes PathError) =
-      case pathError: PathError => WorkspaceError(WorkspaceError.Reason.Explanation(pathError.message))
+      case pathError: PathError =>
+        WorkspaceError(WorkspaceError.Reason.Explanation(pathError.message))
 
     apply(workingDirectory[Path])
 
@@ -340,7 +341,8 @@ object Workspace:
       case StreamError(_) => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
 
     given (WorkspaceError fixes MarkdownError) =
-      case MarkdownError(reason) => WorkspaceError(WorkspaceError.Reason.Explanation(reason.communicate))
+      case MarkdownError(reason) =>
+        WorkspaceError(WorkspaceError.Reason.Explanation(reason.communicate))
 
     given (WorkspaceError fixes IoError) =
       case IoError(path) => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
@@ -349,7 +351,8 @@ object Workspace:
       case UrlError(text, _, _) => WorkspaceError(WorkspaceError.Reason.BadData(text))
 
     given (WorkspaceError fixes PathError) =
-      case pathError: PathError => WorkspaceError(WorkspaceError.Reason.Explanation(pathError.message))
+      case pathError: PathError =>
+        WorkspaceError(WorkspaceError.Reason.Explanation(pathError.message))
 
     given (WorkspaceError fixes FqcnError) =
       case error: FqcnError => WorkspaceError(WorkspaceError.Reason.Explanation(error.message))

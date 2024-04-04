@@ -41,6 +41,7 @@ import profanity.*
 import quantitative.*
 import rudiments.*
 import serpentine.*, hierarchies.unixOrWindows
+import spectacular.*
 import turbulence.*
 import vacuous.*
 
@@ -118,8 +119,11 @@ object actions:
       ExitStatus.Ok
 
     def about()(using FrontEnd, Monitor): ExitStatus raises UserError = Cache.about.pipe: cache =>
-      info(msg"""The cache contains ${cache.ecosystems} ecosystems, ${cache.snapshots} repository snapshots,
-                 ${cache.workspaces} workspaces and ${cache.files} files, totalling ${cache.dataSize}.""")
+      info
+       (msg"""
+        The cache contains ${cache.ecosystems} ecosystems, ${cache.snapshots} repository snapshots,
+        ${cache.workspaces} workspaces and ${cache.files} files, totalling ${cache.dataSize}.
+        """)
       ExitStatus.Ok
 
   object universe:
@@ -211,7 +215,7 @@ object actions:
         Log.info(msg"Calculated hash")
         if !concise then summon[FrontEnd].setSchedule(builder.schedule(hash))
         Log.info(msg"Invoking run")
-        builder.run(hash, force)
+        builder.run(target.show, hash, force)
         Log.info(msg"Returning watch directories")
         builder.watchDirectories(hash)
       

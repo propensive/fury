@@ -49,9 +49,9 @@ object Ids:
   opaque type EcosystemId = Text
   opaque type StreamId    = Text
   opaque type ProjectId   = Text
-  opaque type ActionName = Text
-  opaque type Keyword    = Text
-  opaque type LicenseId  = Text
+  opaque type ActionName  = Text
+  opaque type Keyword     = Text
+  opaque type LicenseId   = Text
 
   class Id[IdType]() extends RefType(t"ID"):
     def apply(value: Text)(using Raises[InvalidRefError]): IdType = value match
