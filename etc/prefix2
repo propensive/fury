@@ -46,7 +46,7 @@ active() {
   local path
   local -i pid
   path="$1"
-  [ -s "$pidFile" ] && kill -0 $(<"$pidFile")
+  [ -s "$pidFile" ] && kill -0 $(<"$pidFile") 2> /dev/null
 }
 
 checkState() {
