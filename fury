@@ -5,6 +5,8 @@ repo propensive/probably       0000000000000000000000000000000000000000
 repo propensive/galilei        0000000000000000000000000000000000000000
 repo propensive/jacinta        0000000000000000000000000000000000000000
 repo propensive/cellulose      0000000000000000000000000000000000000000
+repo propensive/embarcadero    0000000000000000000000000000000000000000
+repo propensive/impressionism  0000000000000000000000000000000000000000
 repo propensive/aviation       0000000000000000000000000000000000000000
 repo propensive/imperial       0000000000000000000000000000000000000000
 repo propensive/gastronomy     0000000000000000000000000000000000000000
@@ -24,27 +26,23 @@ repo propensive/zeppelin       0000000000000000000000000000000000000000
 project fury
   module model
     compiler  scala
-    include   xylophone/core  acyclicity/core  galilei/core  telekinesis/client  aviation/core  escritoire/core  cellulose/core  punctuation/core  imperial/core  gastronomy/core  acyclicity/core  nettlesome/url  octogenarian/core  surveillance/core  exoskeleton/core  exoskeleton/completions  ethereal/core  eucalyptus/ansi  eucalyptus/syslog  superlunary/core  hallucination/core
+    include   acyclicity/core aviation/core cellulose/core escritoire/core exoskeleton/completions jacinta/core octogenarian/core punctuation/core telekinesis/client xylophone/core
     sources   src/model
     lib       scalajs-linker-interface https://repo1.maven.org/maven2/org/scala-js/scalajs-linker-interface_2.13/1.14.0/scalajs-linker-interface_2.13-1.14.0.jar
     lib       scalajs-logging https://repo1.maven.org/maven2/org/scala-js/scalajs-logging_2.13/1.1.1/scalajs-logging_2.13-1.1.1.jar
 
   module engine
     compiler  scala
-    include   fury/model  feudalism/core  anthology/scala  dendrology/dag  zeppelin/core  harlequin/core  revolution/core  embarcadero/core
+    include   fury/model anthology/scala anthology/java revolution/core harlequin/ansi dendrology/dag zeppelin/core ethereal/core embarcadero/core
     sources   src/engine
 
   module cli
     compiler  scala
-    include   fury/engine
+    include   fury/engine hallucination/core impressionism/core eucalyptus/ansi eucalyptus/syslog
     sources   src/cli
     main      fury.main
     artifact  dist/rage
     counter   res/build.id
-
-  module core
-    sources  src/core
-    include  fury/model
 
   module test
     compiler scala

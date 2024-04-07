@@ -36,7 +36,7 @@ import nettlesome.*
 import zeppelin.*
 import octogenarian.*
 import surveillance.*
-import parasite.*
+import parasite.*, asyncOptions.escalateExceptions
 import profanity.*
 import quantitative.*
 import rudiments.*
@@ -102,12 +102,18 @@ object actions:
       if !noTabCompletions then info(TabCompletions.install(force = true).communicate)
       ExitStatus.Ok
 
-  def clean()(using FrontEnd, Installation): ExitStatus raises UserError =
-    import filesystemOptions.doNotCreateNonexistent
-    import filesystemOptions.doNotDereferenceSymlinks
-    import filesystemOptions.deleteRecursively
+  def clean(all: Boolean)(using FrontEnd, Installation): ExitStatus raises UserError =
+    import filesystemOptions.
+       {doNotCreateNonexistent, doNotDereferenceSymlinks, deleteRecursively}
+
     val size0 = safely(installation.cache.as[Directory].size()).or(0.b)
-    safely(installation.cache.delete())
+    
+    if all then safely(installation.cache.delete())
+    else
+      safely(installation.build.wipe())
+      safely(installation.tmp.delete())
+      safely(installation.work.wipe())
+    
     val size = safely(size0 - installation.cache.as[Directory].size()).or(0.b)
     info(t"$size was cleaned up")
     ExitStatus.Ok
@@ -236,3 +242,4 @@ object actions:
   def versionInfo()(using FrontEnd): ExitStatus = 
     info(msg"Fury version 1.0")
     ExitStatus.Ok
+

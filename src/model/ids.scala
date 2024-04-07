@@ -36,8 +36,12 @@ extends Error(msg"The value '$id' is not a valid ${refType.name}")
 case class AppError(userMessage: Message, underlyingCause: Optional[Error] = Unset)
 extends Error(userMessage)
 
-case class UnknownRefError(ref: ProjectId)
-extends Error(msg"the reference ${ref.show} could not be resolved")
+object RefError:
+  def apply[IdType: Show](ref: IdType): RefError =
+    new RefError(ref.show)
+
+case class RefError(ref: Text)
+extends Error(msg"the reference $ref could not be resolved")
 
 case class BuildfileError(path: Path, issues: List[Error])
 extends Error(msg"There were problems with the build file $path")

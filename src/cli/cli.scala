@@ -38,7 +38,7 @@ import inimitable.*
 import iridescence.*, colors.*
 import kaleidoscope.*
 import nettlesome.*
-import parasite.*, threadModels.virtual
+import parasite.*, threadModels.platform, asyncOptions.cancelOrphans
 import profanity.*, terminalOptions.terminalSizeDetection
 import quantitative.*
 import rudiments.*, homeDirectories.virtualMachine
@@ -46,9 +46,6 @@ import serpentine.*, hierarchies.unixOrWindows
 import spectacular.*
 import turbulence.*
 import vacuous.*
-
-enum BusMessage:
-  case Ping
 
 given Realm = realm"fury"
 given Decimalizer = Decimalizer(2)
@@ -69,6 +66,7 @@ object cli:
     Switch(t"discover", false, List('D'), t"Try to discover build details from the directory")
   
   val Force = Switch(t"force", false, List('F'), t"Overwrite existing files if necessary")
+  val All = Switch(t"all", false, List('a'), t"Clean system artifacts as well")
   val ForceRebuild = Switch(t"force", false, List('f'), t"Force the module to be rebuilt")
   
   def Dir(using Raises[PathError]) =
@@ -104,7 +102,6 @@ given (using Raises[UserError]): HomeDirectory =
         msg"Could not access the home directory because the $property system property was not set."
 
   homeDirectories.virtualMachine
-
 
 given (using Cli): WorkingDirectory = workingDirectories.daemonClient 
 
@@ -148,7 +145,7 @@ def main(): Unit =
       initTime.let: initTime =>
         Log.info(msg"Initialized Fury in ${(now() - initTime).show}")
 
-      cliService[BusMessage]:
+      cliService:
         attempt[UserError]:
           Log.envelop(Uuid().show.take(8)):
             if Version().present then execute(frontEnd(actions.versionInfo())) else arguments match
@@ -164,7 +161,7 @@ def main(): Unit =
                   
                   ExitStatus.Ok
                   
-              case Init() :: Nil =>
+              case Init() :: _ =>
                 
                 execute:
                   frontEnd:
@@ -172,14 +169,15 @@ def main(): Unit =
                       abort(UserError(msg"The working directory could not be determined."))
                     actions.build.initialize(directory)
 
-              case Config() :: Nil =>
+              case Config() :: _ =>
                 execute:
                   frontEnd:
                     info(installation.config.debug)
                     ExitStatus.Ok
 
-              case Clean() :: Nil =>
-                execute(frontEnd(actions.clean()))
+              case Clean() :: _ =>
+                val all: Boolean = All().present
+                execute(frontEnd(actions.clean(all)))
               
               case Cache() :: subcommands => subcommands match
                 case Nil => execute(frontEnd(actions.cache.about()))
@@ -299,20 +297,23 @@ def main(): Unit =
                       subcommand().populated.let(ActionName(_)).or(workspace.build.default).let: action =>
                         workspace.build.actions.where(_.name == action).let: action =>
                           internet(online):
-                            frontEnd:
-                              val buildTask = task(t"build"):
-                                action.modules.each(actions.build.run(_, watch, force, concise))
-      
-                              daemon:
-                                terminal.events.stream.each:
-                                  case Keypress.Escape | Keypress.Ctrl('C') =>
-                                    summon[FrontEnd].abort()
-                                  
-                                  case other =>
-                                    ()
-                              
-                              buildTask.await().also(Out.print(t"\e[?25h"))
-                              ExitStatus.Ok
+                            async:
+                              frontEnd:
+                                val buildTask = task(t"build"):
+                                  action.modules.each(actions.build.run(_, watch, force, concise))
+        
+                                daemon:
+                                  terminal.events.stream.each:
+                                    case Keypress.Escape | Keypress.Ctrl('C') =>
+                                      summon[FrontEnd].abort()
+                                    
+                                    case other =>
+                                      ()
+                                
+                                buildTask.await().also(Out.print(t"\e[?25h"))
+                                info(t"Compilation finished.")
+                                ExitStatus.Ok
+                            .await()
   
                     .or:
                       subcommand.let(frontEnd(actions.invalidSubcommand(_))).or:
@@ -344,9 +345,7 @@ def about()(using stdio: Stdio): ExitStatus =
     Out.print(t" "*19)
     Out.println(line)
   
-  val buildId = safely:
-    val resource = Classpath / p"build.id"
-    resource().readAs[Text].trim
+  val buildId = safely((Classpath / p"build.id")().readAs[Text].trim)
   
   val scalaProperties = unsafely:
     val resource = Classpath / p"compiler.properties"
@@ -384,3 +383,4 @@ def about()(using stdio: Stdio): ExitStatus =
       e"  ${Italic}(${Properties.os.name()} ${Properties.os.version()}, ${Properties.os.arch()})\n"
   
   ExitStatus.Ok
+

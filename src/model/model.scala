@@ -22,11 +22,12 @@ import cellulose.*
 import escapade.*
 import exoskeleton.*
 import fulminate.*
-import galilei.*, filesystemOptions.{doNotCreateNonexistent, dereferenceSymlinks}, filesystemInterfaces.galileiApi
+import galilei.*
+import filesystemOptions.{doNotCreateNonexistent, dereferenceSymlinks}
+import filesystemInterfaces.galileiApi
 import gastronomy.*
 import gossamer.*
 import hieroglyph.*, charEncoders.utf8, charDecoders.utf8, badEncodingHandlers.strict
-import iridescence.*
 import digression.*
 import kaleidoscope.*
 import nettlesome.*
@@ -150,11 +151,10 @@ case class Project
      keywords:    List[Keyword])
 derives Debug, CodlEncoder:
 
-  // FIXME: Handle not-found
-  def apply(goal: GoalId): Module | Artifact | Library =
-    modules.find(_.id == goal).orElse(artifacts.find(_.id == goal)).orElse(libraries.find(_.id == goal)).get
+  def apply(goal: GoalId): Optional[Module | Artifact | Library] =
+    modules.where(_.id == goal).or(artifacts.where(_.id == goal)).or(libraries.where(_.id == goal))
 
-  def goals: List[GoalId] = modules.map(_.id) ++ artifacts.map(_.id)
+  def goals: List[GoalId] = modules.map(_.id) ++ artifacts.map(_.id) ++ libraries.map(_.id)
   def targets: List[Target] = goals.map(Target(id, _))
 
   def definition(workspace: Workspace): Definition =
@@ -291,7 +291,10 @@ object WorkPath:
     def separator(path: WorkPath): Text = t"/"
 
   given rootParser: RootParser[WorkPath, Unit] = text => ((), text)
-  given creator: PathCreator[WorkPath, GeneralForbidden, Unit] = (unit, descent) => WorkPath(descent)
+  
+  given creator: PathCreator[WorkPath, GeneralForbidden, Unit] =
+    (unit, descent) => WorkPath(descent)
+  
   given show: Show[WorkPath] = _.render
   given encoder: Encoder[WorkPath] = _.render
   //given debug: Debug[WorkPath] = _.render

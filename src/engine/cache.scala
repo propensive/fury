@@ -20,11 +20,14 @@ import anticipation.*, filesystemInterfaces.galileiApi, timeInterfaces.aviationA
 import aviation.*
 import cellulose.*
 import eucalyptus.*
-import galilei.*, filesystemOptions.{dereferenceSymlinks, createNonexistent, createNonexistentParents}
+
+import galilei.*,
+    filesystemOptions.{dereferenceSymlinks, createNonexistent, createNonexistentParents}
+
 import hieroglyph.*, charDecoders.utf8, badEncodingHandlers.skip
 import nettlesome.*
 import octogenarian.*
-import parasite.*
+import parasite.*, asyncOptions.cancelOrphans
 import contingency.*
 import guillotine.*
 import fulminate.*
@@ -42,20 +45,23 @@ import turbulence.*
 
 import scala.collection.concurrent as scc
 
-case class CachedFile(lastModified: Instant, text: Async[Text], hash: Async[Hash])
+case class CachedFile(lastModified: Instant, text: Task[Text], hash: Task[Hash])
 
-case class CacheInfo(ecosystems: Int, snapshots: Int, workspaces: Int, files: Int, dataSize: ByteSize)
+case class CacheInfo
+    (ecosystems: Int, snapshots: Int, workspaces: Int, files: Int, dataSize: ByteSize)
 
 object Cache:
-  private val ecosystems: scc.TrieMap[Ecosystem, Async[Vault]] = scc.TrieMap()
-  private val snapshots: scc.TrieMap[Snapshot, Async[Directory]] = scc.TrieMap()
-  private val workspaces: scc.TrieMap[Path, (Instant, Async[Workspace])] = scc.TrieMap()
+  private val ecosystems: scc.TrieMap[Ecosystem, Task[Vault]] = scc.TrieMap()
+  private val snapshots: scc.TrieMap[Snapshot, Task[Directory]] = scc.TrieMap()
+  private val workspaces: scc.TrieMap[Path, (Instant, Task[Workspace])] = scc.TrieMap()
   private val files: scc.TrieMap[Path, CachedFile] = scc.TrieMap()
-  private val locals: scc.TrieMap[Workspace, Async[Map[ProjectId, Definition]]] = scc.TrieMap()
+  private val locals: scc.TrieMap[Workspace, Task[Map[ProjectId, Definition]]] = scc.TrieMap()
 
   given supervisor: Supervisor = PlatformSupervisor
 
-  def file(path: Path)(using Log[Display]): CachedFile raises IoError raises StreamError raises ConcurrencyError =
+  def file(path: Path)(using Log[Display])
+          : CachedFile raises IoError raises StreamError raises ConcurrencyError =
+
     val file = path.as[File]
     val lastModified = file.lastModified
     
@@ -63,7 +69,7 @@ object Cache:
       val task = async(file.readAs[Text])
       CachedFile(lastModified, task, task.map(_.digest[Sha2[256]]))
 
-    val cached = files.getOrElseUpdate(path, cachedFile())
+    val cached = files.establish(path)(cachedFile())
       
     if cached.lastModified == lastModified then cached else cachedFile().tap: entry =>
       files(path) = entry
@@ -96,82 +102,89 @@ object Cache:
              Raises[PathError],
              Raises[IoError],
              Raises[GitError])
-          : Async[Directory] =
+          : Task[Directory] =
 
-    snapshots.getOrElseUpdate(snapshot, async:
-      val destination = summon[Installation].snapshots.path / PathName(snapshot.commit.show)
-      
-      if destination.exists() then destination.as[Directory] else
-        Log.info(msg"Cloning ${snapshot.url}")
-        val process = Git.cloneCommit(snapshot.url, destination, snapshot.commit)
-        val target = unsafely(Target(ProjectId(t"git"), GoalId(snapshot.commit.show)))
-        summon[FrontEnd].start(target)
-        gitProgress(process.progress).each: progress =>
-          summon[FrontEnd](target) = progress
-          
-        summon[FrontEnd].stop(target)
+    snapshots.establish(snapshot):
+      async:
+        val destination = summon[Installation].snapshots.path / PathName(snapshot.commit.show)
         
-        process.complete().workTree.vouch(using Unsafe).also:
-          Log.info(msg"Finished cloning ${snapshot.url}")
-    )
+        if destination.exists() then destination.as[Directory] else
+          Log.info(msg"Cloning ${snapshot.url}")
+          val process = Git.cloneCommit(snapshot.url, destination, snapshot.commit)
+          val target = unsafely(Target(ProjectId(t"git"), GoalId(snapshot.commit.show)))
+          summon[FrontEnd].start(target)
+          gitProgress(process.progress).each: progress =>
+            summon[FrontEnd](target) = progress
+            
+          summon[FrontEnd].stop(target)
+          
+          process.complete().workTree.vouch(using Unsafe).also:
+            Log.info(msg"Finished cloning ${snapshot.url}")
         
   def apply(ecosystem: Ecosystem)
       (using Installation, Internet, Log[Display], WorkingDirectory, GitCommand)
-          : Async[Vault] raises VaultError =
+          : Task[Vault] raises VaultError =
     
-    ecosystems.getOrElseUpdate(ecosystem, async:
-      Log.info(t"Started async to fetch ecosystem")
+    ecosystems.establish(ecosystem):
+      async:
+        Log.info(t"Started async to fetch ecosystem")
+  
+        given (VaultError fixes UrlError)             = error => VaultError()
+        given (VaultError fixes InvalidRefError)      = error => VaultError()
+        given (VaultError fixes ExecError)            = error => VaultError()
+        given (VaultError fixes StreamError)          = error => VaultError()
+        given (VaultError fixes NumberError)          = error => VaultError()
+        given (VaultError fixes DateError)            = error => VaultError()
+        given (VaultError fixes GitError)             = error => VaultError()
+        given (VaultError fixes IoError)              = error => VaultError()
+        given (VaultError fixes GitRefError)          = error => VaultError()
+        given (VaultError fixes HostnameError)        = error => VaultError()
+        given (VaultError fixes UndecodableCharError) = error => VaultError()
+        given (VaultError fixes PathError)            = error => VaultError()
+        given (VaultError fixes FqcnError)            = error => VaultError()
+        given (VaultError fixes CodlReadError)        = error => VaultError()
+        given (VaultError fixes MarkdownError)        = error => VaultError()
+  
+        val destination =
+          installation.vault.path / PathName(ecosystem.id.show) / PathName(ecosystem.branch.show)
+  
+        if !destination.exists() then
+          Log.info(msg"Cloning ${ecosystem.url}")
+          val process = Git.clone(ecosystem.url, destination, branch = ecosystem.branch)
+            
+          gitProgress(process.progress).map(_.debug).each(Log.info(_))
+            
+          process.complete().also:
+            Log.info(msg"Finished cloning ${ecosystem.url}")            
+  
+        Codl.read[Vault]((destination / p"vault.codl").as[File])
 
-      given (VaultError fixes UrlError)             = error => VaultError()
-      given (VaultError fixes InvalidRefError)      = error => VaultError()
-      given (VaultError fixes ExecError)            = error => VaultError()
-      given (VaultError fixes StreamError)          = error => VaultError()
-      given (VaultError fixes NumberError)          = error => VaultError()
-      given (VaultError fixes DateError)            = error => VaultError()
-      given (VaultError fixes GitError)             = error => VaultError()
-      given (VaultError fixes IoError)              = error => VaultError()
-      given (VaultError fixes GitRefError)          = error => VaultError()
-      given (VaultError fixes HostnameError)        = error => VaultError()
-      given (VaultError fixes UndecodableCharError) = error => VaultError()
-      given (VaultError fixes PathError)            = error => VaultError()
-      given (VaultError fixes FqcnError)            = error => VaultError()
-      given (VaultError fixes CodlReadError)        = error => VaultError()
-      given (VaultError fixes MarkdownError)        = error => VaultError()
-
-      val destination = installation.vault.path / PathName(ecosystem.id.show) / PathName(ecosystem.branch.show)
-      if !destination.exists() then
-        Log.info(msg"Cloning ${ecosystem.url}")
-        val process = Git.clone(ecosystem.url, destination, branch = ecosystem.branch)
-          
-        gitProgress(process.progress).map(_.debug).each(Log.info(_))
-          
-        process.complete().also:
-          Log.info(msg"Finished cloning ${ecosystem.url}")            
-
-      Codl.read[Vault]((destination / p"vault.codl").as[File])
-    )
-
-  def workspace(path: Path)(using Installation, Internet, Log[Display], WorkingDirectory, GitCommand)
-          : Async[Workspace] raises WorkspaceError =
+  def workspace(path: Path)
+      (using Installation, Internet, Log[Display], WorkingDirectory, GitCommand)
+          : Task[Workspace] raises WorkspaceError =
 
     given (WorkspaceError fixes IoError) =
       case IoError(path) => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
 
     val lastModified = path.as[File].lastModified
-    val (cacheTime, workspace) = workspaces.getOrElseUpdate(path, (lastModified, async(Workspace(path))))
+    
+    val (cacheTime, workspace) =
+      workspaces.establish(path):
+        (lastModified, async(Workspace(path)))
       
     if cacheTime == lastModified then workspace else async(Workspace(path)).tap: async =>
       workspaces(path) = (lastModified, async)
 
   def projectsMap(workspace: Workspace)
       (using Installation, Internet, Log[Display], WorkingDirectory, GitCommand)
-          : Async[Map[ProjectId, Definition]] raises WorkspaceError raises ConcurrencyError =
+          : Task[Map[ProjectId, Definition]] raises WorkspaceError raises ConcurrencyError =
     
-    locals.getOrElseUpdate(workspace, async:
-      val maps: List[Map[ProjectId, Definition]] = workspace.local.let(_.forks).or(Nil).map: fork =>
-        Cache.workspace(fork.path).flatMap(projectsMap(_)).await()
-      
-      maps.foldLeft(workspace.projects.view.mapValues(_.definition(workspace)).toMap)(_ ++ _))
+    locals.establish(workspace):
+      async:
+        val maps: List[Map[ProjectId, Definition]] = workspace.local.let(_.forks).or(Nil).map: fork =>
+          Cache.workspace(fork.path).flatMap(projectsMap(_)).await()
+        
+        maps.foldLeft(workspace.projects.view.mapValues(_.definition(workspace)).toMap)(_ ++ _)
 
 case class VaultError() extends Error(msg"the vault file is not valid")
 

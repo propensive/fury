@@ -21,7 +21,7 @@ import turbulence.*
 import exoskeleton.*
 import acyclicity.*
 import contingency.*
-import parasite.*
+import parasite.*, asyncOptions.cancelOrphans
 import dendrology.*, dagStyles.default
 import vacuous.*
 import hieroglyph.*, textMetrics.uniform
@@ -40,13 +40,14 @@ import scala.collection.concurrent as scc
 import java.util.concurrent as juc
 
 
-def frontEnd[ResultType](lambda: CliFrontEnd ?=> Terminal ?=> ResultType)(using Cli, Log[Display], Monitor)
+def frontEnd[ResultType](lambda: CliFrontEnd ?=> Terminal ?=> ResultType)
+    (using Cli, Log[Display], Monitor)
         : ResultType =
   terminal:
     val frontEnd = CliFrontEnd()
     FrontEnd.register(frontEnd)
     var continue: Boolean = true
-    val loop = async(while continue.also(frontEnd.render()) do sleep(50*Milli(Second)))
+    val loop = task(t"frontend")(while continue.also(frontEnd.render()) do sleep(50*Milli(Second)))
     
     try lambda(using frontEnd).also { continue = false } finally
       safely(loop.await())
@@ -97,13 +98,14 @@ class CliFrontEnd()(using Terminal) extends FrontEnd:
 
     active.at(target) match
       case 1.0 =>
-        e"▪ $Bold(${colors.Gray}($target))$prefix$edge${Bg(rgb"#009966")}(     ${colors.Black}($Bold(OK))     )$edge"
+        val graphRow = e"▪ $Bold(${colors.Gray}($target))$prefix$edge"
+        e"$graphRow${Bg(rgb"#009966")}(     ${colors.Black}($Bold(OK))     )$edge"
       
       case -1.0 =>
-        e"▪ $Bold(${colors.Gray}($target))$prefix$edge${Bg(rgb"#003333")}(            )$edge"
+        val graphRow = e"▪ $Bold(${colors.Gray}($target))$prefix$edge"
+        e"$graphRow${Bg(rgb"#003333")}(            )$edge"
 
       case Unset =>
-        e"▪ ${colors.Gray}(${target.show})"
         e"▪ $Bold(${colors.Gray}(${target}))$prefix$edge            $edge"
       
       case progress: Double =>
@@ -129,4 +131,3 @@ object ProgressBar:
   val bars: IArray[Text] = IArray.from:
     (0 to 96).map: progress =>
       unsafely(((t"█"*(progress/8))+partial.at(progress%8).vouch.show).fit(12))
-

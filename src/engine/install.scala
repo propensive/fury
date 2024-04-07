@@ -27,6 +27,7 @@ import galilei.*, filesystemOptions.{createNonexistent, createNonexistentParents
 import gossamer.*
 import hieroglyph.*, charDecoders.utf8
 import imperial.*
+import hellenism.*, classloaders.threadContext
 import contingency.*
 import rudiments.*
 import serpentine.*, hierarchies.unixOrWindows
@@ -71,10 +72,15 @@ object Installation:
     val snapshots: Directory = (cache / p"repos").as[Directory]
     val tmp: Directory = (cache / p"tmp").as[Directory]
     
-    Installation(config, cache, vault, tmp, snapshots)
+    val buildId: Int =
+      safely((Classpath / p"build.id")().readAs[Text].trim.decodeAs[Int]).or:
+        throw Panic(msg"The build.id file was missing or corrupt")
+    
+    Installation(buildId, config, cache, vault, tmp, snapshots)
     
 case class Installation
-   (config:    Config,
+   (buildId:   Int,
+    config:    Config,
     cache:     Directory,
     vault:     Directory,
     tmp:       Directory,

@@ -28,11 +28,6 @@ import acyclicity.*
 import scala.collection.concurrent as scc
 import scala.collection.mutable as scm
 
-enum Task:
-  case Download(digest: Hash)
-  case Compile(digest: Hash)
-  case Clone(digest: Hash)
-
 def info[InfoType: Printable](info: InfoType)(using frontEnd: FrontEnd): Unit = frontEnd.info(info)
 
 object FrontEnd:
