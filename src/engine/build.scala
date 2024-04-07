@@ -542,7 +542,7 @@ class Builder():
                       info(t"")
                   
                   process.complete()
-                  progressDaemon.await()
+                  progressDaemon.attend()
                   cancellation.cancel()
                   
                   val errorCount = process.notices.count(_.importance == Importance.Error)

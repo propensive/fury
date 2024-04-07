@@ -66,11 +66,14 @@ class CliFrontEnd()(using Terminal) extends FrontEnd:
   private var diagram: Optional[DagDiagram[Target]] = Unset
   private val misc: scc.TrieMap[Target, Double] = scc.TrieMap()
   private var indents: Map[Target, Text] = Map()
+  private var tooWide: Boolean = false
   private val queue: juc.ConcurrentLinkedQueue[Text] = juc.ConcurrentLinkedQueue()
 
   override def abort(): Unit =
     info(e"$Bold(Aborting the build.)\e[K")
     super.abort()
+
+  def resize(rows: Int, cols: Int): Unit = dag.let(setSchedule(_))
 
   def reset(): Unit =
     dag = Unset
@@ -90,7 +93,15 @@ class CliFrontEnd()(using Terminal) extends FrontEnd:
           val indent = terminal.knownColumns - diagram.size*2 + index*2 - target.show.length - 14
           (target, t" "*indent)
         .to(Map)
-    
+      
+      tooWide = indents.exists(_(1).length == 0)
+
+      if tooWide then
+        indents =
+          diagram.nodes.map: target =>
+            (target, t" "*(terminal.knownColumns - target.show.length - 16))
+          .to(Map)
+
   val edge: Display = e"${colors.Gray}(│)"
 
   def showItem(target: Target, last: Boolean): Display =
@@ -120,7 +131,9 @@ class CliFrontEnd()(using Terminal) extends FrontEnd:
 
     diagram.let: diagram =>
       Out.print(t"\e[?25l")
-      diagram.render { target => showItem(target, last) }.each(Out.println(_))
+      if tooWide then diagram.nodes.each: target =>
+        Out.println(showItem(target, last))
+      else diagram.render(showItem(_, last)).each(Out.println(_))
       Out.println(e"\e[K")
       Out.println(if last then t"\e[?25h" else t"\e[${diagram.size + unscheduled.size + 2}A")
 

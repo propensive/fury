@@ -137,18 +137,13 @@ def main(): Unit =
         Log.route: 
           case _ => installation.config.log.path.as[File]
 
-      /*given Mitigator = (path, error) =>
-        Log.warn(msg"Async error in ${path.map(_.text).join(t"/")}")
-        Log.info(error.stackTrace)
-        Mitigation.Escalate*/
-
       initTime.let: initTime =>
         Log.info(msg"Initialized Fury in ${(now() - initTime).show}")
 
       cliService:
         attempt[UserError]:
           Log.envelop(Uuid().show.take(8)):
-            if Version().present then execute(frontEnd(actions.versionInfo())) else arguments match
+            arguments match
               case Install() :: _ =>
                 val interactive = Interactive().present
                 val force = Force().present
@@ -162,7 +157,6 @@ def main(): Unit =
                   ExitStatus.Ok
                   
               case Init() :: _ =>
-                
                 execute:
                   frontEnd:
                     val directory = safely(workingDirectory).or:
@@ -233,13 +227,13 @@ def main(): Unit =
                 val online = Offline().absent
 
                 execute:
-                  given (UserError fixes PathError)      = accede
-                  given (UserError fixes ConcurrencyError)    = accede
-                  given (UserError fixes IoError)        = accede
-                  given (UserError fixes NumberError)    = accede
-                  given (UserError fixes WorkspaceError) = accede
-                  given (UserError fixes ExecError)      = accede
-                  given (UserError fixes VaultError)     = accede
+                  given (UserError fixes PathError)        = accede
+                  given (UserError fixes ConcurrencyError) = accede
+                  given (UserError fixes IoError)          = accede
+                  given (UserError fixes NumberError)      = accede
+                  given (UserError fixes WorkspaceError)   = accede
+                  given (UserError fixes ExecError)        = accede
+                  given (UserError fixes VaultError)       = accede
                   
                   internet(online):
                     val rootWorkspace = Workspace()
@@ -271,54 +265,60 @@ def main(): Unit =
               
               case Nil =>
                 given (UserError fixes WorkspaceError) = error => UserError(error.message)
+                
                 execute:
                   Out.println(Workspace().build.actions.prim.debug)
                   ExitStatus.Fail(1)
 
               case subcommands =>
-                val subcommand = subcommands.filter(!_().starts(t"-")).prim
-                val workspace = safely(Workspace())
-                val online = Offline().absent
-                val watch = Watch().present
-                val concise = Concise().present
-                val force = ForceRebuild().present
-                
-                workspace.let: workspace =>
-                  subcommand.let(_.suggest(previous ++ workspace.build.actions.map(_.suggestion)))
-
-                execute:
-                  given (UserError fixes InvalidRefError) = error => UserError(error.message)
-                  given (UserError fixes ExecError) = accede
-                  given (UserError fixes IoError)   = accede
-                  given (UserError fixes PathError) = accede
+                if Version().present then execute(frontEnd(actions.versionInfo())) else
+                  val subcommand = subcommands.filter(!_().starts(t"-")).prim
+                  val workspace = safely(Workspace())
+                  val online = Offline().absent
+                  val watch = Watch().present
+                  val concise = Concise().present
+                  val force = ForceRebuild().present
                   
-                  workspace.lay(ExitStatus.Fail(2)): workspace =>
-                    subcommand.let: subcommand =>
-                      subcommand().populated.let(ActionName(_)).or(workspace.build.default).let: action =>
-                        workspace.build.actions.where(_.name == action).let: action =>
-                          internet(online):
-                            async:
-                              frontEnd:
-                                val buildTask = task(t"build"):
-                                  action.modules.each(actions.build.run(_, watch, force, concise))
-        
-                                daemon:
-                                  terminal.events.stream.each:
-                                    case Keypress.Escape | Keypress.Ctrl('C') =>
-                                      summon[FrontEnd].abort()
-                                    
-                                    case other =>
-                                      ()
-                                
-                                buildTask.await().also(Out.print(t"\e[?25h"))
-                                info(t"Compilation finished.")
-                                ExitStatus.Ok
-                            .await()
+                  workspace.let: workspace =>
+                    subcommand.let(_.suggest(previous ++ workspace.build.actions.map(_.suggestion)))
   
-                    .or:
-                      subcommand.let(frontEnd(actions.invalidSubcommand(_))).or:
-                        Out.println(t"No subcommand was specified.")
-                        ExitStatus.Fail(1)
+                  execute:
+                    given (UserError fixes InvalidRefError) = error => UserError(error.message)
+                    given (UserError fixes ExecError) = accede
+                    given (UserError fixes IoError)   = accede
+                    given (UserError fixes PathError) = accede
+                    
+                    workspace.lay(ExitStatus.Fail(2)): workspace =>
+                      subcommand.let: subcommand =>
+                        subcommand().populated.let(ActionName(_))
+                         .or(workspace.build.default).let: action =>
+                          workspace.build.actions.where(_.name == action).let: action =>
+                            internet(online):
+                              def abort(): Unit = cancel()
+                              async:
+                                frontEnd:
+                                  val buildTask = task(t"build"):
+                                    action.modules.each(actions.build.run(_, watch, force, concise))
+          
+                                  daemon:
+                                    terminal.events.stream.each:
+                                      case Keypress.Escape | Keypress.Ctrl('C') =>
+                                        abort()
+                                      
+                                      case TerminalInfo.WindowSize(rows, cols) =>
+                                        summon[FrontEnd].resize(rows, cols)
+                                      
+                                      case other =>
+                                        ()
+                                  
+                                  buildTask.await().also(Out.print(t"\e[?25h"))
+                                  ExitStatus.Ok
+                              .await()
+    
+                      .or:
+                        subcommand.let(frontEnd(actions.invalidSubcommand(_))).or:
+                          Out.println(t"No subcommand was specified.")
+                          ExitStatus.Fail(1)
 
         .recover: userError =>
           execute:
