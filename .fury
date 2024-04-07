@@ -44,6 +44,7 @@ project fury
     sources   src/engine
     include   fury/model
     include   anthology/scala
+    include   amok/cli
     include   anthology/java
     include   revolution/core
     include   harlequin/ansi
