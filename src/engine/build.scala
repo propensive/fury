@@ -668,11 +668,11 @@ extension (workspace: Workspace)
              WorkingDirectory,
              Log[Display],
              FrontEnd,
-             Raises[ConcurrencyError],
-             Raises[GitError],
-             Raises[PathError],
-             Raises[ExecError],
-             Raises[IoError])
+             Errant[ConcurrencyError],
+             Errant[GitError],
+             Errant[PathError],
+             Errant[ExecError],
+             Errant[IoError])
           : Path =
 
     workspace.mounts.keys.where(_.precedes(path)).lay(workspace.directory.path + path.link): mount =>

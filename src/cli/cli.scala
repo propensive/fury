@@ -69,14 +69,14 @@ object cli:
   val All = Switch(t"all", false, List('a'), t"Clean system artifacts as well")
   val ForceRebuild = Switch(t"force", false, List('f'), t"Force the module to be rebuilt")
   
-  def Dir(using Raises[PathError]) =
+  def Dir(using Errant[PathError]) =
     Flag[Path](t"dir", false, List('d'), t"Specify the working directory")
   
   val Offline = Switch(t"offline", false, List('o'), t"Work offline, if possible")
   val Watch = Switch(t"watch", false, List('w'), t"Watch source directories for changes")
   val Concise = Switch(t"concise", false, List(), t"Produce less output")
   
-  def Generation(using Raises[NumberError]) =
+  def Generation(using Errant[NumberError]) =
     Flag[Int](t"generation", false, List('g'), t"Use universe generation number")
 
   val About          = Subcommand(t"about",    e"About Fury")
@@ -95,7 +95,7 @@ object cli:
   val Clean          = Subcommand(t"clean",    e"Clean the cache")
   val Details        = Subcommand(t"info",     e"Information about cache usage")
 
-given (using Raises[UserError]): HomeDirectory =
+given (using Errant[UserError]): HomeDirectory =
   given (UserError fixes SystemPropertyError) =
     case SystemPropertyError(property) =>
       UserError:
@@ -105,7 +105,7 @@ given (using Raises[UserError]): HomeDirectory =
 
 given (using Cli): WorkingDirectory = workingDirectories.daemonClient 
 
-given installation(using Raises[UserError]): Installation =
+given installation(using Errant[UserError]): Installation =
   given (UserError fixes ConfigError) = error =>
     UserError(msg"The configuration file could not be read.")
   

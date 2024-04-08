@@ -97,10 +97,10 @@ object Cache:
              WorkingDirectory,
              GitCommand,
              FrontEnd,
-             Raises[ExecError],
-             Raises[PathError],
-             Raises[IoError],
-             Raises[GitError])
+             Errant[ExecError],
+             Errant[PathError],
+             Errant[IoError],
+             Errant[GitError])
           : Task[Directory] =
 
     snapshots.establish(snapshot):

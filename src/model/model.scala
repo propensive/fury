@@ -48,8 +48,8 @@ erased given CanThrow[AppError] = ###
 type Hash = Digest[Sha2[256]]
 
 // FIXME: This shouldn't need to exist. AggregateError needs to be replaced.
-given (using CanThrow[AppError]): Raises[AggregateError[Error]] =
-  new Raises[AggregateError[Error]]:
+given (using CanThrow[AppError]): Errant[AggregateError[Error]] =
+  new Errant[AggregateError[Error]]:
     def record(error: AggregateError[Error]): Unit = throw AppError(error.message, error)
     def abort(error: AggregateError[Error]): Nothing = throw AppError(error.message, error)
 
@@ -166,7 +166,7 @@ case class Assist(target: Target, module: GoalId) derives Debug, CodlEncoder
 
 object Basis extends RefType(t"basis"):
   given encoder: Encoder[Basis] = _.toString.tt.lower
-  given decoder(using Raises[InvalidRefError]): Decoder[Basis] =
+  given decoder(using Errant[InvalidRefError]): Decoder[Basis] =
     case t"runtime" => Basis.Runtime
     case t"tools"   => Basis.Tools
     case value      => raise(InvalidRefError(value, this))(Basis.Runtime)
@@ -262,12 +262,12 @@ object Target extends RefType(t"target"):
   given moduleRefEncoder: Encoder[Target] = _.show
   given moduleRefDebug: Debug[Target] = _.show
   given moduleRefMessage: Communicable[Target] = target => Message(target.show)
-  given moduleRefDecoder(using Raises[InvalidRefError]): Decoder[Target] = Target(_)
+  given moduleRefDecoder(using Errant[InvalidRefError]): Decoder[Target] = Target(_)
 
   given Show[Target] = target =>
     t"${target.projectId.let { projectId => t"$projectId/" }.or(t"")}${target.goalId}"
 
-  def apply(value: Text)(using Raises[InvalidRefError]): Target = value match
+  def apply(value: Text)(using Errant[InvalidRefError]): Target = value match
     case r"${ProjectId(project)}([^/]+)\/${GoalId(module)}([^/]+)" =>
       Target(project, module)
 
@@ -302,7 +302,7 @@ object WorkPath:
   //given debug: Debug[WorkPath] = _.render
   given digestible: Digestible[WorkPath] = (acc, path) => acc.append(path.show.bytes)
 
-  given decoder(using path: Raises[PathError]): Decoder[WorkPath] = new Decoder[WorkPath]:
+  given decoder(using path: Errant[PathError]): Decoder[WorkPath] = new Decoder[WorkPath]:
     def decode(text: Text): WorkPath = Navigable.decode(text)
 
   inline given add: AddOperator[Path, WorkPath] with
