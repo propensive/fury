@@ -39,7 +39,7 @@ import iridescence.*, colors.*
 import kaleidoscope.*
 import nettlesome.*
 import parasite.*, threadModels.platform, asyncOptions.cancelOrphans
-import profanity.*, terminalOptions.terminalSizeDetection
+import profanity.*
 import quantitative.*
 import rudiments.*, homeDirectories.virtualMachine
 import serpentine.*, hierarchies.unixOrWindows
@@ -121,7 +121,6 @@ def main(): Unit =
 
     supervise:
       given logFormat: LogFormat[File, Display] = logFormats.standardColor[File]
-      given logFormat2: LogFormat[Err.type, Display] = logFormats.standardColor[Err.type]
       import filesystemOptions.{createNonexistent, createNonexistentParents}
 
       given Log[Display] =
@@ -223,24 +222,6 @@ def main(): Unit =
                         
                         buildTask.await().also(Out.print(t"\e[?25h"))
                   
-              case Graph() :: Nil =>
-                val online = Offline().absent
-
-                execute:
-                  given (UserError fixes PathError)        = accede
-                  given (UserError fixes ConcurrencyError) = accede
-                  given (UserError fixes IoError)          = accede
-                  given (UserError fixes NumberError)      = accede
-                  given (UserError fixes WorkspaceError)   = accede
-                  given (UserError fixes ExecError)        = accede
-                  given (UserError fixes VaultError)       = accede
-                  
-                  internet(online):
-                    val rootWorkspace = Workspace()
-                    given universe: Universe = rootWorkspace.universe()
-                  
-                  ExitStatus.Ok
-              
               case Universe() :: subcommands =>
                 val online = Offline().absent
                 val generation: Optional[Int] = safely(Generation())
@@ -257,9 +238,7 @@ def main(): Unit =
                     ExitStatus.Fail(1)
                   
               case Shutdown() :: Nil => execute:
-                frontEnd:
-                  FrontEnd.terminateAll()
-                
+                FrontEnd.shutdown()
                 service.shutdown()
                 ExitStatus.Ok
               
@@ -294,7 +273,6 @@ def main(): Unit =
                          .or(workspace.build.default).let: action =>
                           workspace.build.actions.where(_.name == action).let: action =>
                             internet(online):
-                              def abort(): Unit = cancel()
                               async:
                                 frontEnd:
                                   val buildTask = task(t"build"):
@@ -303,7 +281,8 @@ def main(): Unit =
                                   daemon:
                                     terminal.events.stream.each:
                                       case Keypress.Escape | Keypress.Ctrl('C') =>
-                                        abort()
+                                        info(msg"Aborting the build.")
+                                        summon[FrontEnd].abort()
                                       
                                       case TerminalInfo.WindowSize(rows, cols) =>
                                         summon[FrontEnd].resize(rows, cols)

@@ -32,7 +32,7 @@ def info[InfoType: Printable](info: InfoType)(using frontEnd: FrontEnd): Unit = 
 
 object FrontEnd:
   private var frontEnds: Set[FrontEnd] = Set()
-  private var termination: Optional[Promise[Unit]] = Unset
+  private val termination: Optional[Promise[Unit]] = Unset
   
   def register(frontEnd: FrontEnd): Unit = synchronized:
     frontEnds += frontEnd
@@ -43,11 +43,7 @@ object FrontEnd:
     termination.let: promise =>
       if frontEnds.isEmpty then promise.offer(())
   
-  def terminateAll(): Unit =
-    val promise = Promise[Unit]()
-    termination = promise
-    frontEnds.each(_.abort())
-    safely(promise.await(5*Second))
+  def shutdown(): Unit = synchronized(frontEnds.each(_.abort()))
 
 trait FrontEnd:
   protected val active: scc.TrieMap[Target, Double] = scc.TrieMap()
@@ -55,10 +51,9 @@ trait FrontEnd:
   private val aborted: Promise[Unit] = Promise()
 
   def setSchedule(diagram: Dag[Target]): Unit
-  def start(target: Target): Unit = unscheduled.add(target)
-  def stop(target: Target): Unit = unscheduled.remove(target)
+  def start(target: Target): Unit = unscheduled.synchronized(unscheduled.add(target))
+  def stop(target: Target): Unit = unscheduled.synchronized(unscheduled.remove(target))
   def info[InfoType: Printable](info: InfoType): Unit
-  
   def abort(): Unit = aborted.offer(())
   def attend(): Unit = aborted.attend()
   def continue: Boolean = !aborted.ready

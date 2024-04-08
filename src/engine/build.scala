@@ -510,6 +510,7 @@ class Builder():
                               warnings.lint.typeParameterShadow,
                               warnings.deprecation,
                               warnings.feature,
+                              warnings.unused(Unused.All),
                               warnings.implausiblePatterns))
                            (classpath)
                            (sourceMap, work.path)
@@ -763,5 +764,5 @@ extension (basis: Basis)
         path.as[File]
 
 val errorRibbon = Ribbon(rgb"#990033", rgb"#CC0033")
-val warningRibbon = Ribbon(rgb"#FFCC00", rgb"#FFCC99")
+val warningRibbon = Ribbon(rgb"#FF9900", rgb"#FFCC66")
 val infoRibbon = Ribbon(rgb"#006666", rgb"#6699CC")

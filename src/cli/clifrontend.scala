@@ -29,7 +29,6 @@ import escapade.*
 import anticipation.*
 import iridescence.*
 import gossamer.*
-import profanity.*
 import rudiments.*
 import spectacular.*
 import quantitative.*
@@ -47,9 +46,12 @@ def frontEnd[ResultType](lambda: CliFrontEnd ?=> Terminal ?=> ResultType)
     val frontEnd = CliFrontEnd()
     FrontEnd.register(frontEnd)
     var continue: Boolean = true
-    val loop = task(t"frontend")(while continue.also(frontEnd.render()) do sleep(50*Milli(Second)))
     
-    try lambda(using frontEnd).also { continue = false } finally
+    val loop = task(t"frontend"):
+      while continue.also(frontEnd.render()) do sleep(100*Milli(Second))
+    
+    try lambda(using frontEnd) finally
+      continue = false
       safely(loop.await())
       safely(frontEnd.render(last = true))
       FrontEnd.unregister(frontEnd)
@@ -57,6 +59,7 @@ def frontEnd[ResultType](lambda: CliFrontEnd ?=> Terminal ?=> ResultType)
 def interactive[ResultType](using frontEnd: CliFrontEnd)
     (block: Stdio ?=> Interactivity[TerminalEvent] ?=> ResultType)
         : ResultType =
+
   block(using frontEnd.terminal.stdio)(using frontEnd.terminal)
 
 class CliFrontEnd()(using Terminal) extends FrontEnd:
@@ -68,10 +71,6 @@ class CliFrontEnd()(using Terminal) extends FrontEnd:
   private var indents: Map[Target, Text] = Map()
   private var tooWide: Boolean = false
   private val queue: juc.ConcurrentLinkedQueue[Text] = juc.ConcurrentLinkedQueue()
-
-  override def abort(): Unit =
-    info(e"$Bold(Aborting the build.)\e[K")
-    super.abort()
 
   def resize(rows: Int, cols: Int): Unit = dag.let(setSchedule(_))
 

@@ -147,7 +147,7 @@ object actions:
 
       val table =
         Table[(ProjectId, Definition)]
-          (Column(e"$Bold(Project)"): (project, definition) =>
+          (Column(e"$Bold(Project)"): (_, definition) =>
              e"${definition.name}",
              // definition.website.lay(e"${definition.name}"): website =>
              //   e"${escapes.link(website, definition.name)}",
