@@ -153,6 +153,8 @@ case class Project
      keywords:    List[Keyword])
 derives Debug, CodlEncoder:
 
+  def suggestion: Suggestion = Suggestion(id.show, t"$name: $description")
+  
   def apply(goal: GoalId): Optional[Module | Artifact | Library] =
     modules.where(_.id == goal).or(artifacts.where(_.id == goal)).or(libraries.where(_.id == goal))
 
@@ -383,7 +385,7 @@ object Workspace:
 
 case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, local: Optional[Local])
 derives Debug:
-  val ecosystem = build.ecosystem
+  def ecosystem = build.ecosystem
   lazy val actions: Map[ActionName, Action] = unsafely(build.actions.indexBy(_.name))
   lazy val projects: Map[ProjectId, Project] = unsafely(build.projects.indexBy(_.id))
   lazy val mounts: Map[WorkPath, Mount] = unsafely(build.mounts.indexBy(_.path))

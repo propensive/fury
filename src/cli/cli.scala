@@ -79,21 +79,23 @@ object cli:
   def Generation(using Errant[NumberError]) =
     Flag[Int](t"generation", false, List('g'), t"Use universe generation number")
 
-  val About          = Subcommand(t"about",    e"About Fury")
-  val Build          = Subcommand(t"build",    e"Start a new build (default)")
-  val Cache          = Subcommand(t"cache",    e"Cache operations")
-  val Config         = Subcommand(t"config",   e"View and change configuration")
-  val Shutdown       = Subcommand(t"shutdown", e"Shutdown the Fury daemon")
-  val Init           = Subcommand(t"init",     e"Initialize a new project")
-  val Universe       = Subcommand(t"universe", e"Universe actions")
-  val UniverseSearch = Subcommand(t"search",   e"Search for a release")
-  val UniverseShow   = Subcommand(t"show",     e"Show details of the current universe")
-  val UniverseUpdate = Subcommand(t"update",   e"Check for universe updates")
-  val Graph          = Subcommand(t"graph",    e"Show a build graph")
-  val Update         = Subcommand(t"update",   e"Update Fury")
-  val Install        = Subcommand(t"install",  e"Install Fury")
-  val Clean          = Subcommand(t"clean",    e"Clean the cache")
-  val Details        = Subcommand(t"info",     e"Information about cache usage")
+  val About          = Subcommand(t"about",     e"About Fury")
+  val Build          = Subcommand(t"build",     e"Start a new build (default)")
+  val Cache          = Subcommand(t"cache",     e"Cache operations")
+  val Config         = Subcommand(t"config",    e"View and change configuration")
+  val Shutdown       = Subcommand(t"shutdown",  e"Shutdown the Fury daemon")
+  val Init           = Subcommand(t"init",      e"Initialize a new project")
+  val Ecosystem      = Subcommand(t"ecosystem", e"Ecosystem operations")
+  val Universe       = Subcommand(t"universe",  e"Universe actions")
+  val UniverseSearch = Subcommand(t"search",    e"Search for a release")
+  val UniverseShow   = Subcommand(t"show",      e"Show details of the current universe")
+  val UniverseUpdate = Subcommand(t"update",    e"Check for universe updates")
+  val Graph          = Subcommand(t"graph",     e"Show a build graph")
+  val Update         = Subcommand(t"update",    e"Update Fury")
+  val Publish        = Subcommand(t"publish",   e"Publish a project")
+  val Install        = Subcommand(t"install",   e"Install Fury")
+  val Clean          = Subcommand(t"clean",     e"Clean the cache")
+  val Details        = Subcommand(t"info",      e"Information about cache usage")
 
 given (using Errant[UserError]): HomeDirectory =
   given (UserError fixes SystemPropertyError) =
@@ -175,10 +177,8 @@ def main(): Unit =
               case Cache() :: subcommands => subcommands match
                 case Nil => execute(frontEnd(actions.cache.about()))
                 
-                case other :: _ =>
-                  execute:
-                    frontEnd:
-                      other.let(actions.invalidSubcommand(_)).or(actions.missingSubcommand())
+                case other :: _ => execute:
+                  frontEnd(other.let(actions.invalidSubcommand(_)).or(actions.missingSubcommand()))
                 
               case About() :: _ => execute(about())
               
@@ -234,6 +234,25 @@ def main(): Unit =
                     Out.println:
                       e"Command $Italic(${command.vouch(using Unsafe)()}) was not recognized."
 
+                    ExitStatus.Fail(1)
+              
+              case Ecosystem() :: subcommands => subcommands match
+                case Publish() :: target => target match
+                  case Nil =>
+                    execute:
+                      Out.println(t"Project has not been specified")
+                      ExitStatus.Fail(1)
+                  
+                  case project :: _ =>
+                    safely:
+                      project.suggest(Workspace().build.projects.map(_.suggestion))
+                    
+                    execute:
+                      Out.println(t"Not yet publishing ${project()}")
+                      ExitStatus.Fail(1)
+                case _ =>
+                  execute:
+                    Out.println(t"Unknown command")
                     ExitStatus.Fail(1)
                   
               case Shutdown() :: Nil => execute:

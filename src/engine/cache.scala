@@ -120,8 +120,8 @@ object Cache:
           process.complete().workTree.vouch(using Unsafe).also:
             Log.info(msg"Finished cloning ${snapshot.url}")
         
-  def apply(ecosystem: Ecosystem)
-      (using Installation, Internet, Log[Display], WorkingDirectory, GitCommand)
+  def apply(ecosystem: Ecosystem)(using installation: Installation)
+      (using Internet, Log[Display], WorkingDirectory, GitCommand)
           : Task[Vault] raises VaultError =
     
     ecosystems.establish(ecosystem):
@@ -143,7 +143,11 @@ object Cache:
         given (VaultError fixes CodlReadError)   = error => VaultError()
         given (VaultError fixes MarkdownError)   = error => VaultError()
   
-        val destination =
+        
+        val localPath: Optional[Path] =
+          installation.config.ecosystems.where(_.id == ecosystem.id).let(_.path)
+        
+        val destination = localPath.or:
           installation.vault.path / PathName(ecosystem.id.show) / PathName(ecosystem.branch.show)
   
         if !destination.exists() then
