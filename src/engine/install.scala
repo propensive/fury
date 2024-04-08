@@ -16,7 +16,7 @@
 
 package fury
 
-import ambience.*, environments.virtualMachine, systemProperties.virtualMachine
+import ambience.*, environments.virtualMachine
 import anticipation.*, filesystemInterfaces.galileiApi
 import cellulose.*
 import fulminate.*
@@ -32,7 +32,6 @@ import contingency.*
 import rudiments.*
 import serpentine.*, hierarchies.unixOrWindows
 import spectacular.*
-import exoskeleton.*
 import turbulence.*
 import vacuous.*
 
@@ -63,6 +62,9 @@ object Installation:
     
     given (ConfigError fixes PathError) =
       case PathError(path, reason) => ConfigError(msg"The path $path was not valid because $reason")
+    
+    given (ConfigError fixes InvalidRefError) =
+      case InvalidRefError(ref, refType) => ConfigError(msg"$ref is not valid")
     
     val script = unsafely(Properties.ethereal.name[Text]())
     val cache: Directory = (Xdg.cacheHome[Path] / PathName(script)).as[Directory]

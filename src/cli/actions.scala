@@ -145,21 +145,21 @@ object actions:
       given universe: Universe = rootWorkspace.universe()
       val projects = universe.projects.to(List)
 
-      val table =
-        Table[(ProjectId, Definition)]
-          (Column(e"$Bold(Project)"): (_, definition) =>
-             e"${definition.name}",
-             // definition.website.lay(e"${definition.name}"): website =>
-             //   e"${escapes.link(website, definition.name)}",
-           Column(e"$Bold(ID)")(_(0)),
-           Column(e"$Bold(Description)", sizing = columnar.Prose)(_(1).description),
-           Column(e"$Bold(Source)"): (_, definition) =>
-             definition.source match
-               case workspace: Workspace =>
-                 e"$Aquamarine(${workspace.directory.path.relativeTo(rootWorkspace.directory.path)})"
-               
-               case vault: Vault =>
-                 e"$DeepSkyBlue(${vault.name})")
+      val table = Table[(ProjectId, Definition)]
+        (Column(e"$Bold(Project)"): (_, definition) =>
+            e"${definition.name}",
+            // definition.website.lay(e"${definition.name}"): website =>
+            //   e"${escapes.link(website, definition.name)}",
+          Column(e"$Bold(ID)")(_(0)),
+          Column(e"$Bold(Description)", sizing = columnar.Prose)(_(1).description),
+          Column(e"$Bold(Source)"): (_, definition) =>
+            definition.source match
+              case workspace: Workspace =>
+                e"$Aquamarine(${workspace.directory.path.relativeTo(rootWorkspace.directory.path)})"
+              
+              case vault: Vault =>
+                e"$DeepSkyBlue(${vault.name})")
+
       info(table.tabulate(projects))
       ExitStatus.Ok
 

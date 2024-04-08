@@ -58,6 +58,7 @@ import revolution.*
 import parasite.*, asyncOptions.cancelOrphans
 import iridescence.*
 import contingency.*
+import cellulose.*
 import dendrology.*
 import rudiments.*
 import serpentine.*, hierarchies.unixOrWindows
@@ -85,7 +86,10 @@ inline given (using Log[Display]): Mitigator = (path, error) =>
 
 case class ConfigError(msg: Message) extends Error(msg)
 
-case class Config(log: LogConfig = LogConfig())
+object Config:
+  given relabelling: CodlRelabelling[Config] = () => Map(t"ecosystems" -> t"ecosystem")
+
+case class Config(log: LogConfig = LogConfig(), ecosystems: List[EcosystemFork])
 case class LogConfig(path: Path = Unix / p"var" / p"log" / p"fury.log")
 
 case class AbortError(n: Int) extends Error(msg"the build was aborted by the user ($n)")
@@ -266,16 +270,15 @@ class Builder():
 
       attempt[AggregateError[BuildError]]:
         validate[BuildError]:
-          given (BuildError fixes ExecError)        = BuildError(_)
-          given (BuildError fixes GitError)         = BuildError(_)
           given (BuildError fixes PathError)        = BuildError(_)
           given (BuildError fixes ZipError)         = BuildError(_)
           given (BuildError fixes IoError)          = BuildError(_)
           given (BuildError fixes StreamError)      = BuildError(_)
-          given (BuildError fixes WorkspaceError)   = BuildError(_)
           given (BuildError fixes ConcurrencyError) = BuildError(_)
  
-          val inputs = antecedents.map { (hash, name) => runTask(name, hash) }
+          antecedents.each: (hash, name) =>
+            runTask(name, hash)
+
           val checksumPath = output / p"checksum"
 
           def savedChecksum = if checksumPath.exists() then checksumPath.as[File].readAs[Text] else Unset
@@ -430,13 +433,9 @@ class Builder():
 
       attempt[AggregateError[BuildError]]:
         validate[BuildError]:
-          given (BuildError fixes GitError)         = BuildError(_)
           given (BuildError fixes PathError)        = BuildError(_)
-          given (BuildError fixes ZipError)         = BuildError(_)
           given (BuildError fixes IoError)          = BuildError(_)
-          given (BuildError fixes StreamError)      = BuildError(_)
           given (BuildError fixes CompileError)     = BuildError(_)
-          given (BuildError fixes WorkspaceError)   = BuildError(_)
           given (BuildError fixes ConcurrencyError) = BuildError(_)
           
           Log.info(t"Starting to build")

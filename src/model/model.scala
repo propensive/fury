@@ -98,6 +98,8 @@ case class Fork(id: ProjectId, path: Path) derives Debug
 
 case class Ecosystem(id: EcosystemId, version: Int, url: HttpUrl, branch: Branch) derives Debug
 
+case class EcosystemFork(id: EcosystemId, path: Path) derives Debug
+
 case class Mount(path: WorkPath, repo: Snapshot) derives Debug
 
 

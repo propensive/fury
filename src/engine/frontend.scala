@@ -18,10 +18,7 @@ package fury
 
 import anticipation.*
 import parasite.*
-import dendrology.*
 import vacuous.*
-import quantitative.*
-import contingency.*
 import rudiments.*
 import acyclicity.*
 

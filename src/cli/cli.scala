@@ -224,7 +224,6 @@ def main(): Unit =
                   
               case Universe() :: subcommands =>
                 val online = Offline().absent
-                val generation: Optional[Int] = safely(Generation())
                 
                 subcommands match
                   case Nil | (UniverseShow() :: _) =>

@@ -40,7 +40,6 @@ import rudiments.*
 import vacuous.*
 import serpentine.*, hierarchies.unixOrWindows
 import spectacular.*
-import surveillance.*
 import turbulence.*
 
 import scala.collection.concurrent as scc
@@ -129,21 +128,20 @@ object Cache:
       async:
         Log.info(t"Started async to fetch ecosystem")
   
-        given (VaultError fixes UrlError)             = error => VaultError()
-        given (VaultError fixes InvalidRefError)      = error => VaultError()
-        given (VaultError fixes ExecError)            = error => VaultError()
-        given (VaultError fixes StreamError)          = error => VaultError()
-        given (VaultError fixes NumberError)          = error => VaultError()
-        given (VaultError fixes DateError)            = error => VaultError()
-        given (VaultError fixes GitError)             = error => VaultError()
-        given (VaultError fixes IoError)              = error => VaultError()
-        given (VaultError fixes GitRefError)          = error => VaultError()
-        given (VaultError fixes HostnameError)        = error => VaultError()
-        given (VaultError fixes UndecodableCharError) = error => VaultError()
-        given (VaultError fixes PathError)            = error => VaultError()
-        given (VaultError fixes FqcnError)            = error => VaultError()
-        given (VaultError fixes CodlReadError)        = error => VaultError()
-        given (VaultError fixes MarkdownError)        = error => VaultError()
+        given (VaultError fixes UrlError)        = error => VaultError()
+        given (VaultError fixes InvalidRefError) = error => VaultError()
+        given (VaultError fixes ExecError)       = error => VaultError()
+        given (VaultError fixes StreamError)     = error => VaultError()
+        given (VaultError fixes NumberError)     = error => VaultError()
+        given (VaultError fixes DateError)       = error => VaultError()
+        given (VaultError fixes GitError)        = error => VaultError()
+        given (VaultError fixes IoError)         = error => VaultError()
+        given (VaultError fixes GitRefError)     = error => VaultError()
+        given (VaultError fixes HostnameError)   = error => VaultError()
+        given (VaultError fixes PathError)       = error => VaultError()
+        given (VaultError fixes FqcnError)       = error => VaultError()
+        given (VaultError fixes CodlReadError)   = error => VaultError()
+        given (VaultError fixes MarkdownError)   = error => VaultError()
   
         val destination =
           installation.vault.path / PathName(ecosystem.id.show) / PathName(ecosystem.branch.show)

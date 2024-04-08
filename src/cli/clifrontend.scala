@@ -53,7 +53,7 @@ def frontEnd[ResultType](lambda: CliFrontEnd ?=> Terminal ?=> ResultType)
     try lambda(using frontEnd) finally
       continue = false
       safely(loop.await())
-      safely(frontEnd.render(last = true))
+      frontEnd.render(last = true)
       FrontEnd.unregister(frontEnd)
 
 def interactive[ResultType](using frontEnd: CliFrontEnd)
