@@ -23,6 +23,7 @@ project fury
   description  A build tool for Scala
   keywords     build  build-tool  scala  java
   website      https://fury.build/
+  license      apache-2
   
   module model
     compiler  scala
