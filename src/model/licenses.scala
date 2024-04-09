@@ -25,7 +25,7 @@ enum LicenseGroup:
   case Afl, Apache, Artistic, Bsl, Bsd, Cc, Wtfpl, Ecl, Epl, Eupl, Agpl, Gpl, Lgpl, Isc, Lppl, Ms,
       Mit, Mpl, Osl, PostgreSql, Ofl, Ncsa, Unlicense, Zlib
 
-enum License(name: InlineMd, id: LicenseId, group: LicenseGroup):
+enum License(val name: InlineMd, val id: LicenseId, val group: LicenseGroup):
   case Afl3
   extends License(md"Academic Free License v3.0", LicenseId.unsafe(t"afl-3.0"), LicenseGroup.Afl)
   

@@ -133,6 +133,7 @@ object actions:
       ExitStatus.Ok
 
   object universe:
+
     def show()(using Internet, WorkingDirectory, Monitor, Log[Display], FrontEnd, Stdio): ExitStatus raises UserError =
       given (UserError fixes PathError)      = accede
       given (UserError fixes ConcurrencyError)    = accede

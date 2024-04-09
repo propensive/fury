@@ -164,6 +164,33 @@ derives Debug, CodlEncoder:
   def definition(workspace: Workspace): Definition =
     Definition(name, description, website, license, keywords, workspace)
 
+  def release(stream: StreamId, lifetime: Int, snapshot: Snapshot): Release raises ReleaseError =
+    given Timezone = tz"Etc/UTC"
+
+    Release
+     (id          = id,
+      stream      = stream,
+      name        = name,
+      website     = website,
+      description = description,
+      license     = license.or:
+                      raise(ReleaseError(ReleaseError.Reason.NoLicense))(License.Apache2.id),
+      date        = today(),
+      lifetime    = lifetime,
+      repo        = snapshot,
+      packages    = Nil,
+      keywords    = keywords)
+
+object ReleaseError:
+  enum Reason:
+    case NoLicense
+  
+  given Communicable[Reason] =
+    case Reason.NoLicense => msg"the license has not been specified"
+
+case class ReleaseError(reason: ReleaseError.Reason)
+extends Error(msg"The project is not ready for release because $reason")
+
 case class Assist(target: Target, module: GoalId) derives Debug, CodlEncoder
 
 object Basis extends RefType(t"basis"):

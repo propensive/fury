@@ -21,6 +21,7 @@ import anticipation.*
 import aviation.*
 import contingency.*
 import digression.*
+import cellulose.*, codlPrinters.standard
 import escapade.*
 import escritoire.*, tableStyles.minimal, insufficientSpaceHandling.ignore
 import ethereal.*, daemonConfig.supportStderr
@@ -30,6 +31,7 @@ import fulminate.*
 import galilei.*, filesystemInterfaces.galileiApi, filesystemOptions.dereferenceSymlinks
 import gastronomy.*
 import gossamer.*
+import octogenarian.*
 import guillotine.*
 import hallucination.*
 import hellenism.*, classloaders.threadContext
@@ -78,6 +80,8 @@ object cli:
   
   def Generation(using Errant[NumberError]) =
     Flag[Int](t"generation", false, List('g'), t"Use universe generation number")
+  
+  val Stream = Flag[Text](t"stream", false, List('s'), t"Which stream to publish to")
 
   val About          = Subcommand(t"about",     e"About Fury")
   val Build          = Subcommand(t"build",     e"Start a new build (default)")
@@ -243,13 +247,33 @@ def main(): Unit =
                       Out.println(t"Project has not been specified")
                       ExitStatus.Fail(1)
                   
-                  case project :: _ =>
-                    safely:
-                      project.suggest(Workspace().build.projects.map(_.suggestion))
+                  case projectId :: _ =>
+                    val workspace = safely(Workspace())
+                    
+                    workspace.let: workspace =>
+                      projectId.suggest(workspace.build.projects.map(_.suggestion))
                     
                     execute:
-                      Out.println(t"Not yet publishing ${project()}")
-                      ExitStatus.Fail(1)
+                      import filesystemOptions.{doNotCreateNonexistent, dereferenceSymlinks}
+                      given (UserError fixes WorkspaceError) = error => UserError(error.message)
+                      given (UserError fixes GitError) = error => UserError(error.message)
+                      given (UserError fixes IoError) = error => UserError(error.message)
+                      given (UserError fixes ExecError) = error => UserError(error.message)
+                      given (UserError fixes PathError) = error => UserError(error.message)
+                      given (UserError fixes ReleaseError) = error => UserError(error.message)
+                      given (UserError fixes InvalidRefError) = error => UserError(error.message)
+                      val workspace = Workspace()
+                      workspace.build.projects.where(_.id.show == projectId()).let: project =>
+                        val directory = safely(workingDirectory).or:
+                          abort(UserError(msg"The working directory could not be determined."))
+                        val repo = GitRepo(directory)
+                        val release = project.release(StreamId(t"whatever"), 30, Snapshot(url"https://example.com/", repo.status(), Unset))
+                        Out.println(release.codl.show)
+                        ExitStatus.Fail(1)
+                      .or:
+                        Out.println(t"Project ${projectId()} is not defined in this workspace")
+                        ExitStatus.Fail(2)
+
                 case _ =>
                   execute:
                     Out.println(t"Unknown command")
