@@ -55,6 +55,14 @@ given (using CanThrow[AppError]): Errant[AggregateError[Error]] =
 
 import Ids.*
 
+enum ScriptMode:
+  case Debug, Quiet
+
+object Script:
+  given relabelling: CodlRelabelling[Script] = () => Map(t"includes" -> t"include")
+
+case class Script(mode: Optional[ScriptMode], main: Fqcn, includes: List[Target])
+
 object Release:
   given relabelling: CodlRelabelling[Release] = () => Map(t"packages" -> t"provide")
 

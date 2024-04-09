@@ -18,7 +18,7 @@ package fury
 
 import ambience.*, systemProperties.virtualMachine, environments.virtualMachine
 import anticipation.*
-import aviation.*
+import aviation.*, calendars.gregorian
 import contingency.*
 import digression.*
 import cellulose.*, codlPrinters.standard
@@ -267,7 +267,12 @@ def main(): Unit =
                         val directory = safely(workingDirectory).or:
                           abort(UserError(msg"The working directory could not be determined."))
                         val repo = GitRepo(directory)
-                        val release = project.release(StreamId(t"whatever"), 30, Snapshot(url"https://example.com/", repo.status(), Unset))
+                        val commit = repo.revParse(Refspec.head())
+                        
+                        if !repo.status().isEmpty
+                        then abort(UserError(msg"The repository contains uncommitted changes. Please commit the changes and try again."))
+                        
+                        val release = project.release(StreamId(t"whatever"), 30, Snapshot(url"https://example.com/", commit, Unset))
                         Out.println(release.codl.show)
                         ExitStatus.Fail(1)
                       .or:
@@ -295,51 +300,57 @@ def main(): Unit =
                 if Version().present then execute(frontEnd(actions.versionInfo())) else
                   val subcommand = subcommands.filter(!_().starts(t"-")).prim
                   val workspace = safely(Workspace())
-                  val online = Offline().absent
-                  val watch = Watch().present
-                  val concise = Concise().present
-                  val force = ForceRebuild().present
                   
-                  workspace.let: workspace =>
-                    subcommand.let(_.suggest(previous ++ workspace.build.actions.map(_.suggestion)))
-  
-                  execute:
-                    given (UserError fixes InvalidRefError) = error => UserError(error.message)
-                    given (UserError fixes ExecError) = accede
-                    given (UserError fixes IoError)   = accede
-                    given (UserError fixes PathError) = accede
+                  if subcommand.present && subcommand.lay(false)(_().contains(t"/")) then execute:
+                    unsafely:
+                      Out.println(e"Executing script $Bold(${subcommand.vouch()})...")
+                    ExitStatus.Fail(1)
+                  else
+                    val online = Offline().absent
+                    val watch = Watch().present
+                    val concise = Concise().present
+                    val force = ForceRebuild().present
                     
-                    workspace.lay(ExitStatus.Fail(2)): workspace =>
-                      subcommand.let: subcommand =>
-                        subcommand().populated.let(ActionName(_))
-                         .or(workspace.build.default).let: action =>
-                          workspace.build.actions.where(_.name == action).let: action =>
-                            internet(online):
-                              async:
-                                frontEnd:
-                                  val buildTask = task(t"build"):
-                                    action.modules.each(actions.build.run(_, watch, force, concise))
-          
-                                  daemon:
-                                    terminal.events.stream.each:
-                                      case Keypress.Escape | Keypress.Ctrl('C') =>
-                                        info(msg"Aborting the build.")
-                                        summon[FrontEnd].abort()
-                                      
-                                      case TerminalInfo.WindowSize(rows, cols) =>
-                                        summon[FrontEnd].resize(rows, cols)
-                                      
-                                      case other =>
-                                        ()
-                                  
-                                  buildTask.await().also(Out.print(t"\e[?25h"))
-                                  ExitStatus.Ok
-                              .await()
+                    workspace.let: workspace =>
+                      subcommand.let(_.suggest(previous ++ workspace.build.actions.map(_.suggestion)))
     
-                      .or:
-                        subcommand.let(frontEnd(actions.invalidSubcommand(_))).or:
-                          Out.println(t"No subcommand was specified.")
-                          ExitStatus.Fail(1)
+                    execute:
+                      given (UserError fixes InvalidRefError) = error => UserError(error.message)
+                      given (UserError fixes ExecError) = accede
+                      given (UserError fixes IoError)   = accede
+                      given (UserError fixes PathError) = accede
+                      
+                      workspace.lay(ExitStatus.Fail(2)): workspace =>
+                        subcommand.let: subcommand =>
+                          subcommand().populated.let(ActionName(_))
+                           .or(workspace.build.default).let: action =>
+                            workspace.build.actions.where(_.name == action).let: action =>
+                              internet(online):
+                                async:
+                                  frontEnd:
+                                    val buildTask = task(t"build"):
+                                      action.modules.each(actions.build.run(_, watch, force, concise))
+            
+                                    daemon:
+                                      terminal.events.stream.each:
+                                        case Keypress.Escape | Keypress.Ctrl('C') =>
+                                          info(msg"Aborting the build.")
+                                          summon[FrontEnd].abort()
+                                        
+                                        case TerminalInfo.WindowSize(rows, cols) =>
+                                          summon[FrontEnd].resize(rows, cols)
+                                        
+                                        case other =>
+                                          ()
+                                    
+                                    buildTask.await().also(Out.print(t"\e[?25h"))
+                                    ExitStatus.Ok
+                                .await()
+      
+                        .or:
+                          subcommand.let(frontEnd(actions.invalidSubcommand(_))).or:
+                            Out.println(t"No subcommand was specified.")
+                            ExitStatus.Fail(1)
 
         .recover: userError =>
           execute:
