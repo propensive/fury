@@ -77,6 +77,14 @@ project fury
     resource    res/build.id   build.id
     include     fury/cli
 
+  stream latest
+    lifetime 7
+    guarantee functionality
+
+  stream stable
+    lifetime 180
+    guarantee source
+
 ##
 
 code=H4sIAAAAAAAAA1WQzW6CUBCF9zzF5IagpuFH8KINwU1t04XGB5Au4P4IkQsUvdUmrPpEfbI+QwdITLubmZM558vhMTFf97tn12Epy4Urdf\
