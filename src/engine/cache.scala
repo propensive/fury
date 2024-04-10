@@ -143,12 +143,7 @@ object Cache:
         given (VaultError fixes CodlReadError)   = error => VaultError()
         given (VaultError fixes MarkdownError)   = error => VaultError()
   
-        
-        val localPath: Optional[Path] =
-          installation.config.ecosystems.where(_.id == ecosystem.id).let(_.path)
-        
-        val destination = localPath.or:
-          installation.vault.path / PathName(ecosystem.id.show) / PathName(ecosystem.branch.show)
+        val destination = ecosystem.path
   
         if !destination.exists() then
           Log.info(msg"Cloning ${ecosystem.url}")

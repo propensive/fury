@@ -187,6 +187,23 @@ class Builder():
         resourceMap,
         watches)
 
+  extension (exec: Exec)
+    def phase(workspace: Workspace, target: Target)
+        (using Installation, Internet, Universe, Monitor, WorkingDirectory, Log[Display], FrontEnd)
+            : ExecPhase raises ConcurrencyError raises GitError raises PathError raises ExecError raises
+               IoError raises BuildError raises StreamError =
+      
+      val antecedents: Map[Hash, Text] =
+        exec.includes.bi.map(build(_) -> _.show).map: (build, name) =>
+          (build.await(), name)
+        .to(Map)
+
+      val classpath: List[Hash] =
+        antecedents.keys.map(phases(_)).flatMap(_.runtimeClasspath).to(Set).to(List)
+      
+      ExecPhase(installation.build, target, exec, classpath, antecedents, Set())
+      
+  
   extension (module: Module)
     def phase(workspace: Workspace, target: Target)
         (using Installation, Internet, Universe, Monitor, WorkingDirectory, Log[Display], FrontEnd)
@@ -404,6 +421,63 @@ class Builder():
             summon[FrontEnd](target) = -1.0
             output.as[Directory]
 
+  case class ExecPhase
+      (build:       Path,
+       target:      Target,
+       exec:        Exec,
+       classpath:   List[Hash],
+       antecedents: Map[Hash, Text],
+       watches:     Set[Path])
+  extends Phase:
+
+    def digest = (antecedents).digest[Sha2[256]]
+    def binaries: List[Hash] = Nil
+    def run(name: Text, hash: Hash)
+        (using FrontEnd,
+               Log[Display],
+               DaemonService[?],
+               Installation,
+               Monitor,
+               SystemProperties,
+               Environment,
+               Internet)
+            : PhaseResult =
+      
+      attempt[AggregateError[BuildError]]:
+        validate[BuildError]:
+          given (BuildError fixes IoError) = BuildError(_)
+          given (BuildError fixes PathError) = BuildError(_)
+          given (BuildError fixes StreamError) = BuildError(_)
+          given (BuildError fixes ExecError) = BuildError(_)
+          given (BuildError fixes ConcurrencyError) = BuildError(_)
+          
+          val inputs =
+            antecedents.to(List).map: (hash, name) =>
+              runTask(name, hash)
+            .map(_.await())
+    
+          info(t"Executing ${name}")
+          val basis = unsafely(Basis.Runtime().await().path.show)
+          val baseClasspath = LocalClasspath(List(ClasspathEntry.Jarfile(basis)))
+          val work = (installation.work / PathName(Uuid().show)).as[Directory]
+          given WorkingDirectory = WorkingDirectory(work.path)
+          
+          val allBinaries = classpath.flatMap(phases(_).binaries).map(outputDirectory(_) / p"library.jar")
+                  
+          (classpath.map(outputDirectory(_)) ++ allBinaries).foldLeft(baseClasspath)(_ + _).pipe: classpath =>
+            val command = sh"java -classpath ${classpath()} ${exec.main}"
+            val process = command.fork[ExitStatus]()
+            
+            async:
+              process.stdout().stream[Text].each: text =>
+                info2(text)
+            .await()
+            
+            process.await() match
+              case ExitStatus.Ok => work.moveTo(output).as[Directory]
+              case _             => abort(BuildError(AbortError(1)))
+
+
   case class ModulePhase
      (build:       Path,
       compiler:    Compiler,
@@ -607,6 +681,11 @@ class Builder():
             val phase = library.phase(workspace, target)
             phases(phase.digest) = phase
             phase.digest
+          
+          case exec: Exec =>
+            val phase = exec.phase(workspace, target)
+            phases(phase.digest) = phase
+            phase.digest
         
         Log.info(t"Calculated digest for $target")
         
@@ -699,6 +778,9 @@ extension (basis: Basis)
     LocalClasspath(List(ClasspathEntry.Jarfile(unsafely(basis.path.show))))
 
   def inclusions: Set[Text] = basis match
+    case Basis.Minimum =>
+      Set()
+
     case Basis.Runtime =>
       Set(t"/scala/", t"/rootdoc.txt", t"/library.properties", t"/LICENSE", t"/NOTICE")
 
@@ -720,6 +802,7 @@ extension (basis: Basis)
   def exclusions: Set[Text] = basis match
     case Basis.Runtime => Set(t"/META-INF/MANIFEST.MF", t"/scala/tasty/")
     case Basis.Tools   => Set(t"/META-INF/MANIFEST.MF")
+    case Basis.Minimum => Set()
 
   def path(using Installation): Path =
     unsafely(installation.basis / PathName(t"${basis.encode}-${installation.buildId}.jar"))
@@ -765,3 +848,13 @@ extension (basis: Basis)
 val errorRibbon = Ribbon(rgb"#990033", rgb"#CC0033")
 val warningRibbon = Ribbon(rgb"#FF9900", rgb"#FFCC66")
 val infoRibbon = Ribbon(rgb"#006666", rgb"#6699CC")
+
+extension (ecosystem: Ecosystem)
+  def path(using installation: Installation)(using Log[Display], WorkingDirectory)
+          : Path raises PathError =
+    
+    val localPath: Optional[Path] =
+      installation.config.ecosystems.where(_.id == ecosystem.id).let(_.path)
+    
+    localPath.or:
+      installation.vault.path / PathName(ecosystem.id.show) / PathName(ecosystem.branch.show)

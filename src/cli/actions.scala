@@ -17,7 +17,7 @@
 package fury
 
 import ambience.*
-import aviation.*
+import aviation.*, calendars.gregorian
 import anticipation.*, filesystemInterfaces.galileiApi
 import contingency.*
 import anthology.*
@@ -27,10 +27,11 @@ import ethereal.*
 import eucalyptus.*
 import exoskeleton.*
 import fulminate.*
-import galilei.*
+import gastronomy.*, alphabets.base32.zBase32Unpadded
+import galilei.*, filesystemOptions.dereferenceSymlinks
 import gossamer.*
 import guillotine.*
-import hieroglyph.*, textMetrics.eastAsianScripts
+import hieroglyph.*, textMetrics.eastAsianScripts, charEncoders.utf8
 import iridescence.*, colors.*
 import nettlesome.*
 import zeppelin.*
@@ -39,6 +40,7 @@ import surveillance.*
 import parasite.*, asyncOptions.escalateExceptions
 import profanity.*
 import quantitative.*
+import cellulose.*, codlPrinters.standard
 import rudiments.*
 import serpentine.*, hierarchies.unixOrWindows
 import spectacular.*
@@ -163,6 +165,63 @@ object actions:
 
       info(table.tabulate(projects))
       ExitStatus.Ok
+
+  object project:
+    def publish(projectId: ProjectId, streamId: Optional[StreamId])
+        (using WorkingDirectory,
+               Stdio,
+               Environment,
+               SystemProperties,
+               GitCommand,
+               Log[Display],
+               Internet)
+            : ExitStatus raises UserError =
+      import filesystemOptions.doNotCreateNonexistent
+      given (UserError fixes WorkspaceError) = error => UserError(error.message)
+      given (UserError fixes GitError) = error => UserError(error.message)
+      given (UserError fixes IoError) = error => UserError(error.message)
+      given (UserError fixes StreamError) = error => UserError(error.message)
+      given (UserError fixes ExecError) = error => UserError(error.message)
+      given (UserError fixes UrlError) = error => UserError(error.message)
+      given (UserError fixes HostnameError) = error => UserError(error.message)
+      given (UserError fixes PathError) = error => UserError(error.message)
+      given (UserError fixes ReleaseError) = error => UserError(error.message)
+      given (UserError fixes InvalidRefError) = error => UserError(error.message)
+      
+      val build = Workspace().build
+      
+      build.projects.where(_.id == projectId).let: project =>
+        val directory = safely(workingDirectory).or:
+          abort(UserError(msg"The working directory could not be determined."))
+        
+        val repo = GitRepo(directory)
+        val commit = repo.revParse(Refspec.head())
+        val remote = repo.config.get[HttpUrl](t"remote.origin.url")
+        val snapshot = Snapshot(remote, commit, Unset)
+        
+        if !repo.status().isEmpty
+        then abort(UserError(msg"The repository contains uncommitted changes. Please commit the changes and try again."))
+        val stream = project.streams.where(_.id == streamId).or(project.streams.unique).or:
+          abort(UserError(msg"Please specify a stream to publish."))
+
+        val release = project.release(stream.id, stream.lifetime, snapshot).codl.show
+        val hash: Text = release.digest[Sha2[256]].encodeAs[Base32]
+        
+        val destination =
+          unsafely(build.ecosystem.path / PathName(hash.take(2)) / PathName(hash.drop(2)))
+
+        release.writeTo:
+          import filesystemOptions.{createNonexistent, createNonexistentParents}
+          destination.as[File]
+        
+        val ecosystemRepo = GitRepo(build.ecosystem.path)
+        ecosystemRepo.add(destination)
+        ecosystemRepo.commit(t"Added latest ${project.name}")
+        ecosystemRepo.push()
+        ExitStatus.Ok
+      .or:
+        Out.println(t"Project $projectId is not defined in this workspace")
+        ExitStatus.Fail(1)
 
   object build:
     def initialize(directory: Path)(using CliFrontEnd): ExitStatus raises UserError =

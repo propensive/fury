@@ -71,6 +71,7 @@ class CliFrontEnd()(using Terminal) extends FrontEnd:
   private var indents: Map[Target, Text] = Map()
   private var tooWide: Boolean = false
   private val queue: juc.ConcurrentLinkedQueue[Text] = juc.ConcurrentLinkedQueue()
+  private val queue2: juc.ConcurrentLinkedQueue[Text] = juc.ConcurrentLinkedQueue()
 
   def resize(rows: Int, cols: Int): Unit = dag.let(setSchedule(_))
 
@@ -84,6 +85,8 @@ class CliFrontEnd()(using Terminal) extends FrontEnd:
   def info[InfoType: Printable](info: InfoType) =
     queue.add(summon[Printable[InfoType]].print(info, terminal.stdio.termcap))
   
+  def info2(text: Text) = queue2.add(text)
+
   def setSchedule(dag2: Dag[Target]): Unit =
     dag = dag2
     diagram = DagDiagram(dag2).tap: diagram =>
@@ -123,6 +126,8 @@ class CliFrontEnd()(using Terminal) extends FrontEnd:
         e"▪ $Bold($highlight(${target}))$prefix$edge$highlight(${ProgressBar(progress)})$edge"
 
   def render(last: Boolean = false): Unit =
+    for i <- 0 until queue2.size do Out.print(queue2.poll().nn)
+
     for i <- 0 until queue.size do queue.poll().nn.cut(t"\n").each: line =>
       Out.println(line+t"\e[K")
     

@@ -127,12 +127,9 @@ case class Build
      projects:  List[Project],
      mounts:    List[Mount])
 derives Debug, CodlEncoder:
-
   def defaultAction: Optional[Action] = actions.where(_.name == default)
 
-
 case class Prelude(terminator: Text, comment: List[Text]) derives Debug, CodlEncoder
-
 
 object Project:
   given relabelling: CodlRelabelling[Project] = () =>
@@ -143,7 +140,8 @@ object Project:
       t"libraries"  -> t"library",
       t"containers" -> t"container",
       t"variables"  -> t"set",
-      t"execs"      -> t"exec")
+      t"execs"      -> t"exec",
+      t"streams"      -> t"stream")
 
 case class Project
     (id:          ProjectId,
@@ -158,15 +156,19 @@ case class Project
      execs:       List[Exec],
      website:     HttpUrl,
      license:     Optional[LicenseId],
-     keywords:    List[Keyword])
+     keywords:    List[Keyword],
+     streams:     List[Stream])
 derives Debug, CodlEncoder:
 
   def suggestion: Suggestion = Suggestion(id.show, t"$name: $description")
   
-  def apply(goal: GoalId): Optional[Module | Artifact | Library] =
-    modules.where(_.id == goal).or(artifacts.where(_.id == goal)).or(libraries.where(_.id == goal))
+  def apply(goal: GoalId): Optional[Module | Artifact | Library | Exec] =
+    modules.where(_.id == goal)
+     .or(artifacts.where(_.id == goal))
+     .or(libraries.where(_.id == goal))
+     .or(execs.where(_.id == goal))
 
-  def goals: List[GoalId] = modules.map(_.id) ++ artifacts.map(_.id) ++ libraries.map(_.id)
+  def goals: List[GoalId] = modules.map(_.id) ++ artifacts.map(_.id) ++ libraries.map(_.id) ++ execs.map(_.id)
   def targets: List[Target] = goals.map(Target(id, _))
 
   def definition(workspace: Workspace): Definition =
@@ -204,12 +206,13 @@ case class Assist(target: Target, module: GoalId) derives Debug, CodlEncoder
 object Basis extends RefType(t"basis"):
   given encoder: Encoder[Basis] = _.toString.tt.lower
   given decoder(using Errant[InvalidRefError]): Decoder[Basis] =
+    case t"minimum" => Basis.Minimum
     case t"runtime" => Basis.Runtime
     case t"tools"   => Basis.Tools
     case value      => raise(InvalidRefError(value, this))(Basis.Runtime)
 
 enum Basis:
-  case Runtime, Tools
+  case Minimum, Runtime, Tools
 
 object Artifact:
   given relabelling: CodlRelabelling[Artifact] = () =>
@@ -257,7 +260,7 @@ object Exec:
   given relabelling: CodlRelabelling[Exec] = () =>
     Map(t"includes" -> t"include")
 
-case class Exec(id: GoalId, includes: List[Target]) derives Debug, CodlEncoder
+case class Exec(id: GoalId, includes: List[Target], main: Fqcn) derives Debug, CodlEncoder
 
 object Module:
   given relabelling: CodlRelabelling[Module] = () =>
@@ -311,7 +314,7 @@ object Target extends RefType(t"target"):
     case _ =>
       raise(InvalidRefError(value, this))(Target(ProjectId(t"unknown"), GoalId(t"unknown")))
 
-case class Target(projectId: ProjectId, goalId: GoalId):
+case class Target(projectId: ProjectId, goalId: GoalId, stream: Optional[StreamId] = Unset):
   def suggestion: Suggestion = Suggestion(this.show, Unset)
   def partialSuggestion: Suggestion = Suggestion(t"${projectId}/", Unset, incomplete = true)
 
@@ -321,6 +324,31 @@ object Action:
 case class Action(name: ActionName, modules: List[Target], description: Optional[Text])
 derives Debug:
   def suggestion: Suggestion = Suggestion(name.show, description.let { text => e"$Italic($text)"} )
+
+object Stream:
+
+  given relabelling: CodlRelabelling[Stream] = () => Map(t"guarantees" -> t"guarantee")
+
+case class Stream(id: StreamId, lifetime: Int, guarantees: List[Guarantee]):
+  def suggestion: Suggestion =
+    val guaranteesText = guarantees.map(_.encode).join(t", ")
+    Suggestion(id.show, t"lifetime: $lifetime days; guarantees: $guaranteesText")
+
+object Guarantee:
+  given encoder: Encoder[Guarantee] = _.toString.tt.lower
+
+  given decoder(using Errant[RefError]): Decoder[Guarantee] =
+    case t"bytecode"      => Guarantee.Bytecode
+    case t"tasty"         => Guarantee.Tasty
+    case t"source"        => Guarantee.Source
+    case t"functionality" => Guarantee.Functionality
+    case value            => raise(RefError(value))(Guarantee.Functionality)
+
+enum Guarantee:
+  case Bytecode       // same bytecode API
+  case Tasty          // same TASTy API
+  case Source         // same source API
+  case Functionality  // functionality will not be removed
 
 object WorkPath:
   given navigable: Navigable[WorkPath, GeneralForbidden, Unit] with
@@ -402,6 +430,9 @@ object Workspace:
     given (WorkspaceError fixes InvalidRefError) =
       case InvalidRefError(text, _) => WorkspaceError(WorkspaceError.Reason.BadData(text))
 
+    given (WorkspaceError fixes RefError) =
+      case RefError(text) => WorkspaceError(WorkspaceError.Reason.BadData(text))
+    
     given (WorkspaceError fixes NumberError) =
       case NumberError(text, _) => WorkspaceError(WorkspaceError.Reason.BadData(text))
 
