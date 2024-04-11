@@ -33,25 +33,25 @@ object Tests extends Suite(t"Fury Model Tests"):
     suite(t"ID tests"):
       suite(t"Module IDs"):
         test(t"Parse a valid module ID"):
-          ModuleId(t"moduleid")
-        .assert(_ == ModuleId(t"moduleid"))
+          GoalId(t"moduleid")
+        .assert(_ == GoalId(t"moduleid"))
         
         test(t"Module ID can have a dash"):
-          ModuleId(t"module-id")
-        .assert(_ == ModuleId(t"module-id"))
+          GoalId(t"module-id")
+        .assert(_ == GoalId(t"module-id"))
         
         test(t"Module ID cannot have two adjacent dashes"):
-          capture(ModuleId(t"module--id"))
-        .assert(_ == InvalidRefError(t"module--id", Ids.ModuleId))
+          capture(GoalId(t"module--id"))
+        .assert(_ == InvalidRefError(t"module--id", Ids.GoalId))
 
         for sym <- List('!', ':', '/', '\\', ',', '.', '?', '|', ';', ' ') do
           test(t"Module ID cannot contain a '$sym'"):
-            capture(ModuleId(t"module${sym}id"))
-          .assert(_ == InvalidRefError(t"module${sym}id", Ids.ModuleId))
+            capture(GoalId(t"module${sym}id"))
+          .assert(_ == InvalidRefError(t"module${sym}id", Ids.GoalId))
         
         test(t"Module cannot contain capital letters"):
-          capture(ModuleId(t"moduleId"))
-        .assert(_ == InvalidRefError(t"moduleId", Ids.ModuleId))
+          capture(GoalId(t"moduleId"))
+        .assert(_ == InvalidRefError(t"moduleId", Ids.GoalId))
       
       /*suite(t"Git refs"):
         test(t"Parse a Git Commit"):

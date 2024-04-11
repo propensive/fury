@@ -16,6 +16,9 @@ command dist fury/executable
 command compile fury/cli
   description  Compile Fury's CLI module
 
+command test fury/run-tests
+  description  Run Fury's tests
+
 default compile
 
 project fury
@@ -62,6 +65,16 @@ project fury
     include   impressionism/core
     include   eucalyptus/ansi
     include   eucalyptus/syslog
+
+  module test
+    compiler  scala
+    sources   src/test
+    include   probably/cli
+    include   fury/model
+
+  exec run-tests
+    main     fury.Tests
+    include  fury/test
 
   artifact executable
     basis       tools
