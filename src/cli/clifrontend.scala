@@ -134,12 +134,12 @@ class CliFrontEnd()(using Terminal) extends FrontEnd:
     unscheduled.each { target => Out.println(showItem(target, last)) }
 
     diagram.let: diagram =>
-      Out.print(t"\e[?25l")
+      Out.println(t"\e[?25l")
       if tooWide then diagram.nodes.each: target =>
         Out.println(showItem(target, last))
       else diagram.render(showItem(_, last)).each(Out.println(_))
       Out.println(e"\e[K")
-      Out.println(if last then t"\e[?25h" else t"\e[${diagram.size + unscheduled.size + 2}A")
+      Out.println(if last then t"\e[?25h" else t"\e[${diagram.size + unscheduled.size + 3}A")
 
 object ProgressBar:
   def apply(double: Double): Text = bars((double*96).toInt.min(96).max(0))
