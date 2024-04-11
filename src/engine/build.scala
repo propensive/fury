@@ -448,6 +448,7 @@ class Builder():
           given (BuildError fixes IoError) = BuildError(_)
           given (BuildError fixes PathError) = BuildError(_)
           given (BuildError fixes StreamError) = BuildError(_)
+          given (BuildError fixes SystemPropertyError) = BuildError(_)
           given (BuildError fixes ExecError) = BuildError(_)
           given (BuildError fixes ConcurrencyError) = BuildError(_)
           
@@ -456,21 +457,23 @@ class Builder():
               runTask(name, hash)
             .map(_.await())
     
-          info(t"Executing ${name}")
+          summon[FrontEnd].output(t"\e[K")
           val basis = unsafely(Basis.Runtime().await().path.show)
           val baseClasspath = LocalClasspath(List(ClasspathEntry.Jarfile(basis)))
           val work = (installation.work / PathName(Uuid().show)).as[Directory]
           given WorkingDirectory = WorkingDirectory(work.path)
           
           val allBinaries = classpath.flatMap(phases(_).binaries).map(outputDirectory(_) / p"library.jar")
+          val javaHome: Path = Properties.java.home()
+          val javaCommand: Path = javaHome / p"bin" / p"java"
                   
           (classpath.map(outputDirectory(_)) ++ allBinaries).foldLeft(baseClasspath)(_ + _).pipe: classpath =>
-            val command = sh"java -classpath ${classpath()} ${exec.main}"
+            val command = sh"$javaCommand -classpath ${classpath()} ${exec.main}"
             val process = command.fork[ExitStatus]()
             
             async:
               process.stdout().stream[Text].each: text =>
-                info2(text)
+                summon[FrontEnd].output(text)
             .await()
             
             process.await() match

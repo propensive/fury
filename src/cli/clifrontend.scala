@@ -85,7 +85,7 @@ class CliFrontEnd()(using Terminal) extends FrontEnd:
   def info[InfoType: Printable](info: InfoType) =
     queue.add(summon[Printable[InfoType]].print(info, terminal.stdio.termcap))
   
-  def info2(text: Text) = queue2.add(text)
+  def output(text: Text) = queue2.add(text)
 
   def setSchedule(dag2: Dag[Target]): Unit =
     dag = dag2
@@ -126,7 +126,7 @@ class CliFrontEnd()(using Terminal) extends FrontEnd:
         e"▪ $Bold($highlight(${target}))$prefix$edge$highlight(${ProgressBar(progress)})$edge"
 
   def render(last: Boolean = false): Unit =
-    for i <- 0 until queue2.size do Out.print(queue2.poll().nn)
+    for i <- 0 until queue2.size do Out.print(queue2.poll().nn.sub(t"\n", t"\n\e[K"))
 
     for i <- 0 until queue.size do queue.poll().nn.cut(t"\n").each: line =>
       Out.println(line+t"\e[K")

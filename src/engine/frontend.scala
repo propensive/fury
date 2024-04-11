@@ -26,7 +26,7 @@ import scala.collection.concurrent as scc
 import scala.collection.mutable as scm
 
 def info[InfoType: Printable](info: InfoType)(using frontEnd: FrontEnd): Unit = frontEnd.info(info)
-def info2(text: Text)(using frontEnd: FrontEnd): Unit = frontEnd.info2(text)
+def output(text: Text)(using frontEnd: FrontEnd): Unit = frontEnd.output(text)
 
 object FrontEnd:
   private var frontEnds: Set[FrontEnd] = Set()
@@ -52,7 +52,7 @@ trait FrontEnd:
   def start(target: Target): Unit = unscheduled.synchronized(unscheduled.add(target))
   def stop(target: Target): Unit = unscheduled.synchronized(unscheduled.remove(target))
   def info[InfoType: Printable](info: InfoType): Unit
-  def info2(text: Text): Unit
+  def output(text: Text): Unit
   def abort(): Unit = aborted.offer(())
   def attend(): Unit = aborted.attend()
   def continue: Boolean = !aborted.ready
