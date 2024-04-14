@@ -110,7 +110,7 @@ given (using Errant[UserError]): HomeDirectory =
 
 given (using Cli): WorkingDirectory = workingDirectories.daemonClient 
 
-given installation(using Errant[UserError]): Installation =
+given (using Errant[UserError]): Installation =
   given (UserError fixes ConfigError) = error =>
     UserError(msg"The configuration file could not be read.")
   

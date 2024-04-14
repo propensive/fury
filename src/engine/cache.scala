@@ -17,7 +17,7 @@
 package fury
 
 import anticipation.*, filesystemInterfaces.galileiApi, timeInterfaces.aviationApi
-import aviation.*
+import aviation.*, calendars.gregorian
 import cellulose.*
 import eucalyptus.*
 
@@ -43,6 +43,8 @@ import spectacular.*
 import turbulence.*
 
 import scala.collection.concurrent as scc
+
+given Timezone = tz"Etc/UTC"
 
 case class CachedFile(lastModified: Instant, text: Task[Text], hash: Task[Hash])
 
@@ -153,8 +155,14 @@ object Cache:
             
           process.complete().also:
             Log.info(msg"Finished cloning ${ecosystem.url}")            
-  
-        Codl.read[Vault]((destination / p"vault.codl").as[File])
+        val dataDir = (destination / p"data").as[Directory]
+        
+        val current = dataDir.descendants.filter(_.is[File]).to(List).map: path =>
+          Codl.read[Release](path.as[File])
+        .filter: release =>
+          release.date + release.lifetime.days > today()
+
+        Vault(t"vent", 1, current)
 
   def workspace(path: Path)
       (using Installation, Internet, Log[Display], WorkingDirectory, GitCommand)

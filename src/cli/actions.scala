@@ -186,7 +186,6 @@ object actions:
       given (UserError fixes HostnameError) = error => UserError(error.message)
       given (UserError fixes PathError) = error => UserError(error.message)
       given (UserError fixes ReleaseError) = error => UserError(error.message)
-      given (UserError fixes InvalidRefError) = error => UserError(error.message)
       
       val build = Workspace().build
       
@@ -208,7 +207,7 @@ object actions:
         val hash: Text = release.digest[Sha2[256]].encodeAs[Base32]
         
         val destination =
-          unsafely(build.ecosystem.path / PathName(hash.take(2)) / PathName(hash.drop(2)))
+          unsafely(build.ecosystem.path / p"data" / PathName(hash.take(2)) / PathName(hash.drop(2)))
 
         release.writeTo:
           import filesystemOptions.{createNonexistent, createNonexistentParents}
@@ -257,39 +256,52 @@ object actions:
       import filesystemOptions.doNotCreateNonexistent
       import filesystemOptions.dereferenceSymlinks
 
-      given (UserError fixes WorkspaceError)   = accede
-      given (UserError fixes BuildError)       = accede
-      given (UserError fixes VaultError)       = accede
-      given (UserError fixes ConcurrencyError) = accede
-      given (UserError fixes PathError)        = accede
-      given (UserError fixes ZipError)         = accede
-      given (UserError fixes StreamError)      = accede
-      given (UserError fixes IoError)          = accede
-      given (UserError fixes WatchError)       = accede
-      given (UserError fixes CompileError)     = accede
-
       Log.info(msg"Trying to construct workspace")
-      val workspace = Workspace()
+      val workspace = tend(Workspace()).remedy:
+        case WorkspaceError(_) => abort(UserError(msg"The workspace could not be constructed"))
+      
       Log.info(msg"Finished constructing workspace")
-      given universe: Universe = workspace.universe()
+
+      given universe: Universe = tend(workspace.universe()).remedy:
+        case VaultError()           => abort(UserError(msg"Could not generate universe"))
+        case WorkspaceError(reason) => abort(UserError(msg"Could not generate universe"))
+        case ConcurrencyError(_)    => abort(UserError(msg"Constructing the universe was interrupted"))
       
       def build(): Set[Path] =
         Log.info(msg"Starting $target build...")
         val builder = Builder()
         Log.info(msg"Constructed the builder")
-        val hash = builder.build(target).await()
+        
+        val hash = tend(builder.build(target).await()).remedy:
+          case BuildError(_)       => abort(UserError(msg"Could not calculated the build hash"))
+          case ConcurrencyError(_) => abort(UserError(msg"Calculating the build hash was cancelled"))
+
         Log.info(msg"Calculated hash")
         if !concise then summon[FrontEnd].setSchedule(builder.schedule(hash))
         Log.info(msg"Invoking run")
-        builder.run(target.show, hash, force)
+        
+        tend(builder.run(target.show, hash, force)).remedy:
+          case StreamError(size)        => abort(UserError(msg"A stream error occurred during the build"))
+          case CompileError()           => abort(UserError(msg"The compiler crashed during the build"))
+          case IoError(path)            => abort(UserError(msg"A disk error occurred during the build"))
+          case ZipError(_)              => abort(UserError(msg"There was a ZIP error during the build"))
+          case PathError(path, expect)  => abort(UserError(msg"An invalid path was encountered during the build"))
+          case BuildError(_)            => abort(UserError(msg"The build failed."))
+          case ConcurrencyError(reason) => abort(UserError(msg"The build aborted early"))
+
         Log.info(msg"Returning watch directories")
         builder.watchDirectories(hash)
       
       if !watch then build()
       else while summon[FrontEnd].continue do
-        build().watch: watches =>
-          watches.stream.cluster(0.05*Second).head
-          summon[FrontEnd].reset()
+        tend:
+          build().watch: watches =>
+            watches.stream.cluster(0.05*Second).head
+            summon[FrontEnd].reset()
+        .remedy:
+          case IoError(path)           => abort(UserError(msg"An I/O error occurred during filewatching"))
+          case WatchError()            => abort(UserError(msg"There was an error filewatching"))
+          case PathError(text, expect) => abort(UserError(msg"An invalid path was encountered"))
 
       ExitStatus.Ok
 
