@@ -79,7 +79,7 @@ import scala.collection.mutable as scm
 //       System.err.nn.println(t"Probate cleaned up an orphan task: ${orphan.stack}")
 //       orphan.cancel()
     
-inline given (using Log[Display]): Mitigator = (path, error) =>
+inline given (using Log[Display]): Interceptor = (path, error) =>
   Log.warn(t"Detected async failure in ${path.stack}:")
   Log.fail(error)
   Mitigation.Escalate
