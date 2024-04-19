@@ -378,34 +378,66 @@ class Builder():
               case error: PathError => abort(BuildError(error))
               case error: IoError   => abort(BuildError(error))
             .tap: file =>
-              output.as[Directory]
+              tend(output.as[Directory]).remedy:
+                case error: IoError => abort(BuildError(error))
 
               if prefixPaths.isEmpty && suffixPaths.isEmpty then file else
                 val prefixBytes: LazyList[Bytes] =
-                  prefixPaths.to(LazyList).flatMap(_.as[File].stream[Bytes]).or(LazyList())
+                  tend:
+                    prefixPaths.to(LazyList).flatMap(_.as[File].stream[Bytes]).or(LazyList())
+                  .remedy:
+                    case error: IoError     => abort(BuildError(error))
+                    case error: StreamError => abort(BuildError(error))
                 
                 val suffixBytes: LazyList[Bytes] =
-                  suffixPaths.to(LazyList).flatMap(_.as[File].stream[Bytes]).or(LazyList())
+                  tend:
+                    suffixPaths.to(LazyList).flatMap(_.as[File].stream[Bytes]).or(LazyList())
+                  .remedy:
+                    case error: IoError     => abort(BuildError(error))
+                    case error: StreamError => abort(BuildError(error))
 
-                val tmpFile = unsafely(installation.work / PathName(Uuid().show)).as[File]
-                (prefixBytes ++ file.stream[Bytes] ++ suffixBytes).writeTo(tmpFile)
-                file.delete()
-                tmpFile.moveTo(file.path)
+                val tmpFile =
+                  tend:
+                    unsafely(installation.work / PathName(Uuid().show)).as[File]
+                  .remedy:
+                    case error: IoError => abort(BuildError(error))
+
+                tend((prefixBytes ++ file.stream[Bytes] ++ suffixBytes).writeTo(tmpFile)).remedy:
+                  case error: StreamError => abort(BuildError(error))
+                  case error: IoError     => abort(BuildError(error))
+
+                tend:
+                  file.delete()
+                  tmpFile.moveTo(file.path)
+                .remedy:
+                  case error: IoError => abort(BuildError(error))
+
                 
-              file.stream[Bytes].digest[Sha2[256]].bytes.encodeAs[Base32]
-               .writeTo(checksumPath.as[File])
+              tend:
+                file.stream[Bytes].digest[Sha2[256]].bytes.encodeAs[Base32]
+                 .writeTo(checksumPath.as[File])
+              .remedy:
+                case error: IoError     => abort(BuildError(error))
+                case error: StreamError => abort(BuildError(error))
 
               if executable.or(false) then file.executable() = true
 
               counterPath.let: counter =>
                 safely(counter.as[File].readAs[Text].trim.decodeAs[Int]).let: count =>
-                  t"${count + 1}\n".writeTo(counter.as[File])
+                  tend(t"${count + 1}\n".writeTo(counter.as[File])).remedy:
+                    case error: IoError     => abort(BuildError(error))
+                    case error: StreamError => abort(BuildError(error))
               
-              destination.wipe()
-              file.moveTo(destination)
+              tend:
+                destination.wipe()
+                file.moveTo(destination)
+              .remedy:
+                case error: IoError     => abort(BuildError(error))
+                case error: StreamError => abort(BuildError(error))
           else summon[FrontEnd](target) = -1.0
 
-          output.as[Directory]
+          tend(output.as[Directory]).remedy:
+            case error: IoError => abort(BuildError(error))
 
   case class LibraryPhase(build: Path, library: Library, target: Target) extends Phase:
     val antecedents: Map[Hash, Text] = Map()
@@ -420,38 +452,68 @@ class Builder():
 
       attempt[AggregateError[BuildError]]:
         validate[BuildError]:
-          given (BuildError fixes HttpError)    = BuildError(_)
-          given (BuildError fixes IoError)      = BuildError(_)
-          given (BuildError fixes StreamError)  = BuildError(_)
-          given (BuildError fixes OfflineError) = BuildError(_)
-          given (BuildError fixes NumberError)  = BuildError(_)
+          // given (BuildError fixes HttpError)    = BuildError(_)
+          // given (BuildError fixes IoError)      = BuildError(_)
+          // given (BuildError fixes StreamError)  = BuildError(_)
+          // given (BuildError fixes OfflineError) = BuildError(_)
+          // given (BuildError fixes NumberError)  = BuildError(_)
           
-          output.as[Directory]
+          tend(output.as[Directory]).remedy:
+            case error: IoError => abort(BuildError(error))
+
           val checksum: Path = output / p"checksum"
           val jarfile: Path = output / p"library.jar"
           
-          def jarfileChecksum(): Text = jarfile.as[File].stream[Bytes].digest[Sha2[256]].bytes.encodeAs[Base32]
-          def storedChecksum(): Text = checksum.as[File].readAs[Text].trim
+          def jarfileChecksum(): Text =
+            tend(jarfile.as[File].stream[Bytes].digest[Sha2[256]].bytes.encodeAs[Base32]).remedy:
+              case error: IoError     => abort(BuildError(error))
+              case error: StreamError => abort(BuildError(error))
           
-          if !(jarfile.exists() && checksum.exists() && jarfileChecksum() == storedChecksum()) then
-            summon[Internet].require: (online: Online) ?=> // FIXME: Why is this necessary?
-              Log.info(t"Initiating $target")
-              val response: HttpResponse = library.url.get()
-              val size: Double = response(ResponseHeader.ContentLength).map(_.long.toDouble).lift(0).getOrElse(Double.MaxValue)
-              var count: Int = 0
-              
-              response.as[LazyList[Bytes]].map: bytes =>
-                count += bytes.length
-                summon[FrontEnd](target) = count/size
-                bytes
-              .writeTo(jarfile.as[File])
-
-              Log.info(t"Downloaded ${target}")
-              jarfileChecksum().writeTo(checksum.as[File])
-              output.as[Directory]
+          def storedChecksum(): Text = tend(checksum.as[File].readAs[Text].trim).remedy:
+            case error: IoError     => abort(BuildError(error))
+            case error: StreamError => abort(BuildError(error))
+          
+          if !(jarfile.exists() && checksum.exists() && jarfileChecksum() == storedChecksum())
+          then
+            tend:
+              summon[Internet].require: (online: Online) ?=> // FIXME: Why is this necessary?
+                Log.info(t"Initiating $target")
+                val response: HttpResponse = library.url.get()
+                
+                val size: Double =
+                  safely:
+                    response(ResponseHeader.ContentLength).map(_.long.toDouble).lift(0).getOrElse:
+                      Double.MaxValue
+                  .or(Double.MaxValue)
+                
+                var count: Int = 0
+                
+                tend:
+                  response.as[LazyList[Bytes]].map: bytes =>
+                    count += bytes.length
+                    summon[FrontEnd](target) = count/size
+                    bytes
+                  .writeTo(jarfile.as[File])
+                .remedy:
+                  case error: HttpError   => abort(BuildError(error))
+                  case error: IoError     => abort(BuildError(error))
+                  case error: StreamError => abort(BuildError(error))
+  
+                Log.info(t"Downloaded ${target}")
+  
+                tend:
+                  jarfileChecksum().writeTo(checksum.as[File])
+                  output.as[Directory]
+                .remedy:
+                  case error: IoError      => abort(BuildError(error))
+                  case error: StreamError  => abort(BuildError(error))
+            .remedy:
+              case error: OfflineError => abort(BuildError(error))
           else
             summon[FrontEnd](target) = -1.0
-            output.as[Directory]
+            
+            tend(output.as[Directory]).remedy:
+              case error: IoError => abort(BuildError(error))
 
   case class ExecPhase
       (build:       Path,
@@ -487,30 +549,58 @@ class Builder():
           val inputs =
             antecedents.to(List).map: (hash, name) =>
               runTask(name, hash)
-            .map(_.await())
+            .map: task =>
+              tend(task.await()).remedy:
+                case error: ConcurrencyError => abort(BuildError(error))
+
     
           summon[FrontEnd].output(t"\e[K")
           val basis = unsafely(Basis.Runtime().await().path.show)
           val baseClasspath = LocalClasspath(List(ClasspathEntry.Jarfile(basis)))
-          val work = (installation.work / PathName(Uuid().show)).as[Directory]
+          
+          val work = tend((installation.work / PathName(Uuid().show)).as[Directory]).remedy:
+            case error: IoError        => abort(BuildError(error))
+            case error@PathError(_, _) => abort(BuildError(error))
+          
           given WorkingDirectory = WorkingDirectory(work.path)
           
-          val allBinaries = classpath.flatMap(phases(_).binaries).map(outputDirectory(_) / p"library.jar")
-          val javaHome: Path = Properties.java.home()
+          val allBinaries =
+            classpath.flatMap(phases(_).binaries).map(outputDirectory(_) / p"library.jar")
+
+          val javaHome: Path = tend(Properties.java.home[Path]()).remedy:
+            case error: PathError           => abort(BuildError(error))
+            case error: SystemPropertyError => abort(BuildError(error))
+
           val javaCommand: Path = javaHome / p"bin" / p"java"
                   
-          (classpath.map(outputDirectory(_)) ++ allBinaries).foldLeft(baseClasspath)(_ + _).pipe: classpath =>
+          tend:
+            (classpath.map(outputDirectory(_)) ++ allBinaries).foldLeft(baseClasspath)(_ + _)
+          .remedy:
+            case error: PathError => abort(BuildError(error))
+            case error: IoError   => abort(BuildError(error))
+          .pipe: classpath =>
             val command = sh"$javaCommand -classpath ${classpath()} ${exec.main}"
-            val process = command.fork[ExitStatus]()
+            val process = tend(command.fork[ExitStatus]()).remedy:
+              case error: ExecError => abort(BuildError(error))
             
-            async:
-              process.stdout().stream[Text].each: text =>
-                summon[FrontEnd].output(text)
-            .await()
+            tend:
+              async:
+                tend(process.stdout().stream[Text]).remedy:
+                  case error: StreamError => abort(BuildError(error))
+                .each: text =>
+                  summon[FrontEnd].output(text)
+              .await()
+            
+            .remedy:
+              case error: ConcurrencyError => abort(BuildError(error))
             
             process.await() match
-              case ExitStatus.Ok => work.moveTo(output).as[Directory]
-              case _             => abort(BuildError(AbortError(1)))
+              case ExitStatus.Ok =>
+                tend(work.moveTo(output).as[Directory]).remedy:
+                  case error: IoError => abort(BuildError(error))
+
+              case _ =>
+                abort(BuildError(AbortError(1)))
 
 
   case class ModulePhase

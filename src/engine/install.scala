@@ -38,47 +38,31 @@ import vacuous.*
 object Installation:
   def apply()(using HomeDirectory, SystemProperties): Installation raises ConfigError =
     import badEncodingHandlers.strict
+    
+    tend:
+      val script = unsafely(Properties.ethereal.name[Text]())
+      val cache: Directory = (Xdg.cacheHome[Path] / PathName(script)).as[Directory]
+      val configPath: Path = Home.Config() / PathName(script)
+      val config: Config = Codl.read[Config]((configPath / p"config.codl").as[File])
+      val vault: Directory = (cache / p"vault").as[Directory]
+      val snapshots: Directory = (cache / p"repos").as[Directory]
+      val tmp: Directory = (cache / p"tmp").as[Directory]
+      
+      val buildId: Int =
+        safely((Classpath / p"build.id")().readAs[Text].trim.decodeAs[Int]).or:
+          throw Panic(msg"The build.id file was missing or corrupt")
+      
+      Installation(buildId, config, cache, vault, tmp, snapshots)
 
-    given (ConfigError fixes StreamError) = error =>
-      ConfigError(msg"The stream was cut while reading a file")
-    
-    given (ConfigError fixes EnvironmentError) =
-      case EnvironmentError(variable) =>
-        ConfigError(msg"The environment variable $variable could not be accessed")
-    
-    given (ConfigError fixes UndecodableCharError) = error =>
-      ConfigError(msg"The configuration file contained bad character data")
-    
-    given (ConfigError fixes SystemPropertyError) =
-      case SystemPropertyError(property) =>
-        ConfigError(msg"The JVM system property $property could not be read.")
-    
-    given (ConfigError fixes IoError) =
-      case IoError(path) => ConfigError(msg"An I/O error occurred while trying to access $path")
-    
-    given (ConfigError fixes CodlReadError) =
-      case CodlReadError(label) =>
-        ConfigError(msg"The field ${label.or(t"unknown")} could not be read")
-    
-    given (ConfigError fixes PathError) =
-      case PathError(path, reason) => ConfigError(msg"The path $path was not valid because $reason")
-    
-    given (ConfigError fixes InvalidRefError) =
-      case InvalidRefError(ref, refType) => ConfigError(msg"$ref is not valid")
-    
-    val script = unsafely(Properties.ethereal.name[Text]())
-    val cache: Directory = (Xdg.cacheHome[Path] / PathName(script)).as[Directory]
-    val configPath: Path = Home.Config() / PathName(script)
-    val config: Config = Codl.read[Config]((configPath / p"config.codl").as[File])
-    val vault: Directory = (cache / p"vault").as[Directory]
-    val snapshots: Directory = (cache / p"repos").as[Directory]
-    val tmp: Directory = (cache / p"tmp").as[Directory]
-    
-    val buildId: Int =
-      safely((Classpath / p"build.id")().readAs[Text].trim.decodeAs[Int]).or:
-        throw Panic(msg"The build.id file was missing or corrupt")
-    
-    Installation(buildId, config, cache, vault, tmp, snapshots)
+    .remedy:
+      case StreamError(_)                => abort(ConfigError(msg"The stream was cut while reading a file"))
+      case error: AggregateError[?]      => abort(ConfigError(msg"Could not read the configuration file"))
+      case EnvironmentError(variable)    => abort(ConfigError(msg"The environment variable $variable could not be accessed"))
+      case error: UndecodableCharError   => abort(ConfigError(msg"The configuration file contained bad character data"))
+      case SystemPropertyError(property) => abort(ConfigError(msg"The JVM system property $property could not be read."))
+      case IoError(path)                 => abort(ConfigError(msg"An I/O error occurred while trying to access $path"))
+      case CodlReadError(label)          => abort(ConfigError(msg"The field ${label.or(t"unknown")} could not be read"))
+      case PathError(path, reason)       => abort(ConfigError(msg"The path $path was not valid because $reason"))
     
 case class Installation
    (buildId:   Int,
