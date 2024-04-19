@@ -27,17 +27,17 @@ enum LicenseGroup:
 
 enum License(val name: InlineMd, val id: LicenseId, val group: LicenseGroup):
   case Afl3
-  extends License(md"Academic Free License v3.0", LicenseId.unsafe(t"afl-3.0"), LicenseGroup.Afl)
+  extends License(md"Academic Free License v3.0", LicenseId.unsafe(t"afl-3"), LicenseGroup.Afl)
   
   case Apache2
-  extends License(md"Apache license 2.0", LicenseId.unsafe(t"apache-2.0"), LicenseGroup.Apache)
+  extends License(md"Apache license 2.0", LicenseId.unsafe(t"apache-2"), LicenseGroup.Apache)
   
   case Artistic2
   extends License
-   (md"Artistic license 2.0", LicenseId.unsafe(t"artistic-2.0"), LicenseGroup.Artistic)
+   (md"Artistic license 2.0", LicenseId.unsafe(t"artistic-2"), LicenseGroup.Artistic)
   
   case Bsl1
-  extends License(md"Boost Software License 1.0", LicenseId.unsafe(t"bsl-1.0"), LicenseGroup.Bsl)
+  extends License(md"Boost Software License 1.0", LicenseId.unsafe(t"bsl-1"), LicenseGroup.Bsl)
   
   case Bsd2Clause
   extends License

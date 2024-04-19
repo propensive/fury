@@ -130,35 +130,31 @@ object Cache:
       async:
         Log.info(t"Started async to fetch ecosystem")
   
-        given (VaultError fixes UrlError)        = error => VaultError()
-        given (VaultError fixes InvalidRefError) = error => VaultError()
-        given (VaultError fixes ExecError)       = error => VaultError()
-        given (VaultError fixes StreamError)     = error => VaultError()
-        given (VaultError fixes NumberError)     = error => VaultError()
-        given (VaultError fixes DateError)       = error => VaultError()
-        given (VaultError fixes GitError)        = error => VaultError()
-        given (VaultError fixes IoError)         = error => VaultError()
-        given (VaultError fixes GitRefError)     = error => VaultError()
-        given (VaultError fixes HostnameError)   = error => VaultError()
-        given (VaultError fixes PathError)       = error => VaultError()
-        given (VaultError fixes FqcnError)       = error => VaultError()
-        given (VaultError fixes CodlReadError)   = error => VaultError()
-        given (VaultError fixes MarkdownError)   = error => VaultError()
-  
-        val destination = ecosystem.path
+        val destination = tend(ecosystem.path).remedy:
+          case PathError(path, _) => abort(VaultError())
   
         if !destination.exists() then
           Log.info(msg"Cloning ${ecosystem.url}")
-          val process = Git.clone(ecosystem.url, destination, branch = ecosystem.branch)
+          
+          val process =
+            tend(Git.clone(ecosystem.url, destination, branch = ecosystem.branch)).remedy:
+              case GitError(_)        => abort(VaultError())
+              case IoError(_)         => abort(VaultError())
+              case ExecError(_, _, _) => abort(VaultError())
+              case PathError(_, _)    => abort(VaultError())
             
           gitProgress(process.progress).map(_.debug).each(Log.info(_))
             
           process.complete().also:
             Log.info(msg"Finished cloning ${ecosystem.url}")            
-        val dataDir = (destination / p"data").as[Directory]
         
-        val current = dataDir.descendants.filter(_.is[File]).to(List).map: path =>
-          Codl.read[Release](path.as[File])
+        val dataDir = tend((destination / p"data").as[Directory]).remedy:
+          case IoError(_) => abort(VaultError())
+        
+        val current = tend(dataDir.descendants.filter(_.is[File])).remedy:
+          case IoError(_) => abort(VaultError())
+        .to(List).map: path =>
+          safely(Codl.read[Release](path.as[File])).or(abort(VaultError()))
         .filter: release =>
           release.date + release.lifetime.days > today()
 
@@ -168,10 +164,8 @@ object Cache:
       (using Installation, Internet, Log[Display], WorkingDirectory, GitCommand)
           : Task[Workspace] raises WorkspaceError =
 
-    given (WorkspaceError fixes IoError) =
-      case IoError(path) => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
-
-    val lastModified = path.as[File].lastModified
+    val lastModified = tend(path.as[File].lastModified).remedy:
+      case IoError(_) => abort(WorkspaceError(WorkspaceError.Reason.Unreadable(path)))
     
     val (cacheTime, workspace) =
       workspaces.establish(path):

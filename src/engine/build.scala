@@ -79,11 +79,6 @@ import scala.collection.mutable as scm
 //       System.err.nn.println(t"Probate cleaned up an orphan task: ${orphan.stack}")
 //       orphan.cancel()
     
-inline given (using Log[Display]): Interceptor = (path, error) =>
-  Log.warn(t"Detected async failure in ${path.stack}:")
-  Log.fail(error)
-  Mitigation.Escalate
-
 case class ConfigError(msg: Message) extends Error(msg)
 
 object Config:
@@ -287,39 +282,63 @@ class Builder():
 
       attempt[AggregateError[BuildError]]:
         validate[BuildError]:
-          given (BuildError fixes PathError)        = BuildError(_)
-          given (BuildError fixes ZipError)         = BuildError(_)
-          given (BuildError fixes IoError)          = BuildError(_)
-          given (BuildError fixes StreamError)      = BuildError(_)
-          given (BuildError fixes ConcurrencyError) = BuildError(_)
+          // given (BuildError fixes PathError)        = BuildError(_)
+          // given (BuildError fixes ZipError)         = BuildError(_)
+          // given (BuildError fixes IoError)          = BuildError(_)
+          // given (BuildError fixes StreamError)      = BuildError(_)
+          // given (BuildError fixes ConcurrencyError) = BuildError(_)
  
           antecedents.each: (hash, name) =>
             runTask(name, hash)
 
           val checksumPath = output / p"checksum"
 
-          def savedChecksum = if checksumPath.exists() then checksumPath.as[File].readAs[Text] else Unset
+          def savedChecksum =
+            tend:
+              if checksumPath.exists() then checksumPath.as[File].readAs[Text] else Unset
+            .remedy:
+              case error: IoError     => abort(BuildError(error))
+              case error: StreamError => abort(BuildError(error))
           
           def fileChecksum = if !destination.exists() then Unset else
-            destination.as[File].stream[Bytes].digest[Sha2[256]].bytes.encodeAs[Base32]
+            tend:
+              destination.as[File].stream[Bytes].digest[Sha2[256]].bytes.encodeAs[Base32]
+            .remedy:
+              case error: IoError     => abort(BuildError(error))
+              case error: StreamError => abort(BuildError(error))
           
           if savedChecksum.absent || fileChecksum.absent || savedChecksum != fileChecksum || counterPath.present
           then
             val tmpPath = unsafely(installation.work / PathName(Uuid().show))
             
-            val zipFile = basis.lay(ZipFile.create(tmpPath)): basis =>
-              basis().await().copyTo(tmpPath)
-              ZipFile(tmpPath.as[File])
+            val zipFile =
+              tend:
+                basis.lay(ZipFile.create(tmpPath)): basis =>
+                  basis().await().copyTo(tmpPath)
+                  ZipFile(tmpPath.as[File])
+              .remedy:
+                case error: IoError          => abort(BuildError(error))
+                case error: StreamError      => abort(BuildError(error))
+                case error: ZipError         => abort(BuildError(error))
+                case error: ConcurrencyError => abort(BuildError(error))
 
             val todo = (dag(hash) - this).sorted.map(_.digest)
             val total = todo.size.toDouble
             var done = 0
             
             todo.each: hash =>
-              tasks()(hash).await().map: directory =>
+              tend(tasks()(hash).await()).remedy:
+                case error: ConcurrencyError => abort(BuildError(error))
+              .map: directory =>
                 if summon[FrontEnd].continue then
-                  val entries = directory.descendants.filter(_.is[File]).map: path =>
-                    ZipEntry(ZipRef(t"/"+path.relativeTo(directory.path).show), path.as[File])
+                  val entries =
+                    tend:
+                      directory.descendants.filter(_.is[File]).map: path =>
+                        ZipEntry(ZipRef(t"/"+path.relativeTo(directory.path).show), path.as[File])
+                    .remedy:
+                      case error: IoError     => abort(BuildError(error))
+                      case error: PathError   => abort(BuildError(error))
+                      case error: StreamError => abort(BuildError(error))
 
                   val manifestEntry = artifact.main.lay(LazyList()): mainClass =>
                     val manifest: Manifest =
@@ -328,24 +347,37 @@ class Builder():
                          manifestAttributes.CreatedBy(t"Fury"),
                          manifestAttributes.MainClass(mainClass))
 
-                    LazyList(ZipEntry(ZipRef(t"/META-INF/MANIFEST.MF"), manifest))
+                    tend(LazyList(ZipEntry(ZipRef(t"/META-INF/MANIFEST.MF"), manifest))).remedy:
+                      case error: PathError => abort(BuildError(error))
 
                   val resourceEntries = resourceMap.flatMap: (source, destination) =>
-                    if source.is[Directory]
-                    then source.as[Directory].descendants.filter(_.is[File]).map: descendant =>
-                      ZipEntry(ZipRef(descendant.relativeTo(source).show), descendant.as[File])
-                    else Iterable(ZipEntry(ZipRef(t"/$destination"), source.as[File]))
+                    tend:
+                      if source.is[Directory]
+                      then source.as[Directory].descendants.filter(_.is[File]).map: descendant =>
+                        ZipEntry(ZipRef(descendant.relativeTo(source).show), descendant.as[File])
+                      else Iterable(ZipEntry(ZipRef(t"/$destination"), source.as[File]))
+                    .remedy:
+                      case error: StreamError => abort(BuildError(error))
+                      case error: IoError     => abort(BuildError(error))
+                      case error: PathError   => abort(BuildError(error))
 
-                  zipFile.append(manifestEntry ++ entries ++ resourceEntries, Epoch)
+                  tend(zipFile.append(manifestEntry ++ entries ++ resourceEntries, Epoch)).remedy:
+                    case error: StreamError => abort(BuildError(error))
+                    case error: ZipError    => abort(BuildError(error))
                   done += 1
                   summon[FrontEnd](target) = done/total
 
                 else
-                  tmpPath.wipe()
+                  tend(tmpPath.wipe()).remedy:
+                    case error: IoError => abort(BuildError(error))
+
                   abort(BuildError(AbortError(1)))
             
             
-            tmpPath.as[File].tap: file =>
+            tend(tmpPath.as[File]).remedy:
+              case error: PathError => abort(BuildError(error))
+              case error: IoError   => abort(BuildError(error))
+            .tap: file =>
               output.as[Directory]
 
               if prefixPaths.isEmpty && suffixPaths.isEmpty then file else

@@ -37,7 +37,7 @@ import nettlesome.*
 import zeppelin.*
 import octogenarian.*
 import surveillance.*
-import parasite.*, asyncOptions.escalateExceptions
+import parasite.*
 import profanity.*
 import quantitative.*
 import cellulose.*, codlPrinters.standard

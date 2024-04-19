@@ -141,6 +141,12 @@ def main(): Unit =
         Log.route: 
           case _ => installation.config.log.path.as[File]
 
+      intercept:
+        case error: Throwable =>
+          Log.fail(msg"Detected an async failure in ${trace.debug}")
+          Log.fail(error)
+          Transgression.Absorb
+
       initTime.let: initTime =>
         Log.info(msg"Initialized Fury in ${(now() - initTime).show}")
 

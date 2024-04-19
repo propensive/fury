@@ -388,17 +388,15 @@ derives Debug
 
 object Workspace:
   def apply()(using WorkingDirectory): Workspace raises WorkspaceError =
-    given (WorkspaceError fixes IoError) =
-      case IoError(path)        => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
+    tend(apply(workingDirectory[Path])).remedy:
+      case IoError(path) =>
+        abort(WorkspaceError(WorkspaceError.Reason.Unreadable(path)))
 
-    given (WorkspaceError fixes PathError) =
       case pathError: PathError =>
-        WorkspaceError(WorkspaceError.Reason.Explanation(pathError.message))
-
-    apply(workingDirectory[Path])
+        abort(WorkspaceError(WorkspaceError.Reason.Explanation(pathError.message)))
 
   def apply(path: Path): Workspace raises WorkspaceError =
-    given (WorkspaceError fixes HostnameError) =
+    /*given (WorkspaceError fixes HostnameError) =
       case HostnameError(text, _) => WorkspaceError(WorkspaceError.Reason.BadData(text))
 
     given (WorkspaceError fixes CodlReadError) =
@@ -438,16 +436,36 @@ object Workspace:
 
     given (WorkspaceError fixes UndecodableCharError) =
       case UndecodableCharError(_, _) => WorkspaceError(WorkspaceError.Reason.BadContent)
+    */
 
-    val dir: Directory = path.as[Directory]
-    val buildFile: File = (dir / p".fury").as[File]
-    val buildDoc: CodlDoc = Codl.parse(buildFile)
+    tend:
+      val dir: Directory = path.as[Directory]
+      val buildFile: File = (dir / p".fury").as[File]
+      val buildDoc: CodlDoc = Codl.parse(buildFile)
+      ???
+    .remedy:
+      case _: AggregateError[?]       => abort(WorkspaceError(WorkspaceError.Reason.Unreadable(path)))
+      //case HostnameError(text, _)     => abort(WorkspaceError(WorkspaceError.Reason.BadData(text)))
+      //case CodlReadError(_)           => abort(WorkspaceError(WorkspaceError.Reason.BadContent))
+      //case GitRefError(text)          => abort(WorkspaceError(WorkspaceError.Reason.BadData(text)))
+      case StreamError(_)             => abort(WorkspaceError(WorkspaceError.Reason.Unreadable(path)))
+      //case MarkdownError(reason)      => abort(WorkspaceError(WorkspaceError.Reason.Explanation(reason.communicate)))
+      case IoError(path)              => abort(WorkspaceError(WorkspaceError.Reason.Unreadable(path)))
+      //case UrlError(text, _, _)       => abort(WorkspaceError(WorkspaceError.Reason.BadData(text)))
+      //case pathError: PathError       => abort(WorkspaceError(WorkspaceError.Reason.Explanation(pathError.message)))
+      //case InvalidRefError(text, _)   => abort(WorkspaceError(WorkspaceError.Reason.BadData(text)))
+      //case RefError(text)             => abort(WorkspaceError(WorkspaceError.Reason.BadData(text)))
+      //case NumberError(text, _)       => abort(WorkspaceError(WorkspaceError.Reason.BadData(text)))
+      case UndecodableCharError(_, _) => abort(WorkspaceError(WorkspaceError.Reason.BadContent))
+    
+    /*
     val build: Build = Codl.read[Build](buildFile)
     val localPath: Path = dir / p".local"
     val localFile: Optional[File] = if localPath.exists() then localPath.as[File] else Unset
     val local: Optional[Local] = localFile.let(Codl.read[Local](_))
 
     Workspace(dir, buildDoc, build, local)
+    */
 
 case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, local: Optional[Local])
 derives Debug:
