@@ -151,12 +151,27 @@ object Cache:
         val dataDir = tend((destination / p"data").as[Directory]).remedy:
           case IoError(_) => abort(VaultError())
         
-        val current = tend(dataDir.descendants.filter(_.is[File])).remedy:
-          case IoError(_) => abort(VaultError())
-        .to(List).map: path =>
-          safely(Codl.read[Release](path.as[File])).or(abort(VaultError()))
-        .filter: release =>
-          release.date + release.lifetime.days > today()
+        val current =
+          given projectIdDecoder: Decoder[ProjectId] = tend(summon[Decoder[ProjectId]]).remedy:
+            case _: InvalidRefError => abort(VaultError())
+          
+          given streamIdDecoder: Decoder[StreamId] = tend(summon[Decoder[StreamId]]).remedy:
+            case _: InvalidRefError => abort(VaultError())
+          
+          tend:
+            dataDir.descendants.filter(_.is[File]).to(List).map: path =>
+              ???.asInstanceOf[Release] //Codl.read[Release](path.as[File])
+            .filter: release =>
+              release.date + release.lifetime.days > today()
+          .remedy:
+            case _: AggregateError[?] => abort(VaultError())
+            case _: IoError           => abort(VaultError())
+            case _: CodlReadError     => abort(VaultError())
+            case _: RefError          => abort(VaultError())
+            case _: MarkdownError     => abort(VaultError())
+            case _: UrlError          => abort(VaultError())
+            case _: InvalidRefError   => abort(VaultError())
+            case _: StreamError       => abort(VaultError())
 
         Vault(t"vent", 1, current)
 
