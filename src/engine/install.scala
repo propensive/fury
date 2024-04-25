@@ -43,7 +43,11 @@ object Installation:
       val script = unsafely(Properties.ethereal.name[Text]())
       val cache: Directory = (Xdg.cacheHome[Path] / PathName(script)).as[Directory]
       val configPath: Path = Home.Config() / PathName(script)
-      val config: Config = Codl.read[Config]((configPath / p"config.codl").as[File])
+      
+      val config: Config = tend(Codl.read[Config]((configPath / p"config.codl").as[File])).remedy:
+        case error: AggregateError[?] => abort(ConfigError(msg"The configuration file contained an error"))
+        case error: PathError         => abort(ConfigError(msg"The configuration file contained an error"))
+
       val vault: Directory = (cache / p"vault").as[Directory]
       val snapshots: Directory = (cache / p"repos").as[Directory]
       val tmp: Directory = (cache / p"tmp").as[Directory]
