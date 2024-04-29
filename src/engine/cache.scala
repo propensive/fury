@@ -160,7 +160,7 @@ object Cache:
           
           tend:
             dataDir.descendants.filter(_.is[File]).to(List).map: path =>
-              ???.asInstanceOf[Release] //Codl.read[Release](path.as[File])
+              Codl.read[Release](path.as[File])
             .filter: release =>
               release.date + release.lifetime.days > today()
           .remedy:
