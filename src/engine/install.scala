@@ -40,14 +40,15 @@ object Installation:
     import badEncodingHandlers.strict
     
     tend:
-      val script = unsafely(Properties.ethereal.name[Text]())
+      val script: Text = Properties.ethereal.name[Text]()
       val cache: Directory = (Xdg.cacheHome[Path] / PathName(script)).as[Directory]
       val configPath: Path = Home.Config() / PathName(script)
       
-      val config: Config = tend(Codl.read[Config]((configPath / p"config.codl").as[File])).remedy:
-        case error: AggregateError[?] => abort(ConfigError(msg"The configuration file contained an error"))
-        case error: PathError         => abort(ConfigError(msg"The configuration file contained an error"))
+      // FIXME: This shouldn't be necessary
+      given pathDecoder: CodlDecoder[Path] = CodlDecoder.field[Path]
+      given ecosystemIdDecoder: CodlDecoder[EcosystemId] = CodlDecoder.field[EcosystemId]
 
+      val config: Config = Codl.read[Config]((configPath / p"config.codl").as[File])
       val vault: Directory = (cache / p"vault").as[Directory]
       val snapshots: Directory = (cache / p"repos").as[Directory]
       val tmp: Directory = (cache / p"tmp").as[Directory]
@@ -63,6 +64,7 @@ object Installation:
       case error: AggregateError[?]      => abort(ConfigError(msg"Could not read the configuration file"))
       case EnvironmentError(variable)    => abort(ConfigError(msg"The environment variable $variable could not be accessed"))
       case error: UndecodableCharError   => abort(ConfigError(msg"The configuration file contained bad character data"))
+      case error: InvalidRefError        => abort(ConfigError(msg"The configuration contained a nonexistent reference"))
       case SystemPropertyError(property) => abort(ConfigError(msg"The JVM system property $property could not be read."))
       case IoError(path)                 => abort(ConfigError(msg"An I/O error occurred while trying to access $path"))
       case CodlReadError(label)          => abort(ConfigError(msg"The field ${label.or(t"unknown")} could not be read"))

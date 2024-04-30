@@ -160,16 +160,32 @@ object Cache:
           
           tend:
             dataDir.descendants.filter(_.is[File]).to(List).map: path =>
+              given licenseDecoder: CodlDecoder[LicenseId] = CodlDecoder.field[LicenseId]
+              given mdDecoder: CodlDecoder[InlineMd] = CodlDecoder.field[InlineMd]
+              given dateDecoder: CodlDecoder[Date] = CodlDecoder.field[Date]
+              given numberDecoder: CodlDecoder[Int] = CodlDecoder.field[Int]
+              given fqcnDecoder: CodlDecoder[Fqcn] = CodlDecoder.field[Fqcn]
+              given keywordDecoder: CodlDecoder[Keyword] = CodlDecoder.field[Keyword]
+              given urlDecoder: CodlDecoder[HttpUrl] = CodlDecoder.field[HttpUrl]
+              given commitDecoder: CodlDecoder[CommitHash] = CodlDecoder.field[CommitHash]
+              given branchDecoder: CodlDecoder[Branch] = CodlDecoder.field[Branch]
+
               Codl.read[Release](path.as[File])
+
             .filter: release =>
               release.date + release.lifetime.days > today()
+
           .remedy:
             case _: AggregateError[?] => abort(VaultError())
             case _: IoError           => abort(VaultError())
             case _: CodlReadError     => abort(VaultError())
-            case _: RefError          => abort(VaultError())
+            case _: GitRefError       => abort(VaultError())
             case _: MarkdownError     => abort(VaultError())
+            case _: FqcnError         => abort(VaultError())
+            case _: DateError         => abort(VaultError())
             case _: UrlError          => abort(VaultError())
+            case _: NumberError       => abort(VaultError())
+            case _: HostnameError     => abort(VaultError())
             case _: InvalidRefError   => abort(VaultError())
             case _: StreamError       => abort(VaultError())
 

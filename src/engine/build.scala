@@ -314,7 +314,6 @@ class Builder():
               .remedy:
                 case error: IoError          => abort(BuildError(error))
                 case error: StreamError      => abort(BuildError(error))
-                case error: ZipError         => abort(BuildError(error))
                 case error: ConcurrencyError => abort(BuildError(error))
 
             val todo = (dag(hash) - this).sorted.map(_.digest)
@@ -370,7 +369,6 @@ class Builder():
             
             
             tend(tmpPath.as[File]).remedy:
-              case error: PathError => abort(BuildError(error))
               case error: IoError   => abort(BuildError(error))
             .tap: file =>
               tend(output.as[Directory]).remedy:
@@ -428,7 +426,6 @@ class Builder():
                 file.moveTo(destination)
               .remedy:
                 case error: IoError     => abort(BuildError(error))
-                case error: StreamError => abort(BuildError(error))
           else summon[FrontEnd](target) = -1.0
 
           tend(output.as[Directory]).remedy:
