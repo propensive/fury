@@ -67,24 +67,24 @@ object actions:
                Stdio)
             : ExitStatus raises UserError =
 
-      given (UserError fixes InstallError) =
-        case InstallError(reason) => UserError(msg"Installation was not possible because $reason.")
+      tend:
+        val directories = Installer.candidateTargets().map(_.path)
       
-      given (UserError fixes DismissError) = error => UserError(msg"Installation was aborted.")
-
-      val directories = Installer.candidateTargets().map(_.path)
-      
-      if directories.length <= 1 then Installer.install(force) else
-        info(e"$Italic(Please choose an install location.)")
+        if directories.length <= 1 then Installer.install(force) else
+          info(e"$Italic(Please choose an install location.)")
         
-        interactive:
-          SelectMenu(directories, directories.head).ask: target =>
-            info(e"Installing to $target/${service.scriptName}")
-            info(Installer.install(force = true, target).communicate)
-      
-      if !noTabCompletions then Out.println(TabCompletions.install(force = true).communicate)
+          interactive:
+            SelectMenu(directories, directories.head).ask: target =>
+              info(e"Installing to $target/${service.scriptName}")
+              info(Installer.install(force = true, target).communicate)
 
-      ExitStatus.Ok
+        if !noTabCompletions then Out.println(TabCompletions.install(force = true).communicate)
+
+        ExitStatus.Ok
+
+      .remedy:
+        case InstallError(message) => abort(UserError(message.communicate))
+        case DismissError()        => ExitStatus.Fail(1)
 
     def batch(force: Boolean, noTabCompletions: Boolean)
         (using DaemonService[?],
@@ -97,12 +97,12 @@ object actions:
                Effectful)
             : ExitStatus raises UserError =
 
-      given (UserError fixes InstallError) =
-        case InstallError(reason) => UserError(msg"Installation was not possible because $reason.")
-
-      info(Installer.install(force).communicate)
-      if !noTabCompletions then info(TabCompletions.install(force = true).communicate)
-      ExitStatus.Ok
+      tend:
+        info(Installer.install(force).communicate)
+        if !noTabCompletions then info(TabCompletions.install(force = true).communicate)
+        ExitStatus.Ok
+      .remedy:
+        case InstallError(message) => abort(UserError(message.communicate))
 
   def clean(all: Boolean)(using FrontEnd, Installation): ExitStatus raises UserError =
     import filesystemOptions.
@@ -137,15 +137,18 @@ object actions:
   object universe:
 
     def show()(using Internet, WorkingDirectory, Monitor, Log[Display], FrontEnd, Stdio): ExitStatus raises UserError =
-      given (UserError fixes PathError)      = accede
-      given (UserError fixes ConcurrencyError)    = accede
-      given (UserError fixes IoError)        = accede
-      given (UserError fixes WorkspaceError) = accede
-      given (UserError fixes ExecError)      = accede
-      given (UserError fixes VaultError)     = accede
-        
-      val rootWorkspace = Workspace()
-      given universe: Universe = rootWorkspace.universe()
+      val rootWorkspace = tend(Workspace()).remedy:
+        case WorkspaceError(reason) =>
+          abort(UserError(msg"The workspace could not be constructed because $reason"))
+
+      given universe: Universe = tend(rootWorkspace.universe()).remedy:
+        case PathError(path, _)     => abort(UserError(msg"The path $path was not valid"))
+        case VaultError()           => abort(UserError(msg"There was a problem with the vault"))
+        case WorkspaceError(reason) => abort(UserError(msg"The workspace could not be constructed because $reason"))
+        case IoError(_)             => abort(UserError(msg"An I/O error occurred"))
+        case ExecError(_, _, _)     => abort(UserError(msg"An error occurred when executing"))
+        case ConcurrencyError(_)    => abort(UserError(msg"An asynchronous task was aborted"))
+
       val projects = universe.projects.to(List)
 
       val table = Table[(ProjectId, Definition)]
@@ -177,46 +180,50 @@ object actions:
                Internet)
             : ExitStatus raises UserError =
       import filesystemOptions.doNotCreateNonexistent
-      given (UserError fixes WorkspaceError) = error => UserError(error.message)
-      given (UserError fixes GitError) = error => UserError(error.message)
-      given (UserError fixes IoError) = error => UserError(error.message)
-      given (UserError fixes StreamError) = error => UserError(error.message)
-      given (UserError fixes ExecError) = error => UserError(error.message)
-      given (UserError fixes UrlError) = error => UserError(error.message)
-      given (UserError fixes HostnameError) = error => UserError(error.message)
-      given (UserError fixes PathError) = error => UserError(error.message)
-      given (UserError fixes ReleaseError) = error => UserError(error.message)
       
-      val build = Workspace().build
+      val build = tend(Workspace().build).remedy:
+        case WorkspaceError(reason) =>
+          abort(UserError(msg"The workspace could not be constructed because $reason"))
       
       build.projects.where(_.id == projectId).let: project =>
         val directory = safely(workingDirectory).or:
           abort(UserError(msg"The working directory could not be determined."))
         
-        val repo = GitRepo(directory)
-        val commit = repo.revParse(Refspec.head())
-        val remote = repo.config.get[HttpUrl](t"remote.origin.url")
-        val snapshot = Snapshot(remote, commit, Unset)
+        tend:
+          val repo = GitRepo(directory)
+          val commit = repo.revParse(Refspec.head())
+          val remote = repo.config.get[HttpUrl](t"remote.origin.url")
+          val snapshot = Snapshot(remote, commit, Unset)
         
-        if !repo.status().isEmpty
-        then abort(UserError(msg"The repository contains uncommitted changes. Please commit the changes and try again."))
-        val stream = project.streams.where(_.id == streamId).or(project.streams.unique).or:
-          abort(UserError(msg"Please specify a stream to publish."))
+          if !repo.status().isEmpty
+          then abort(UserError(msg"The repository contains uncommitted changes. Please commit the changes and try again."))
+          val stream = project.streams.where(_.id == streamId).or(project.streams.unique).or:
+            abort(UserError(msg"Please specify a stream to publish."))
 
-        val release = project.release(stream.id, stream.lifetime, snapshot).codl.show
-        val hash: Text = release.digest[Sha2[256]].encodeAs[Base32]
+          val release = project.release(stream.id, stream.lifetime, snapshot).codl.show
+          val hash: Text = release.digest[Sha2[256]].encodeAs[Base32]
         
-        val destination =
-          unsafely(build.ecosystem.path / p"data" / PathName(hash.take(2)) / PathName(hash.drop(2)))
+          val destination =
+            unsafely(build.ecosystem.path / p"data" / PathName(hash.take(2)) / PathName(hash.drop(2)))
 
-        release.writeTo:
-          import filesystemOptions.{createNonexistent, createNonexistentParents}
-          destination.as[File]
+          release.writeTo:
+            import filesystemOptions.{createNonexistent, createNonexistentParents}
+            destination.as[File]
         
-        val ecosystemRepo = GitRepo(build.ecosystem.path)
-        ecosystemRepo.add(destination)
-        ecosystemRepo.commit(t"Added latest ${project.name}")
-        ecosystemRepo.push()
+          val ecosystemRepo = GitRepo(build.ecosystem.path)
+          ecosystemRepo.add(destination)
+          ecosystemRepo.commit(t"Added latest ${project.name}")
+          ecosystemRepo.push()
+        .remedy:
+          case PathError(path, _)              => abort(UserError(msg"The path $path was not valid"))
+          case IoError(_)                      => abort(UserError(msg"An I/O error occurred"))
+          case StreamError(_)                  => abort(UserError(msg"A streaming error occurred"))
+          case GitError(_)                     => abort(UserError(msg"A Git error occurred"))
+          case HostnameError(hostname, reason) => abort(UserError(msg"The hostname $hostname is not valid because $reason"))
+          case UrlError(url, position, reason) => abort(UserError(msg"The URL $url was not valid because $reason at $position"))
+          case ExecError(_, _, _)              => abort(UserError(msg"An execution error occurred"))
+          case ReleaseError(reason)            => abort(UserError(msg"There was a problem with the release: $reason"))
+        
         ExitStatus.Ok
       .or:
         Out.println(t"Project $projectId is not defined in this workspace")
@@ -224,21 +231,23 @@ object actions:
 
   object build:
     def initialize(directory: Path)(using CliFrontEnd): ExitStatus raises UserError =
-      given (UserError fixes DismissError) = accede
-      
       if (directory / p".fury").exists()
       then abort(UserError(msg"A build already exists in this directory"))
       
-      interactive:
-        Out.print(e"           $Italic(Project ID:) ")
-        LineEditor(directory.name).ask: id =>
-          Out.print(e"         $Italic(Project name:) ")
-          LineEditor(id.capitalize).ask: name =>
-            Out.print(e"  $Italic(Project description:) ")
-            LineEditor(t"").ask: description =>
-              Out.println(e"You chose $Bold($id), $Bold($name), and $Bold($description)")
+      tend:
+        interactive:
+          Out.print(e"           $Italic(Project ID:) ")
+          LineEditor(directory.name).ask: id =>
+            Out.print(e"         $Italic(Project name:) ")
+            LineEditor(id.capitalize).ask: name =>
+              Out.print(e"  $Italic(Project description:) ")
+              LineEditor(t"").ask: description =>
+                Out.println(e"You chose $Bold($id), $Bold($name), and $Bold($description)")
       
-      ExitStatus.Ok
+        ExitStatus.Ok
+      
+      .remedy:
+        case DismissError() => ExitStatus.Fail(1)
 
     def run(target: Target, watch: Boolean, force: Boolean, concise: Boolean)
        (using CliFrontEnd,

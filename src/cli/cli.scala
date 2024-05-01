@@ -101,20 +101,18 @@ object cli:
   val Details        = Subcommand(t"info",      e"Information about cache usage")
 
 given (using Errant[UserError]): HomeDirectory =
-  given (UserError fixes SystemPropertyError) =
+  tend(homeDirectories.virtualMachine).remedy:
     case SystemPropertyError(property) =>
-      UserError:
-        msg"Could not access the home directory because the $property system property was not set."
-
-  homeDirectories.virtualMachine
+      abort(UserError(msg"""
+        Could not access the home directory because the $property system property was not set.
+      """))
 
 given (using Cli): WorkingDirectory = workingDirectories.daemonClient 
 
 given (using Errant[UserError]): Installation =
-  given (UserError fixes ConfigError) = error =>
-    UserError(msg"The configuration file could not be read.")
-  
-  Installation()
+  tend(Installation()).remedy:
+    case ConfigError(message) => 
+      abort(UserError(msg"The configuration file could not be read because $message"))
 
 @main
 def main(): Unit =
@@ -122,24 +120,18 @@ def main(): Unit =
   val initTime: Optional[Instant] = safely(Instant(Properties.ethereal.startTime[Long]()))
 
   attempt[InitError]:
-    given (InitError fixes ConcurrencyError) = error => InitError(msg"A thread was cancelled")
-
     supervise:
       given logFormat: LogFormat[File, Display] = logFormats.standardColor[File]
       import filesystemOptions.{createNonexistent, createNonexistentParents}
 
       given Log[Display] =
-        given (InitError fixes IoError) =
-          error => InitError(msg"An IO error occured when trying to create the log")
-        
-        given (InitError fixes StreamError) =
-          error => InitError(msg"Stream error when logging")
-        
-        given (InitError fixes UserError) =
-          error => InitError(error.message)
-        
-        Log.route: 
-          case _ => installation.config.log.path.as[File]
+        tend:
+          Log.route[Display]: 
+            case _ => installation.config.log.path.as[File]
+        .remedy:
+          case error: IoError     => abort(InitError(msg"An I/O error occurred when trying to create the log"))
+          case error: StreamError => abort(InitError(msg"A stream error occurred while logging"))
+          case error: UserError   => abort(InitError(error.message))
 
       intercept:
         case error: Throwable =>
@@ -203,10 +195,6 @@ def main(): Unit =
                   val concise = Concise().present
                   val force = ForceRebuild().present
 
-                  given (UserError fixes IoError)   = accede
-                  given (UserError fixes PathError) = accede
-                  given (UserError fixes ExecError) = accede
-                  
                   safely(internet(false)(Workspace().locals())).let: map =>
                     val targets = map.values.map(_.source).flatMap:
                       case workspace: Workspace => workspace.build.projects.flatMap(_.targets)
@@ -217,19 +205,33 @@ def main(): Unit =
                       else target.suggest(previous ++ targets.map(_.partialSuggestion))
                   
                   execute:
-                    given (UserError fixes InvalidRefError) = error => UserError(error.message)
-                    
                     internet(online):
                       frontEnd:
                         val buildTask = task(t"build"):
-                          actions.build.run(target().decodeAs[Target], watch, force, concise)
+                          tend:
+                            actions.build.run(target().decodeAs[Target], watch, force, concise)
+                          .remedy:
+                            case InvalidRefError(ref, refType) =>
+                              abort(UserError(msg"The target $ref could not be decoded"))
+                            
+                            case IoError(_) =>
+                              abort(UserError(msg"An I/O error occurred"))
+                            
+                            case PathError(_, _) =>
+                              abort(UserError(msg"A path error occurred"))
+                            
+                            case ExecError(_, _, _) =>
+                              abort(UserError(msg"An execution error occurred"))
 
                         daemon:
                           terminal.events.stream.each:
                             case Keypress.Escape | Keypress.Ctrl('C') => summon[FrontEnd].abort()
                             case other => ()
                         
-                        buildTask.await().also(Out.print(t"\e[?25h"))
+                        tend(buildTask.await()).remedy:
+                          case ConcurrencyError(reason) =>
+                            abort(UserError(msg"The build was aborted"))
+                        .also(Out.print(t"\e[?25h"))
                   
               case Universe() :: subcommands =>
                 val online = Offline().absent
@@ -263,13 +265,22 @@ def main(): Unit =
                         safely(Stream.suggest(() => project.streams.map(_.suggestion)))
                     
                     execute:
-                      given (UserError fixes IoError) = error => UserError(error.message)
-                      given (UserError fixes ExecError) = error => UserError(error.message)
-                      given (UserError fixes PathError) = error => UserError(error.message)
-                      given (UserError fixes InvalidRefError) = error => UserError(error.message)
-                      
-                      internet(online)
-                       (actions.project.publish(projectId().decodeAs[ProjectId], Stream()))
+                      internet(online):
+                        tend:
+                          actions.project.publish(projectId().decodeAs[ProjectId], Stream())
+                        .remedy:
+                          case InvalidRefError(ref, refType) =>
+                            abort(UserError(msg"The target $ref could not be decoded"))
+                          
+                          case IoError(_) =>
+                            abort(UserError(msg"An I/O error occurred"))
+                          
+                          case PathError(path, reason) =>
+                            abort(UserError(msg"The path $path is not valid because $reason"))
+                          
+                          case ExecError(_, _, _) =>
+                            abort(UserError(msg"An execution error occurred"))
+                            
 
                 case _ =>
                   execute:
@@ -282,11 +293,14 @@ def main(): Unit =
                 ExitStatus.Ok
               
               case Nil =>
-                given (UserError fixes WorkspaceError) = error => UserError(error.message)
-                
                 execute:
-                  Out.println(Workspace().build.actions.prim.debug)
-                  ExitStatus.Fail(1)
+                  tend:
+                    val workspace = Workspace()
+                    Out.println(Workspace().build.actions.prim.debug)
+                    ExitStatus.Ok
+                  .remedy:
+                    case WorkspaceError(_) =>
+                      ExitStatus.Fail(1)
 
               case subcommands =>
                 if Version().present then execute(frontEnd(actions.versionInfo())) else
@@ -307,21 +321,28 @@ def main(): Unit =
                       subcommand.let(_.suggest(previous ++ workspace.build.actions.map(_.suggestion)))
     
                     execute:
-                      given (UserError fixes InvalidRefError) = error => UserError(error.message)
-                      given (UserError fixes ExecError) = accede
-                      given (UserError fixes IoError)   = accede
-                      given (UserError fixes PathError) = accede
-                      
                       workspace.lay(ExitStatus.Fail(2)): workspace =>
                         subcommand.let: subcommand =>
-                          subcommand().populated.let(ActionName(_))
-                           .or(workspace.build.default).let: action =>
+                          tend(subcommand().populated.let(ActionName(_))).remedy:
+                            case InvalidRefError(ref, _) =>
+                              abort(UserError(msg"The reference $ref is not valid"))
+                          .or(workspace.build.default).let: action =>
                             workspace.build.actions.where(_.name == action).let: action =>
                               internet(online):
-                                async:
+                                val main = async:
                                   frontEnd:
                                     val buildTask = task(t"build"):
-                                      action.modules.each(actions.build.run(_, watch, force, concise))
+                                      tend:
+                                        action.modules.each(actions.build.run(_, watch, force, concise))
+                                      .remedy:
+                                        case PathError(path, reason) =>
+                                          abort(UserError(msg"The path $path is not valid"))
+                                        
+                                        case ExecError(_, _, _) =>
+                                          abort(UserError(msg"An execution error occurred"))
+                                        
+                                        case IoError(_) =>
+                                          abort(UserError(msg"An I/O error occurred"))
             
                                     daemon:
                                       terminal.events.stream.each:
@@ -335,9 +356,16 @@ def main(): Unit =
                                         case other =>
                                           ()
                                     
-                                    buildTask.await().also(Out.print(t"\e[?25h"))
-                                    ExitStatus.Ok
-                                .await()
+                                    tend:
+                                      buildTask.await().also(Out.print(t"\e[?25h"))
+                                      ExitStatus.Ok
+                                    .remedy:
+                                      case ConcurrencyError(_) =>
+                                        ExitStatus.Fail(1)
+
+                                tend(main.await()).remedy:
+                                  case ConcurrencyError(_) =>
+                                    abort(UserError(msg"The task was aborted"))
       
                         .or:
                           subcommand.let(frontEnd(actions.invalidSubcommand(_))).or:
