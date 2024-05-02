@@ -119,24 +119,24 @@ def main(): Unit =
   import cli.*
   val initTime: Optional[Instant] = safely(Instant(Properties.ethereal.startTime[Long]()))
 
-  attempt[InitError]:
+  tend:
     supervise:
       given logFormat: LogFormat[File, Display] = logFormats.standardColor[File]
       import filesystemOptions.{createNonexistent, createNonexistentParents}
 
-      given Log[Display] =
-        tend:
+      given Log[Display] = logging.silent[Display]
+        /*tend:
           Log.route[Display]: 
             case _ => installation.config.log.path.as[File]
         .remedy:
           case error: IoError     => abort(InitError(msg"An I/O error occurred when trying to create the log"))
           case error: StreamError => abort(InitError(msg"A stream error occurred while logging"))
-          case error: UserError   => abort(InitError(error.message))
+          case error: UserError   => abort(InitError(error.message))*/
 
       intercept:
         case error: Throwable =>
           Log.fail(msg"Detected an async failure in ${trace.debug}")
-          Log.fail(error)
+          Log.fail(error.debug)
           Transgression.Absorb
 
       initTime.let: initTime =>
@@ -378,9 +378,18 @@ def main(): Unit =
             Log.fail(userError)
             ExitStatus.Fail(4)
 
-  .recover: initError =>
-    println(initError.message)
-    ExitStatus.Fail(2)
+  .remedy:
+    // case InitError(message) =>
+    //   println(message)
+    //   ExitStatus.Fail(2)
+    
+    // case error: IoError =>
+    //   println(error.message)
+    //   ExitStatus.Fail(2)
+    
+    case ConcurrencyError(reason) =>
+      println(msg"There was a concurrency error")
+      ExitStatus.Fail(3)
 
 def about()(using stdio: Stdio): ExitStatus =
   safely:
