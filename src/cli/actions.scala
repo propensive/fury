@@ -48,7 +48,7 @@ import turbulence.*
 import vacuous.*
 
 def accede(error: Error): UserError = UserError(error.message)
-  
+
 case class UserError(userMessage: Message) extends Error(userMessage)
 case class InitError(initMessage: Message) extends Error(initMessage)
 
@@ -69,10 +69,10 @@ object actions:
 
       tend:
         val directories = Installer.candidateTargets().map(_.path)
-      
+
         if directories.length <= 1 then Installer.install(force) else
           info(e"$Italic(Please choose an install location.)")
-        
+
           interactive:
             SelectMenu(directories, directories.head).ask: target =>
               info(e"Installing to $target/${service.scriptName}")
@@ -109,17 +109,17 @@ object actions:
        {doNotCreateNonexistent, doNotDereferenceSymlinks, deleteRecursively}
 
     val size0 = safely(installation.cache.as[Directory].size()).or(0.b)
-    
+
     if all then safely(installation.cache.delete())
     else
       safely(installation.build.wipe())
       safely(installation.tmp.delete())
       safely(installation.work.wipe())
-    
+
     val size = safely(size0 - installation.cache.as[Directory].size()).or(0.b)
     info(t"$size was cleaned up")
     ExitStatus.Ok
-  
+
   object cache:
     def clean()(using FrontEnd): ExitStatus raises UserError =
       info(msg"Cleaning the cache")
@@ -162,7 +162,7 @@ object actions:
             definition.source match
               case workspace: Workspace =>
                 e"$Aquamarine(${workspace.directory.path.relativeTo(rootWorkspace.directory.path)})"
-              
+
               case vault: Vault =>
                 e"$DeepSkyBlue(${vault.name})")
 
@@ -180,21 +180,21 @@ object actions:
                Internet)
             : ExitStatus raises UserError =
       import filesystemOptions.doNotCreateNonexistent
-      
+
       val build = tend(Workspace().build).remedy:
         case WorkspaceError(reason) =>
           abort(UserError(msg"The workspace could not be constructed because $reason"))
-      
+
       build.projects.where(_.id == projectId).let: project =>
         val directory = safely(workingDirectory).or:
           abort(UserError(msg"The working directory could not be determined."))
-        
+
         tend:
           val repo = GitRepo(directory)
           val commit = repo.revParse(Refspec.head())
           val remote = repo.config.get[HttpUrl](t"remote.origin.url")
           val snapshot = Snapshot(remote, commit, Unset)
-        
+
           if !repo.status().isEmpty
           then abort(UserError(msg"The repository contains uncommitted changes. Please commit the changes and try again."))
           val stream = project.streams.where(_.id == streamId).or(project.streams.unique).or:
@@ -202,14 +202,14 @@ object actions:
 
           val release = project.release(stream.id, stream.lifetime, snapshot).codl.show
           val hash: Text = release.digest[Sha2[256]].encodeAs[Base32]
-        
+
           val destination =
             unsafely(build.ecosystem.path / p"data" / PathName(hash.take(2)) / PathName(hash.drop(2)))
 
           release.writeTo:
             import filesystemOptions.{createNonexistent, createNonexistentParents}
             destination.as[File]
-        
+
           val ecosystemRepo = GitRepo(build.ecosystem.path)
           ecosystemRepo.add(destination)
           ecosystemRepo.commit(t"Added latest ${project.name}")
@@ -223,7 +223,7 @@ object actions:
           case UrlError(url, position, reason) => abort(UserError(msg"The URL $url was not valid because $reason at $position"))
           case ExecError(_, _, _)              => abort(UserError(msg"An execution error occurred"))
           case ReleaseError(reason)            => abort(UserError(msg"There was a problem with the release: $reason"))
-        
+
         ExitStatus.Ok
       .or:
         Out.println(t"Project $projectId is not defined in this workspace")
@@ -233,7 +233,7 @@ object actions:
     def initialize(directory: Path)(using CliFrontEnd): ExitStatus raises UserError =
       if (directory / p".fury").exists()
       then abort(UserError(msg"A build already exists in this directory"))
-      
+
       tend:
         interactive:
           Out.print(e"           $Italic(Project ID:) ")
@@ -243,9 +243,9 @@ object actions:
               Out.print(e"  $Italic(Project description:) ")
               LineEditor(t"").ask: description =>
                 Out.println(e"You chose $Bold($id), $Bold($name), and $Bold($description)")
-      
+
         ExitStatus.Ok
-      
+
       .remedy:
         case DismissError() => ExitStatus.Fail(1)
 
@@ -268,19 +268,19 @@ object actions:
       Log.info(msg"Trying to construct workspace")
       val workspace = tend(Workspace()).remedy:
         case WorkspaceError(_) => abort(UserError(msg"The workspace could not be constructed"))
-      
+
       Log.info(msg"Finished constructing workspace")
 
       given universe: Universe = tend(workspace.universe()).remedy:
         case VaultError()           => abort(UserError(msg"Could not generate universe"))
         case WorkspaceError(reason) => abort(UserError(msg"Could not generate universe"))
         case ConcurrencyError(_)    => abort(UserError(msg"Constructing the universe was interrupted"))
-      
+
       def build(): Set[Path] =
         Log.info(msg"Starting $target build...")
         val builder = Builder()
         Log.info(msg"Constructed the builder")
-        
+
         val hash = tend(builder.build(target).await()).remedy:
           case BuildError(_)       => abort(UserError(msg"Could not calculated the build hash"))
           case ConcurrencyError(_) => abort(UserError(msg"Calculating the build hash was cancelled"))
@@ -288,7 +288,7 @@ object actions:
         Log.info(msg"Calculated hash")
         if !concise then summon[FrontEnd].setSchedule(builder.schedule(hash))
         Log.info(msg"Invoking run")
-        
+
         tend(builder.run(target.show, hash, force)).remedy:
           case StreamError(size)        => abort(UserError(msg"A stream error occurred during the build"))
           case CompileError()           => abort(UserError(msg"The compiler crashed during the build"))
@@ -300,7 +300,7 @@ object actions:
 
         Log.info(msg"Returning watch directories")
         builder.watchDirectories(hash)
-      
+
       if !watch then build()
       else while summon[FrontEnd].continue do
         tend:
@@ -320,7 +320,6 @@ object actions:
   def missingSubcommand()(using FrontEnd): ExitStatus raises UserError =
     abort(UserError(msg"No subcommand was specified."))
 
-  def versionInfo()(using FrontEnd): ExitStatus = 
+  def versionInfo()(using FrontEnd): ExitStatus =
     info(msg"Fury version 1.0")
     ExitStatus.Ok
-
