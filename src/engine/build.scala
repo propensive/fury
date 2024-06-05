@@ -70,13 +70,13 @@ import zeppelin.*
 import scala.collection.concurrent as scc
 import scala.collection.mutable as scm
 
-// inline given (using Log[Display]): Probate = _.delegate: orphan =>
+// inline given (using Log[Display]): Codicil = _.delegate: orphan =>
 //   compiletime.summonFrom:
 //     case given Log[Text] =>
-//       Log.warn(t"Probate cleaned up an orphan task: ${orphan.stack}")
+//       Log.warn(t"Codicil cleaned up an orphan task: ${orphan.stack}")
 //       orphan.cancel()
 //     case _ =>
-//       System.err.nn.println(t"Probate cleaned up an orphan task: ${orphan.stack}")
+//       System.err.nn.println(t"Codicil cleaned up an orphan task: ${orphan.stack}")
 //       orphan.cancel()
     
 case class ConfigError(msg: Message) extends Error(msg)
