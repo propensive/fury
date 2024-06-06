@@ -63,7 +63,7 @@ object Installation:
       case StreamError(_)                => abort(ConfigError(msg"The stream was cut while reading a file"))
       case error: AggregateError[?]      => abort(ConfigError(msg"Could not read the configuration file"))
       case EnvironmentError(variable)    => abort(ConfigError(msg"The environment variable $variable could not be accessed"))
-      case error: UndecodableCharError   => abort(ConfigError(msg"The configuration file contained bad character data"))
+      case error: CharDecodeError        => abort(ConfigError(msg"The configuration file contained bad character data"))
       case error: InvalidRefError        => abort(ConfigError(msg"The configuration contained a nonexistent reference"))
       case SystemPropertyError(property) => abort(ConfigError(msg"The JVM system property $property could not be read."))
       case IoError(path)                 => abort(ConfigError(msg"An I/O error occurred while trying to access $path"))

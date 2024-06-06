@@ -434,8 +434,8 @@ object Workspace:
     given (WorkspaceError fixes NumberError) =
       case NumberError(text, _) => WorkspaceError(WorkspaceError.Reason.BadData(text))
 
-    given (WorkspaceError fixes UndecodableCharError) =
-      case UndecodableCharError(_, _) => WorkspaceError(WorkspaceError.Reason.BadContent)
+    given (WorkspaceError fixes CharDecodeError) =
+      case CharDecodeError(_, _) => WorkspaceError(WorkspaceError.Reason.BadContent)
     */
 
     tend:
@@ -456,7 +456,7 @@ object Workspace:
       //case InvalidRefError(text, _)   => abort(WorkspaceError(WorkspaceError.Reason.BadData(text)))
       //case RefError(text)             => abort(WorkspaceError(WorkspaceError.Reason.BadData(text)))
       //case NumberError(text, _)       => abort(WorkspaceError(WorkspaceError.Reason.BadData(text)))
-      case UndecodableCharError(_, _) => abort(WorkspaceError(WorkspaceError.Reason.BadContent))
+      case CharDecodeError(_, _) => abort(WorkspaceError(WorkspaceError.Reason.BadContent))
     
     /*
     val build: Build = Codl.read[Build](buildFile)
