@@ -24,10 +24,10 @@ import exoskeleton.*
 import fulminate.*
 import galilei.*
 import filesystemOptions.{doNotCreateNonexistent, dereferenceSymlinks}
-import filesystemInterfaces.galileiApi
+import filesystemApi.{galileiPath, galileiFile, galileiDirectory}
 import gastronomy.*
-import gossamer.*
-import hieroglyph.*, charEncoders.utf8, charDecoders.utf8, badEncodingHandlers.strict
+import gossamer.{where as _, *}
+import hieroglyph.*, charEncoders.utf8, charDecoders.utf8, encodingMitigation.strict
 import digression.*
 import kaleidoscope.*
 import nettlesome.*
@@ -77,8 +77,7 @@ case class Release
      lifetime:    Int,
      repo:        Snapshot,
      packages:    List[Fqcn],
-     keywords:    List[Keyword])
-derives Debug:
+     keywords:    List[Keyword]):
 
   def expiry: Date = date + lifetime.days
 
@@ -86,12 +85,12 @@ derives Debug:
     Definition(name, description, website, license, keywords, vault)
 
 
-case class Snapshot(url: HttpUrl, commit: CommitHash, branch: Optional[Branch]) derives Debug
+case class Snapshot(url: HttpUrl, commit: CommitHash, branch: Optional[Branch])
 
 object Vault:
   given relabelling: CodlRelabelling[Vault] = () => Map(t"releases" -> t"release")
 
-case class Vault(name: Text, version: Int, releases: List[Release]) derives Debug:
+case class Vault(name: Text, version: Int, releases: List[Release]):
   inline def vault: Vault = this
 
   object index:
@@ -100,15 +99,15 @@ case class Vault(name: Text, version: Int, releases: List[Release]) derives Debu
 object Local:
   given relabelling: CodlRelabelling[Local] = () => Map(t"forks" -> t"fork")
 
-case class Local(forks: List[Fork]) derives Debug
+case class Local(forks: List[Fork])
 
-case class Fork(id: ProjectId, path: Path) derives Debug
+case class Fork(id: ProjectId, path: Path)
 
-case class Ecosystem(id: EcosystemId, version: Int, url: HttpUrl, branch: Branch) derives Debug
+case class Ecosystem(id: EcosystemId, version: Int, url: HttpUrl, branch: Branch)
 
-case class EcosystemFork(id: EcosystemId, path: Path) derives Debug
+case class EcosystemFork(id: EcosystemId, path: Path)
 
-case class Mount(path: WorkPath, repo: Snapshot) derives Debug
+case class Mount(path: WorkPath, repo: Snapshot)
 
 
 object Build:
@@ -125,11 +124,10 @@ case class Build
      actions:   List[Action],
      default:   Optional[ActionName],
      projects:  List[Project],
-     mounts:    List[Mount])
-derives Debug, CodlEncoder:
+     mounts:    List[Mount]):
   def defaultAction: Optional[Action] = actions.where(_.name == default)
 
-case class Prelude(terminator: Text, comment: List[Text]) derives Debug, CodlEncoder
+case class Prelude(terminator: Text, comment: List[Text])
 
 object Project:
   given relabelling: CodlRelabelling[Project] = () =>
@@ -157,11 +155,10 @@ case class Project
      website:     HttpUrl,
      license:     Optional[LicenseId],
      keywords:    List[Keyword],
-     streams:     List[Stream])
-derives Debug, CodlEncoder:
+     streams:     List[Stream]):
 
   def suggestion: Suggestion = Suggestion(id.show, t"$name: $description")
-  
+
   def apply(goal: GoalId): Optional[Module | Artifact | Library | Exec] =
     modules.where(_.id == goal)
      .or(artifacts.where(_.id == goal))
@@ -194,14 +191,14 @@ derives Debug, CodlEncoder:
 object ReleaseError:
   enum Reason:
     case NoLicense
-  
-  given Communicable[Reason] =
+
+  given Reason is Communicable =
     case Reason.NoLicense => msg"the license has not been specified"
 
 case class ReleaseError(reason: ReleaseError.Reason)
 extends Error(msg"The project is not ready for release because $reason")
 
-case class Assist(target: Target, module: GoalId) derives Debug, CodlEncoder
+case class Assist(target: Target, module: GoalId)
 
 object Basis extends RefType(t"basis"):
   given encoder: Encoder[Basis] = _.toString.tt.lower
@@ -235,18 +232,17 @@ case class Artifact
      executable: Optional[Boolean],
      manifest:   List[ManifestEntry],
      resources:  List[Resource])
-derives Debug, CodlEncoder
 
-case class Resource(path: WorkPath, jarPath: WorkPath) derives Debug, CodlEncoder
+case class Resource(path: WorkPath, jarPath: WorkPath)
 
-case class ManifestEntry(key: Text, value: Text) derives Debug, CodlEncoder
+case class ManifestEntry(key: Text, value: Text)
 
 object Container:
   given relabelling: CodlRelabelling[Container] = () =>
     Map(t"insertions" -> t"copy")
 
-case class Insertion(source: WorkPath, destination: WorkPath) derives Debug, CodlEncoder
-case class Extraction(source: WorkPath, destination: WorkPath) derives Debug, CodlEncoder
+case class Insertion(source: WorkPath, destination: WorkPath)
+case class Extraction(source: WorkPath, destination: WorkPath)
 
 case class Container
     (id:          GoalId,
@@ -254,13 +250,12 @@ case class Container
      root:        WorkPath,
      insertions:  List[Insertion],
      extractions: List[Extraction])
-derives Debug, CodlEncoder
 
 object Exec:
   given relabelling: CodlRelabelling[Exec] = () =>
     Map(t"includes" -> t"include")
 
-case class Exec(id: GoalId, includes: List[Target], main: Fqcn) derives Debug, CodlEncoder
+case class Exec(id: GoalId, includes: List[Target], main: Fqcn)
 
 object Module:
   given relabelling: CodlRelabelling[Module] = () =>
@@ -284,12 +279,11 @@ case class Module
      compiler:     Optional[Text],
      main:         Optional[Fqcn],
      coverage:     Optional[Target])
-derives Debug, CodlEncoder
 
-case class Library(id: GoalId, url: HttpUrl) derives Debug, CodlEncoder
+case class Library(id: GoalId, url: HttpUrl)
 
-case class Load(id: GoalId, path: WorkPath) derives Debug, CodlEncoder
-case class Variable(id: GoalId, value: Text) derives Debug, CodlEncoder
+case class Load(id: GoalId, path: WorkPath)
+case class Variable(id: GoalId, value: Text)
 
 case class Replacement(pattern: Text, variable: GoalId)
 
@@ -300,8 +294,8 @@ case class Content(path: WorkPath, replacements: List[Replacement])
 
 object Target extends RefType(t"target"):
   given moduleRefEncoder: Encoder[Target] = _.show
-  given moduleRefDebug: Debug[Target] = _.show
-  given moduleRefMessage: Communicable[Target] = target => Message(target.show)
+  given Debug[Target] as moduleRefDebug = _.show
+  given Target is Communicable as moduleRefCommunicable = target => Message(target.show)
   given moduleRefDecoder(using Errant[InvalidRefError]): Decoder[Target] = Target(_)
 
   given Show[Target] = target =>
@@ -321,8 +315,7 @@ case class Target(projectId: ProjectId, goalId: GoalId, stream: Optional[StreamI
 object Action:
   given relabelling: CodlRelabelling[Action] = () => Map(t"actions" -> t"action")
 
-case class Action(name: ActionName, modules: List[Target], description: Optional[Text])
-derives Debug:
+case class Action(name: ActionName, modules: List[Target], description: Optional[Text]):
   def suggestion: Suggestion = Suggestion(name.show, description.let { text => e"$Italic($text)"} )
 
 object Stream:
@@ -351,17 +344,17 @@ enum Guarantee:
   case Functionality  // functionality will not be removed
 
 object WorkPath:
-  given navigable: Navigable[WorkPath, GeneralForbidden, Unit] with
+  given WorkPath is Navigable[GeneralForbidden, Unit] as navigable:
     def root(path: WorkPath): Unit = ()
     def prefix(root: Unit): Text = t""
     def descent(path: WorkPath): List[PathName[GeneralForbidden]] = path.descent
     def separator(path: WorkPath): Text = t"/"
 
   given rootParser: RootParser[WorkPath, Unit] = text => ((), text)
-  
+
   given creator: PathCreator[WorkPath, GeneralForbidden, Unit] =
     (unit, descent) => WorkPath(descent)
-  
+
   given show: Show[WorkPath] = _.render
   given encoder: Encoder[WorkPath] = _.render
   //given debug: Debug[WorkPath] = _.render
@@ -370,11 +363,11 @@ object WorkPath:
   given decoder(using path: Errant[PathError]): Decoder[WorkPath] = new Decoder[WorkPath]:
     def decode(text: Text): WorkPath = Navigable.decode(text)
 
-  inline given add: AddOperator[Path, WorkPath] with
+  inline given Path is Addable[WorkPath] as addable:
     type Result = Path
     def add(left: Path, right: WorkPath): Path = right.descent.reverse.foldLeft(left)(_ / _)
 
-case class WorkPath(descent: List[PathName[GeneralForbidden]]) derives Debug, CodlEncoder:
+case class WorkPath(descent: List[PathName[GeneralForbidden]]):
   def link: SafeLink = SafeLink(0, descent)
 
 case class Definition
@@ -384,14 +377,10 @@ case class Definition
      license:     Optional[LicenseId],
      keywords:    List[Keyword],
      source:      Vault | Workspace)
-derives Debug
 
 object Workspace:
   def apply()(using WorkingDirectory): Workspace raises WorkspaceError =
     tend(apply(workingDirectory[Path])).remedy:
-      case IoError(path) =>
-        abort(WorkspaceError(WorkspaceError.Reason.Unreadable(path)))
-
       case pathError: PathError =>
         abort(WorkspaceError(WorkspaceError.Reason.Explanation(pathError.message)))
 
@@ -430,7 +419,7 @@ object Workspace:
 
     given (WorkspaceError fixes RefError) =
       case RefError(text) => WorkspaceError(WorkspaceError.Reason.BadData(text))
-    
+
     given (WorkspaceError fixes NumberError) =
       case NumberError(text, _) => WorkspaceError(WorkspaceError.Reason.BadData(text))
 
@@ -457,7 +446,7 @@ object Workspace:
       //case RefError(text)             => abort(WorkspaceError(WorkspaceError.Reason.BadData(text)))
       //case NumberError(text, _)       => abort(WorkspaceError(WorkspaceError.Reason.BadData(text)))
       case CharDecodeError(_, _) => abort(WorkspaceError(WorkspaceError.Reason.BadContent))
-    
+
     /*
     val build: Build = Codl.read[Build](buildFile)
     val localPath: Path = dir / p".local"
@@ -467,8 +456,7 @@ object Workspace:
     Workspace(dir, buildDoc, build, local)
     */
 
-case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, local: Optional[Local])
-derives Debug:
+case class Workspace(directory: Directory, buildDoc: CodlDoc, build: Build, local: Optional[Local]):
   def ecosystem = build.ecosystem
   lazy val actions: Map[ActionName, Action] = unsafely(build.actions.indexBy(_.name))
   lazy val projects: Map[ProjectId, Project] = unsafely(build.projects.indexBy(_.id))
@@ -481,7 +469,7 @@ object WorkspaceError:
     case Explanation(message: Message)
     case BadData(text: Text)
 
-  given Communicable[Reason] =
+  given Reason is Communicable =
     case Reason.Unreadable(path)     => msg"$path could not be read"
     case Reason.BadContent           => msg"the content was not valid CoDL"
     case Reason.Explanation(message) => message
