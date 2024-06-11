@@ -16,7 +16,7 @@
 
 package fury
 
-import anticipation.*, filesystemInterfaces.galileiApi, timeInterfaces.aviationApi
+import anticipation.*, filesystemApi.{galileiFile, galileiDirectory, galileiPath}, timeInterfaces.aviationApi
 import aviation.*, calendars.gregorian
 import cellulose.*
 import eucalyptus.*
@@ -24,7 +24,7 @@ import eucalyptus.*
 import galilei.*,
     filesystemOptions.{dereferenceSymlinks, createNonexistent, createNonexistentParents}
 
-import hieroglyph.*, charDecoders.utf8, badEncodingHandlers.skip
+import hieroglyph.*, charDecoders.utf8, encodingMitigation.skip
 import nettlesome.*
 import octogenarian.*
 import parasite.*, asyncOptions.cancelOrphans

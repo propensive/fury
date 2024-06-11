@@ -42,7 +42,7 @@ import acyclicity.*
 import hieroglyph.*,
     charEncoders.utf8,
     charDecoders.utf8,
-    badEncodingHandlers.skip,
+    encodingMitigation.skip,
     textMetrics.uniform
 
 import guillotine.*
@@ -753,7 +753,7 @@ class Builder():
                     case error: IoError => abort(BuildError(error))
                   else abort(BuildError(AbortError(5)))
 
-  given expandable: Expandable[Phase] = _.antecedents.keys.map(phases(_)).to(List)
+  given Phase is Expandable = _.antecedents.keys.map(phases(_)).to(List)
 
   def dag(digest: Hash): Dag[Phase] =
     Dag.create(phases(digest))(_.antecedents.keys.to(Set).map(phases(_)))
