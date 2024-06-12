@@ -37,7 +37,7 @@ case class AppError(userMessage: Message, underlyingCause: Optional[Error] = Uns
 extends Error(userMessage)
 
 object RefError:
-  def apply[IdType: Show](ref: IdType): RefError =
+  def apply[IdType: Showable](ref: IdType): RefError =
     new RefError(ref.show)
 
 case class RefError(ref: Text)
@@ -61,7 +61,7 @@ object Ids:
     def apply(value: Text)(using Errant[InvalidRefError]): IdType = value match
       case r"[a-z](-?[a-z0-9])*" => value.asInstanceOf[IdType]
       case _                     => raise(InvalidRefError(value, this))(value.asInstanceOf[IdType])
-    
+
     def unapply(value: Text): Option[IdType] = safely(Some(apply(value))).or(None)
 
   object EcosystemId extends Id[EcosystemId]()
@@ -76,60 +76,60 @@ object Ids:
       value.cut(t"/").each: part =>
         if part.starts(t".") || part.ends(t".")
         then raise(InvalidRefError(value, this))(GitRefType[Type](value))
-        
+
         if part.ends(t".lock") then raise(InvalidRefError(value, this))(GitRefType[Type](value))
         if part.contains(t"@{") then raise(InvalidRefError(value, this))(GitRefType[Type](value))
         if part.contains(t"..") then raise(InvalidRefError(value, this))(GitRefType[Type](value))
         if part.length == 0 then raise(InvalidRefError(value, this))(GitRefType[Type](value))
-        
+
         for ch <- List('*', '[', '\\', ' ', '^', '~', ':', '?')
         do if part.has(ch) then raise(InvalidRefError(value, this))(GitRefType[Type](value))
-      
+
       value.asInstanceOf[Type]
-  
+
   object LicenseId extends RefType(t"license ID"):
     def unsafe(value: Text) = value.asInstanceOf[LicenseId]
     def apply(value: Text)(using Errant[InvalidRefError]): LicenseId = value match
       case r"[a-z]([-.]?[a-z0-9])*" => value.asInstanceOf[LicenseId]
-      
+
       case _ =>
         raise(InvalidRefError(value, this))(value.asInstanceOf[LicenseId])
-  
-  given ecosystemIdShow: Show[EcosystemId] = identity(_)
+
+  given EcosystemId is Showable = identity(_)
   given ecosystemIdEncoder: Encoder[EcosystemId] = identity(_)
   given ecosystemIdDecoder(using Errant[InvalidRefError]): Decoder[EcosystemId] = EcosystemId(_)
-  
+
   given ecosystemIdDigestible: Digestible[EcosystemId] =
     (acc, ecosystemId) => acc.append(ecosystemId.bytes)
-  
-  given projectIdShow: Show[ProjectId] = identity(_)
+
+  given ProjectId is Showable = identity(_)
   given projectIdEncoder: Encoder[ProjectId] = identity(_)
   given projectIdDecoder(using Errant[InvalidRefError]): Decoder[ProjectId] = ProjectId(_)
   given projectIdDigestible: Digestible[ProjectId] = (acc, projectId) => acc.append(projectId.bytes)
-  
-  given streamIdShow: Show[StreamId] = identity(_)
+
+  given StreamId is Showable = identity(_)
   given streamIdEncoder: Encoder[StreamId] = identity(_)
   given streamIdDecoder(using Errant[InvalidRefError]): Decoder[StreamId] = StreamId(_)
   given streamIdDigestible: Digestible[StreamId] = (acc, streamId) => acc.append(streamId.bytes)
-  
-  given licenseIdShow: Show[LicenseId] = identity(_)
+
+  given LicenseId is Showable = identity(_)
   given licenseIdEncoder: Encoder[LicenseId] = identity(_)
   given licenseIdDecoder(using Errant[InvalidRefError]): Decoder[LicenseId] = LicenseId(_)
   given licenseIdDigestible: Digestible[LicenseId] = (acc, licenseId) => acc.append(licenseId.bytes)
-  
-  given actionNameShow: Show[ActionName] = identity(_)
+
+  given ActionName is Showable = identity(_)
   given actionNameEncoder: Encoder[ActionName] = identity(_)
   given actionNameDecoder(using Errant[InvalidRefError]): Decoder[ActionName] = ActionName(_)
-  
+
   given actionNameDigestible: Digestible[ActionName] =
     (acc, actionName) => acc.append(actionName.bytes)
 
-  given keywordShow: Show[Keyword] = identity(_)
+  given Keyword is Showable = identity(_)
   given keywordEncoder: Encoder[Keyword] = identity(_)
   given keywordDecoder(using Errant[InvalidRefError]): Decoder[Keyword] = Keyword(_)
   given keywordDigestible: Digestible[Keyword] = (acc, keyword) => acc.append(keyword.bytes)
 
-  given goalIdShow: Show[GoalId] = identity(_)
+  given GoalId is Showable = identity(_)
   given goalIdEncoder: Encoder[GoalId] = identity(_)
   given goalIdDigestible: Digestible[GoalId] = (acc, goalId) => acc.append(goalId.bytes)
   given goalIdDecoder(using Errant[InvalidRefError]): Decoder[GoalId] = GoalId(_)

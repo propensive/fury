@@ -298,7 +298,7 @@ object Target extends RefType(t"target"):
   given Target is Communicable as moduleRefCommunicable = target => Message(target.show)
   given moduleRefDecoder(using Errant[InvalidRefError]): Decoder[Target] = Target(_)
 
-  given Show[Target] = target =>
+  given Target is Showable = target =>
     t"${target.projectId.let { projectId => t"$projectId/" }.or(t"")}${target.goalId}"
 
   def apply(value: Text)(using Errant[InvalidRefError]): Target = value match
@@ -355,7 +355,7 @@ object WorkPath:
   given creator: PathCreator[WorkPath, GeneralForbidden, Unit] =
     (unit, descent) => WorkPath(descent)
 
-  given show: Show[WorkPath] = _.render
+  given WorkPath is Showable = _.render
   given encoder: Encoder[WorkPath] = _.render
   //given debug: Debug[WorkPath] = _.render
   given digestible: Digestible[WorkPath] = (acc, path) => acc.append(path.show.bytes)
