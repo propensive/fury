@@ -17,7 +17,7 @@
 package fury
 
 import ambience.*, environments.virtualMachine
-import anticipation.*, filesystemInterfaces.galileiApi
+import anticipation.*, filesystemApi.{galileiFile, galileiPath, galileiDirectory}
 import cellulose.*
 import fulminate.*
 
@@ -37,13 +37,13 @@ import vacuous.*
 
 object Installation:
   def apply()(using HomeDirectory, SystemProperties): Installation raises ConfigError =
-    import badEncodingHandlers.strict
-    
+    import encodingMitigation.strict
+
     tend:
       val script: Text = Properties.ethereal.name[Text]()
       val cache: Directory = (Xdg.cacheHome[Path] / PathName(script)).as[Directory]
       val configPath: Path = Home.Config() / PathName(script)
-      
+
       // FIXME: This shouldn't be necessary
       given pathDecoder: CodlDecoder[Path] = CodlDecoder.field[Path]
       given ecosystemIdDecoder: CodlDecoder[EcosystemId] = CodlDecoder.field[EcosystemId]
@@ -52,11 +52,11 @@ object Installation:
       val vault: Directory = (cache / p"vault").as[Directory]
       val snapshots: Directory = (cache / p"repos").as[Directory]
       val tmp: Directory = (cache / p"tmp").as[Directory]
-      
+
       val buildId: Int =
         safely((Classpath / p"build.id")().readAs[Text].trim.decodeAs[Int]).or:
           throw Panic(msg"The build.id file was missing or corrupt")
-      
+
       Installation(buildId, config, cache, vault, tmp, snapshots)
 
     .remedy:
@@ -69,7 +69,7 @@ object Installation:
       case IoError(path)                 => abort(ConfigError(msg"An I/O error occurred while trying to access $path"))
       case CodlReadError(label)          => abort(ConfigError(msg"The field ${label.or(t"unknown")} could not be read"))
       case PathError(path, reason)       => abort(ConfigError(msg"The path $path was not valid because $reason"))
-    
+
 case class Installation
    (buildId:   Int,
     config:    Config,
@@ -81,5 +81,5 @@ case class Installation
   val build: Path = cache.path / p"build"
   val work: Path = cache.path / p"work"
   val basis: Path = cache.path / p"basis"
-  
+
 inline def installation(using inline installation: Installation): Installation = installation

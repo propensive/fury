@@ -53,32 +53,32 @@ given Decimalizer = Decimalizer(2)
 object cli:
   val Version =
     Switch(t"version", false, List('v'), t"Show information about the current version of Fury")
-  
+
   val Interactive = Switch(t"interactive", false, List('i'), t"Run the command interactively")
-  
+
   val NoTabCompletions =
     Switch(t"no-tab-completions", false, Nil, t"Do not install tab completions")
-  
+
   val Artifact = Switch(t"artifact", false, List('a'), t"Produce an artifact")
   val Benchmarks = Switch(t"benchmark", false, List('b'), t"Run with OS settings for benchmarking")
-  
+
   val Discover =
     Switch(t"discover", false, List('D'), t"Try to discover build details from the directory")
-  
+
   val Force = Switch(t"force", false, List('F'), t"Overwrite existing files if necessary")
   val All = Switch(t"all", false, List('a'), t"Clean system artifacts as well")
   val ForceRebuild = Switch(t"force", false, List('f'), t"Force the module to be rebuilt")
-  
+
   def Dir(using Errant[PathError]) =
     Flag[Path](t"dir", false, List('d'), t"Specify the working directory")
-  
+
   val Offline = Switch(t"offline", false, List('o'), t"Work offline, if possible")
   val Watch = Switch(t"watch", false, List('w'), t"Watch source directories for changes")
   val Concise = Switch(t"concise", false, List(), t"Produce less output")
-  
+
   def Generation(using Errant[NumberError]) =
     Flag[Int](t"generation", false, List('g'), t"Use universe generation number")
-  
+
   def Stream(using Errant[InvalidRefError]) =
     Flag[StreamId](t"stream", false, List('s'), t"Which stream to publish to")
 
@@ -107,11 +107,11 @@ given (using Errant[UserError]): HomeDirectory =
         Could not access the home directory because the $property system property was not set.
       """))
 
-given (using Cli): WorkingDirectory = workingDirectories.daemonClient 
+given (using Cli): WorkingDirectory = workingDirectories.daemonClient
 
 given (using Errant[UserError]): Installation =
   tend(Installation()).remedy:
-    case ConfigError(message) => 
+    case ConfigError(message) =>
       abort(UserError(msg"The configuration file could not be read because $message"))
 
 @main
@@ -126,7 +126,7 @@ def main(): Unit =
 
       given Log[Display] = logging.silent[Display]
         /*tend:
-          Log.route[Display]: 
+          Log.route[Display]:
             case _ => installation.config.log.path.as[File]
         .remedy:
           case error: IoError     => abort(InitError(msg"An I/O error occurred when trying to create the log"))
@@ -150,14 +150,14 @@ def main(): Unit =
                 val interactive = Interactive().present
                 val force = Force().present
                 val noTabCompletions = NoTabCompletions().present
-                
+
                 execute:
                   frontEnd:
                     if interactive then actions.install.installInteractive(force, noTabCompletions)
                     else actions.install.batch(force, noTabCompletions)
-                  
+
                   ExitStatus.Ok
-                  
+
               case Init() :: _ =>
                 execute:
                   frontEnd:
@@ -168,21 +168,21 @@ def main(): Unit =
               case Config() :: _ =>
                 execute:
                   frontEnd:
-                    info(installation.config.debug)
+                    log(installation.config.debug)
                     ExitStatus.Ok
 
               case Clean() :: _ =>
                 val all: Boolean = All().present
                 execute(frontEnd(actions.clean(all)))
-              
+
               case Cache() :: subcommands => subcommands match
                 case Nil => execute(frontEnd(actions.cache.about()))
-                
+
                 case other :: _ => execute:
                   frontEnd(other.let(actions.invalidSubcommand(_)).or(actions.missingSubcommand()))
-                
+
               case About() :: _ => execute(about())
-              
+
               case Build() :: subcommands => subcommands match
                 case Nil =>
                   execute:
@@ -198,12 +198,12 @@ def main(): Unit =
                   safely(internet(false)(Workspace().locals())).let: map =>
                     val targets = map.values.map(_.source).flatMap:
                       case workspace: Workspace => workspace.build.projects.flatMap(_.targets)
-                    
+
                     target.let: target =>
                       if target().contains(t"/")
                       then target.suggest(previous ++ targets.map(_.suggestion))
                       else target.suggest(previous ++ targets.map(_.partialSuggestion))
-                  
+
                   execute:
                     internet(online):
                       frontEnd:
@@ -213,13 +213,13 @@ def main(): Unit =
                           .remedy:
                             case InvalidRefError(ref, refType) =>
                               abort(UserError(msg"The target $ref could not be decoded"))
-                            
+
                             case IoError(_) =>
                               abort(UserError(msg"An I/O error occurred"))
-                            
+
                             case PathError(_, _) =>
                               abort(UserError(msg"A path error occurred"))
-                            
+
                             case ExecError(_, _, _) =>
                               abort(UserError(msg"An execution error occurred"))
 
@@ -227,15 +227,15 @@ def main(): Unit =
                           terminal.events.stream.each:
                             case Keypress.Escape | Keypress.Ctrl('C') => summon[FrontEnd].abort()
                             case other => ()
-                        
+
                         tend(buildTask.await()).remedy:
                           case ConcurrencyError(reason) =>
                             abort(UserError(msg"The build was aborted"))
                         .also(Out.print(t"\e[?25h"))
-                  
+
               case Universe() :: subcommands =>
                 val online = Offline().absent
-                
+
                 subcommands match
                   case Nil | (UniverseShow() :: _) =>
                     execute:
@@ -246,24 +246,24 @@ def main(): Unit =
                       e"Command $Italic(${command.vouch(using Unsafe)()}) was not recognized."
 
                     ExitStatus.Fail(1)
-              
+
               case Ecosystem() :: subcommands => subcommands match
                 case Publish() :: target => target match
                   case Nil =>
                     execute:
                       Out.println(t"Project has not been specified")
                       ExitStatus.Fail(1)
-                  
+
                   case projectId :: _ =>
                     val workspace = safely(Workspace())
                     val online = Offline().absent
-                    
+
                     workspace.let: workspace =>
                       projectId.suggest(workspace.build.projects.map(_.suggestion))
 
                       workspace.build.projects.where(_.id.show == projectId()).let: project =>
                         safely(Stream.suggest(() => project.streams.map(_.suggestion)))
-                    
+
                     execute:
                       internet(online):
                         tend:
@@ -271,27 +271,27 @@ def main(): Unit =
                         .remedy:
                           case InvalidRefError(ref, refType) =>
                             abort(UserError(msg"The target $ref could not be decoded"))
-                          
+
                           case IoError(_) =>
                             abort(UserError(msg"An I/O error occurred"))
-                          
+
                           case PathError(path, reason) =>
                             abort(UserError(msg"The path $path is not valid because $reason"))
-                          
+
                           case ExecError(_, _, _) =>
                             abort(UserError(msg"An execution error occurred"))
-                            
+
 
                 case _ =>
                   execute:
                     Out.println(t"Unknown command")
                     ExitStatus.Fail(1)
-                  
+
               case Shutdown() :: Nil => execute:
                 FrontEnd.shutdown()
                 service.shutdown()
                 ExitStatus.Ok
-              
+
               case Nil =>
                 execute:
                   tend:
@@ -306,7 +306,7 @@ def main(): Unit =
                 if Version().present then execute(frontEnd(actions.versionInfo())) else
                   val subcommand = subcommands.filter(!_().starts(t"-")).prim
                   val workspace = safely(Workspace())
-                  
+
                   if subcommand.present && subcommand.lay(false)(_().contains(t"/")) then execute:
                     unsafely:
                       Out.println(e"Executing script $Bold(${subcommand.vouch()})...")
@@ -316,10 +316,10 @@ def main(): Unit =
                     val watch = Watch().present
                     val concise = Concise().present
                     val force = ForceRebuild().present
-                    
+
                     workspace.let: workspace =>
                       subcommand.let(_.suggest(previous ++ workspace.build.actions.map(_.suggestion)))
-    
+
                     execute:
                       workspace.lay(ExitStatus.Fail(2)): workspace =>
                         subcommand.let: subcommand =>
@@ -337,25 +337,25 @@ def main(): Unit =
                                       .remedy:
                                         case PathError(path, reason) =>
                                           abort(UserError(msg"The path $path is not valid"))
-                                        
+
                                         case ExecError(_, _, _) =>
                                           abort(UserError(msg"An execution error occurred"))
-                                        
+
                                         case IoError(_) =>
                                           abort(UserError(msg"An I/O error occurred"))
-            
+
                                     daemon:
                                       terminal.events.stream.each:
                                         case Keypress.Escape | Keypress.Ctrl('C') =>
-                                          info(msg"Aborting the build.")
+                                          log(msg"Aborting the build.")
                                           summon[FrontEnd].abort()
-                                        
+
                                         case TerminalInfo.WindowSize(rows, cols) =>
                                           summon[FrontEnd].resize(rows, cols)
-                                        
+
                                         case other =>
                                           ()
-                                    
+
                                     tend:
                                       buildTask.await().also(Out.print(t"\e[?25h"))
                                       ExitStatus.Ok
@@ -366,7 +366,7 @@ def main(): Unit =
                                 tend(main.await()).remedy:
                                   case ConcurrencyError(_) =>
                                     abort(UserError(msg"The task was aborted"))
-      
+
                         .or:
                           subcommand.let(frontEnd(actions.invalidSubcommand(_))).or:
                             Out.println(t"No subcommand was specified.")
@@ -382,11 +382,11 @@ def main(): Unit =
     // case InitError(message) =>
     //   println(message)
     //   ExitStatus.Fail(2)
-    
+
     // case error: IoError =>
     //   println(error.message)
     //   ExitStatus.Fail(2)
-    
+
     case ConcurrencyError(reason) =>
       println(msg"There was a concurrency error")
       ExitStatus.Fail(3)
@@ -397,7 +397,7 @@ def about()(using stdio: Stdio): ExitStatus =
       stdio.termcap.color match
         case ColorDepth.TrueColor => Image((Classpath / p"logo.png")()).render
         case _                    => Image((Classpath / p"logo2.png")()).render
-  
+
   val asciiArt =
       t"H4sIAAAAAAAA/31Ryw3AIAi9O8UbtfHcQw8wRrUzMUmTKlSx1HgA3ocXFT6FtulySUIZEIO49gllLcjIA62MmgkY"+
       t"3UOBeu+2VrdCCxfsm2RhAQQOD7aCq5KvtiTQTnDqbZ/gbf0LV8dcqUdzxN+x1CHBfa7mjPlh4HQDGOnRlikCAAA="
@@ -405,9 +405,9 @@ def about()(using stdio: Stdio): ExitStatus =
   unsafely(asciiArt.decode[Base64]).gunzip.utf8.cut(t"\n").each: line =>
     Out.print(t" "*19)
     Out.println(line)
-  
+
   val buildId = safely((Classpath / p"build.id")().readAs[Text].trim)
-  
+
   val scalaProperties = unsafely:
     val resource = Classpath / p"compiler.properties"
 
@@ -421,7 +421,7 @@ def about()(using stdio: Stdio): ExitStatus =
   val scalaCopyright = scalaProperties(t"copyright.string").sub(t"Copyright ", t"")
   val jvmVersion = unsafely(Properties.java.vm.specification.version())
   val jvmVendor = unsafely(Properties.java.vm.specification.vendor())
-  
+
   val software =
     List
      (Software(t"Fury", t"1.0${buildId.lay(t"") { id => t" build $id"}}", t"2017-2024, Propensive"),
@@ -436,12 +436,11 @@ def about()(using stdio: Stdio): ExitStatus =
       Column(e"$Bold(Version)")(_.version.display),
       Column(e"$Bold(Copyright)")(_.copyright.display))
     .tabulate(software).layout(72)
-  
+
   Out.println()
 
   safely:
     Out.println:
       e"  ${Italic}(${Properties.os.name()} ${Properties.os.version()}, ${Properties.os.arch()})\n"
-  
-  ExitStatus.Ok
 
+  ExitStatus.Ok

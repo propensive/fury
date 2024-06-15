@@ -71,12 +71,12 @@ object actions:
         val directories = Installer.candidateTargets().map(_.path)
 
         if directories.length <= 1 then Installer.install(force) else
-          info(e"$Italic(Please choose an install location.)")
+          log(e"$Italic(Please choose an install location.)")
 
           interactive:
             SelectMenu(directories, directories.head).ask: target =>
-              info(e"Installing to $target/${service.scriptName}")
-              info(Installer.install(force = true, target).communicate)
+              log(e"Installing to $target/${service.scriptName}")
+              log(Installer.install(force = true, target).communicate)
 
         if !noTabCompletions then Out.println(TabCompletions.install(force = true).communicate)
 
@@ -98,7 +98,7 @@ object actions:
             : ExitStatus raises UserError =
 
       tend:
-        info(Installer.install(force).communicate)
+        log(Installer.install(force).communicate)
         if !noTabCompletions then info(TabCompletions.install(force = true).communicate)
         ExitStatus.Ok
       .remedy:
@@ -117,12 +117,12 @@ object actions:
       safely(installation.work.wipe())
 
     val size = safely(size0 - installation.cache.as[Directory].size()).or(0.b)
-    info(t"$size was cleaned up")
+    log(t"$size was cleaned up")
     ExitStatus.Ok
 
   object cache:
     def clean()(using FrontEnd): ExitStatus raises UserError =
-      info(msg"Cleaning the cache")
+      log(msg"Cleaning the cache")
       Cache.clear()
       ExitStatus.Ok
 
@@ -166,7 +166,7 @@ object actions:
               case vault: Vault =>
                 e"$DeepSkyBlue(${vault.name})")
 
-      info(table.tabulate(projects))
+      log(table.tabulate(projects))
       ExitStatus.Ok
 
   object project:
@@ -321,5 +321,5 @@ object actions:
     abort(UserError(msg"No subcommand was specified."))
 
   def versionInfo()(using FrontEnd): ExitStatus =
-    info(msg"Fury version 1.0")
+    log(msg"Fury version 1.0")
     ExitStatus.Ok

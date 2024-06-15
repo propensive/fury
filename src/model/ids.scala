@@ -99,37 +99,37 @@ object Ids:
   given ecosystemIdEncoder: Encoder[EcosystemId] = identity(_)
   given ecosystemIdDecoder(using Errant[InvalidRefError]): Decoder[EcosystemId] = EcosystemId(_)
 
-  given ecosystemIdDigestible: Digestible[EcosystemId] =
+  given EcosystemId is Digestible =
     (acc, ecosystemId) => acc.append(ecosystemId.bytes)
 
   given ProjectId is Showable = identity(_)
   given projectIdEncoder: Encoder[ProjectId] = identity(_)
   given projectIdDecoder(using Errant[InvalidRefError]): Decoder[ProjectId] = ProjectId(_)
-  given projectIdDigestible: Digestible[ProjectId] = (acc, projectId) => acc.append(projectId.bytes)
+  given ProjectId is Digestible = (acc, projectId) => acc.append(projectId.bytes)
 
   given StreamId is Showable = identity(_)
   given streamIdEncoder: Encoder[StreamId] = identity(_)
   given streamIdDecoder(using Errant[InvalidRefError]): Decoder[StreamId] = StreamId(_)
-  given streamIdDigestible: Digestible[StreamId] = (acc, streamId) => acc.append(streamId.bytes)
+  given StreamId is Digestible = (acc, streamId) => acc.append(streamId.bytes)
 
   given LicenseId is Showable = identity(_)
   given licenseIdEncoder: Encoder[LicenseId] = identity(_)
   given licenseIdDecoder(using Errant[InvalidRefError]): Decoder[LicenseId] = LicenseId(_)
-  given licenseIdDigestible: Digestible[LicenseId] = (acc, licenseId) => acc.append(licenseId.bytes)
+  given LicenseId is Digestible = (acc, licenseId) => acc.append(licenseId.bytes)
 
   given ActionName is Showable = identity(_)
   given actionNameEncoder: Encoder[ActionName] = identity(_)
   given actionNameDecoder(using Errant[InvalidRefError]): Decoder[ActionName] = ActionName(_)
 
-  given actionNameDigestible: Digestible[ActionName] =
+  given ActionName is Digestible =
     (acc, actionName) => acc.append(actionName.bytes)
 
   given Keyword is Showable = identity(_)
   given keywordEncoder: Encoder[Keyword] = identity(_)
   given keywordDecoder(using Errant[InvalidRefError]): Decoder[Keyword] = Keyword(_)
-  given keywordDigestible: Digestible[Keyword] = (acc, keyword) => acc.append(keyword.bytes)
+  given Keyword is Digestible = (acc, keyword) => acc.append(keyword.bytes)
 
   given GoalId is Showable = identity(_)
   given goalIdEncoder: Encoder[GoalId] = identity(_)
-  given goalIdDigestible: Digestible[GoalId] = (acc, goalId) => acc.append(goalId.bytes)
+  given GoalId is Digestible = (acc, goalId) => acc.append(goalId.bytes)
   given goalIdDecoder(using Errant[InvalidRefError]): Decoder[GoalId] = GoalId(_)
