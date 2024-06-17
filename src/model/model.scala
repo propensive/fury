@@ -24,7 +24,7 @@ import exoskeleton.*
 import fulminate.*
 import galilei.*
 import filesystemOptions.{doNotCreateNonexistent, dereferenceSymlinks}
-import filesystemApi.{galileiPath, galileiFile, galileiDirectory}
+import filesystemApi.galileiPath
 import gastronomy.*
 import gossamer.{where as _, *}
 import hieroglyph.*, charEncoders.utf8, charDecoders.utf8, encodingMitigation.strict
@@ -45,7 +45,7 @@ export gitCommands.environmentDefault
 
 erased given CanThrow[AppError] = ###
 
-type Hash = Digest[Sha2[256]]
+type Hash = Digest of Sha2[256]
 
 // FIXME: This shouldn't need to exist. AggregateError needs to be replaced.
 given (using CanThrow[AppError]): Errant[AggregateError[Error]] =
@@ -298,7 +298,7 @@ object Target extends RefType(t"target"):
   given Target is Communicable as moduleRefCommunicable = target => Message(target.show)
   given moduleRefDecoder(using Errant[InvalidRefError]): Decoder[Target] = Target(_)
 
-  given Show[Target] = target =>
+  given Target is Showable = target =>
     t"${target.projectId.let { projectId => t"$projectId/" }.or(t"")}${target.goalId}"
 
   def apply(value: Text)(using Errant[InvalidRefError]): Target = value match
@@ -355,16 +355,17 @@ object WorkPath:
   given creator: PathCreator[WorkPath, GeneralForbidden, Unit] =
     (unit, descent) => WorkPath(descent)
 
-  given show: Show[WorkPath] = _.render
+  given WorkPath is Showable = _.render
   given encoder: Encoder[WorkPath] = _.render
   //given debug: Debug[WorkPath] = _.render
-  given digestible: Digestible[WorkPath] = (acc, path) => acc.append(path.show.bytes)
+  given WorkPath is Digestible = (acc, path) => acc.append(path.show.bytes)
 
   given decoder(using path: Errant[PathError]): Decoder[WorkPath] = new Decoder[WorkPath]:
     def decode(text: Text): WorkPath = Navigable.decode(text)
 
-  inline given Path is Addable[WorkPath] as addable:
+  inline given Path is Addable as addable:
     type Result = Path
+    type Operand = WorkPath
     def add(left: Path, right: WorkPath): Path = right.descent.reverse.foldLeft(left)(_ / _)
 
 case class WorkPath(descent: List[PathName[GeneralForbidden]]):

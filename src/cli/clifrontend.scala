@@ -46,10 +46,10 @@ def frontEnd[ResultType](lambda: CliFrontEnd ?=> Terminal ?=> ResultType)
     val frontEnd = CliFrontEnd()
     FrontEnd.register(frontEnd)
     var continue: Boolean = true
-    
+
     val loop = task(t"frontend"):
       while continue.also(frontEnd.render()) do sleep(100*Milli(Second))
-    
+
     try lambda(using frontEnd) finally
       continue = false
       safely(loop.await())
@@ -82,9 +82,9 @@ class CliFrontEnd()(using Terminal) extends FrontEnd:
     misc.clear()
     Out.println(t"\e[1J")
 
-  def info[InfoType: Printable](info: InfoType) =
+  def log[InfoType: Printable](info: InfoType) =
     queue.add(summon[Printable[InfoType]].print(info, terminal.stdio.termcap))
-  
+
   def output(text: Text) = queue2.add(text)
 
   def setSchedule(dag2: Dag[Target]): Unit =
@@ -95,7 +95,7 @@ class CliFrontEnd()(using Terminal) extends FrontEnd:
           val indent = terminal.knownColumns - diagram.size*2 + index*2 - target.show.length - 14
           (target, t" "*indent)
         .to(Map)
-      
+
       tooWide = indents.exists(_(1).length == 0)
 
       if tooWide then
@@ -113,14 +113,14 @@ class CliFrontEnd()(using Terminal) extends FrontEnd:
       case 1.0 =>
         val graphRow = e"▪ $Bold(${colors.Gray}($target))$prefix$edge"
         e"$graphRow${Bg(rgb"#009966")}(     ${colors.Black}($Bold(OK))     )$edge"
-      
+
       case -1.0 =>
         val graphRow = e"▪ $Bold(${colors.Gray}($target))$prefix$edge"
         e"$graphRow${Bg(rgb"#003333")}(            )$edge"
 
       case Unset =>
         e"▪ $Bold(${colors.Gray}(${target}))$prefix$edge            $edge"
-      
+
       case progress: Double =>
         val highlight = if last then rgb"#990033" else colors.Gold
         e"▪ $Bold($highlight(${target}))$prefix$edge$highlight(${ProgressBar(progress)})$edge"
@@ -130,7 +130,7 @@ class CliFrontEnd()(using Terminal) extends FrontEnd:
 
     for i <- 0 until queue.size do queue.poll().nn.cut(t"\n").each: line =>
       Out.println(line+t"\e[K")
-    
+
     unscheduled.each { target => Out.println(showItem(target, last)) }
 
     diagram.let: diagram =>
@@ -144,10 +144,7 @@ class CliFrontEnd()(using Terminal) extends FrontEnd:
 object ProgressBar:
   def apply(double: Double): Text = bars((double*96).toInt.min(96).max(0))
   val partial: Text = t" ▎▍▌▋▊▉█"
-  
+
   val bars: IArray[Text] = IArray.from:
     (0 to 96).map: progress =>
       unsafely(((t"█"*(progress/8))+partial.at(progress%8).vouch.show).fit(12))
-
-
-
