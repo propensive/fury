@@ -18,6 +18,7 @@ package fury
 
 import feudalism.*
 import galilei.*
+import anticipation.*
 import rudiments.*
 
 

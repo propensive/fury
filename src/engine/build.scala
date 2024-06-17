@@ -25,6 +25,7 @@ import eucalyptus.*
 import ethereal.*
 import digression.*
 import fulminate.*
+import gastronomy.*
 
 import galilei.*
 import filesystemOptions.
@@ -35,7 +36,6 @@ import filesystemOptions.
     deleteRecursively,
     moveAtomically}
 
-import gastronomy.*, alphabets.base32.zBase32Unpadded
 import gossamer.{at as _, where as _, *}
 import acyclicity.*
 
@@ -52,6 +52,7 @@ import hypotenuse.*
 import inimitable.*
 import feudalism.*
 import harlequin.*, syntaxHighlighting.numbered
+import monotonous.*, alphabets.base32.zBase32Unpadded
 import nettlesome.*
 import octogenarian.*
 import revolution.*
@@ -244,7 +245,7 @@ class Builder():
     def digest: Hash
     def runtimeClasspath = digest :: classpath
 
-    lazy val output: Path = digest.bytes.encodeAs[Base32].pipe: hash =>
+    lazy val output: Path = digest.serialize[Base32].pipe: hash =>
       unsafely(build / PathName(hash.take(2)) / PathName(hash.drop(2)))
 
     def run(name: Text, hash: Hash)
@@ -266,6 +267,8 @@ class Builder():
   extends Phase:
 
     export artifact.*
+    summon[Hash is Digestible]
+    summon[Text is Digestible]
     val digest = antecedents.digest[Sha2[256]]
     val binaries: List[Hash] = Nil
 
@@ -297,7 +300,7 @@ class Builder():
 
           def fileChecksum = if !destination.exists() then Unset else
             tend:
-              destination.as[File].stream[Bytes].digest[Sha2[256]].bytes.encodeAs[Base32]
+              destination.as[File].checksum[Sha2[256]].serialize[Base32]
             .remedy:
               case error: IoError     => abort(BuildError(error))
               case error: StreamError => abort(BuildError(error))
@@ -407,7 +410,7 @@ class Builder():
 
 
               tend:
-                file.stream[Bytes].digest[Sha2[256]].bytes.encodeAs[Base32]
+                file.checksum[Sha2[256]].serialize[Base32]
                  .writeTo(checksumPath.as[File])
               .remedy:
                 case error: IoError     => abort(BuildError(error))
@@ -452,7 +455,7 @@ class Builder():
           val jarfile: Path = output / p"library.jar"
 
           def jarfileChecksum(): Text =
-            tend(jarfile.as[File].stream[Bytes].digest[Sha2[256]].bytes.encodeAs[Base32]).remedy:
+            tend(jarfile.as[File].checksum[Sha2[256]].serialize[Base32]).remedy:
               case error: IoError     => abort(BuildError(error))
               case error: StreamError => abort(BuildError(error))
 
@@ -834,7 +837,7 @@ class Builder():
   def watchDirectories(hash: Hash): Set[Path] = dag(hash).keys.flatMap(_.watches)
 
   def outputDirectory(hash: Hash)(using Installation): Path =
-    hash.bytes.encodeAs[Base32].pipe: hash =>
+    hash.serialize[Base32].pipe: hash =>
       unsafely(installation.build / PathName(hash.take(2)) / PathName(hash.drop(2)))
 
   def run(name: Text, hash: Hash, force: Boolean)
