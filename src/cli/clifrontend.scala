@@ -82,7 +82,7 @@ class CliFrontEnd()(using Terminal) extends FrontEnd:
     misc.clear()
     Out.println(t"\e[1J")
 
-  def log[InfoType: Printable](info: InfoType) =
+  def report[InfoType: Printable](info: InfoType) =
     queue.add(summon[Printable[InfoType]].print(info, terminal.stdio.termcap))
 
   def output(text: Text) = queue2.add(text)

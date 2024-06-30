@@ -30,6 +30,7 @@ import gossamer.{where as _, *}
 import hieroglyph.*, charEncoders.utf8, charDecoders.utf8, encodingMitigation.strict
 import digression.*
 import kaleidoscope.*
+import monotonous.*
 import nettlesome.*
 import octogenarian.*
 import contingency.*
@@ -44,6 +45,10 @@ import vacuous.*
 export gitCommands.environmentDefault
 
 erased given CanThrow[AppError] = ###
+
+given Hash is Communicable = hash =>
+  import alphabets.base32.crockford
+  Message(hash.serialize[Base32])
 
 type Hash = Digest of Sha2[256]
 

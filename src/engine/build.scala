@@ -71,10 +71,10 @@ import zeppelin.*
 import scala.collection.concurrent as scc
 import scala.collection.mutable as scm
 
-// inline given (using Log[Display]): Codicil = _.delegate: orphan =>
+// inline given (using Log[Message]): Codicil = _.delegate: orphan =>
 //   compiletime.summonFrom:
 //     case given Log[Text] =>
-//       Log.warn(t"Codicil cleaned up an orphan task: ${orphan.stack}")
+//       Log.warn(msg"Codicil cleaned up an orphan task: ${orphan.stack}")
 //       orphan.cancel()
 //     case _ =>
 //       System.err.nn.println(t"Codicil cleaned up an orphan task: ${orphan.stack}")
@@ -107,14 +107,13 @@ class Builder():
       (using Monitor,
              Environment,
              FrontEnd,
-             Log[Display],
              SystemProperties,
              Installation,
              DaemonService[?],
              Internet)
-          : Task[PhaseResult] =
+          : Task[PhaseResult] logs Message =
 
-    Log.info(t"Building task for $hash")
+    Log.info(msg"Building task for $hash")
 
     tasks.isolate: tasks =>
       synchronized:
@@ -127,12 +126,11 @@ class Builder():
                Internet,
                Monitor,
                WorkingDirectory,
-               Log[Display],
                Universe,
                GitCommand,
                FrontEnd)
             : LibraryPhase raises ConcurrencyError raises PathError raises GitError raises
-               BuildError raises ExecError raises IoError =
+               BuildError raises ExecError raises IoError logs Message =
       LibraryPhase(installation.build, library, target)
 
   extension (artifact: Artifact)
@@ -141,12 +139,11 @@ class Builder():
                Internet,
                Monitor,
                WorkingDirectory,
-               Log[Display],
                Universe,
                GitCommand,
                FrontEnd)
             : ArtifactPhase raises ConcurrencyError raises PathError raises GitError raises
-               BuildError raises ExecError raises IoError =
+               BuildError raises ExecError raises IoError logs Message =
 
       val destination: Path = workspace(artifact.path)
 
@@ -185,9 +182,9 @@ class Builder():
 
   extension (exec: Exec)
     def phase(workspace: Workspace, target: Target)
-        (using Installation, Internet, Universe, Monitor, WorkingDirectory, Log[Display], FrontEnd)
+        (using Installation, Internet, Universe, Monitor, WorkingDirectory, FrontEnd)
             : ExecPhase raises ConcurrencyError raises GitError raises PathError raises ExecError raises
-               IoError raises BuildError raises StreamError =
+               IoError raises BuildError raises StreamError logs Message =
 
       val antecedents: Map[Hash, Text] =
         exec.includes.bi.map(build(_) -> _.show).map: (build, name) =>
@@ -202,9 +199,9 @@ class Builder():
 
   extension (module: Module)
     def phase(workspace: Workspace, target: Target)
-        (using Installation, Internet, Universe, Monitor, WorkingDirectory, Log[Display], FrontEnd)
+        (using Installation, Internet, Universe, Monitor, WorkingDirectory, FrontEnd)
             : ModulePhase raises ConcurrencyError raises GitError raises PathError raises ExecError raises
-               IoError raises BuildError raises StreamError =
+               IoError raises BuildError raises StreamError logs Message =
 
       val antecedents: Map[Hash, Text] =
         module.includes.bi.map(build(_) -> _.show).map: (build, name) =>
@@ -249,8 +246,8 @@ class Builder():
       unsafely(build / PathName(hash.take(2)) / PathName(hash.drop(2)))
 
     def run(name: Text, hash: Hash)
-        (using FrontEnd, Log[Display], DaemonService[?], Installation, Monitor, SystemProperties, Environment, Internet)
-            : PhaseResult
+        (using FrontEnd, DaemonService[?], Installation, Monitor, SystemProperties, Environment, Internet)
+            : PhaseResult logs Message
 
   case class ArtifactPhase
      (build:       Path,
@@ -274,14 +271,13 @@ class Builder():
 
     def run(name: Text, hash: Hash)
         (using FrontEnd,
-               Log[Display],
                DaemonService[?],
                Installation,
                Monitor,
                SystemProperties,
                Environment,
                Internet)
-            : PhaseResult =
+            : PhaseResult logs Message =
 
       attempt[AggregateError[BuildError]]:
         validate[BuildError]:
@@ -442,8 +438,8 @@ class Builder():
     val binaries: List[Hash] = List(digest)
 
     def run(name: Text, hash: Hash)
-        (using FrontEnd, Log[Display], DaemonService[?], Installation, Monitor, SystemProperties, Environment, Internet)
-            : PhaseResult =
+        (using FrontEnd, DaemonService[?], Installation, Monitor, SystemProperties, Environment, Internet)
+            : PhaseResult logs Message =
 
       attempt[AggregateError[BuildError]]:
         validate[BuildError]:
@@ -467,7 +463,7 @@ class Builder():
           then
             tend:
               summon[Internet].require: (online: Online) ?=> // FIXME: Why is this necessary?
-                Log.info(t"Initiating $target")
+                Log.info(msg"Initiating $target")
                 val response: HttpResponse = library.url.get()
 
                 val size: Double =
@@ -489,7 +485,7 @@ class Builder():
                   case error: IoError     => abort(BuildError(error))
                   case error: StreamError => abort(BuildError(error))
 
-                Log.info(t"Downloaded ${target}")
+                Log.info(msg"Downloaded ${target}")
 
                 tend:
                   jarfileChecksum().writeTo(checksum.as[File])
@@ -518,14 +514,13 @@ class Builder():
     def binaries: List[Hash] = Nil
     def run(name: Text, hash: Hash)
         (using FrontEnd,
-               Log[Display],
                DaemonService[?],
                Installation,
                Monitor,
                SystemProperties,
                Environment,
                Internet)
-            : PhaseResult =
+            : PhaseResult logs Message =
 
       attempt[AggregateError[BuildError]]:
         validate[BuildError]:
@@ -605,19 +600,18 @@ class Builder():
 
     def run(name: Text, hash: Hash)
         (using FrontEnd,
-               Log[Display],
                DaemonService[?],
                Installation,
                Monitor,
                SystemProperties,
                Environment,
                Internet)
-            : PhaseResult =
+            : PhaseResult logs Message =
 
       attempt[AggregateError[BuildError]]:
         validate[BuildError]:
 
-          Log.info(t"Starting to build")
+          Log.info(msg"Starting to build")
 
           val inputs =
             tend:
@@ -639,11 +633,11 @@ class Builder():
                 case AggregateError(errors) => errors.each:
                   case BuildError(error) =>
                     Log.warn(msg"There was a build error in an input to $target: ${error.message}")
-                    Log.warn(error.stackTrace.display)
+                    Log.warn(error.stackTrace.communicate)
 
             if inputs.exists(_.failure)
             then
-              Log.info(t"One of the inputs did not complete")
+              Log.info(msg"One of the inputs did not complete")
               abort(BuildError(AbortError(3)))
             else
               val work = tend((installation.work / PathName(Uuid().show)).as[Directory]).remedy:
@@ -727,17 +721,17 @@ class Builder():
                     process.notices.each: notice =>
                       notice.importance match
                         case Importance.Error =>
-                          log(errorRibbon.fill(e"$target", notice.file.display))
+                          log(errorRibbon.fill(e"$target", notice.file.communicate))
 
                         case Importance.Warning =>
-                          log(warningRibbon.fill(e"$target", notice.file.display))
+                          log(warningRibbon.fill(e"$target", notice.file.communicate))
 
                         case Importance.Info =>
-                          log(infoRibbon.fill(e"$target", notice.file.display))
+                          log(infoRibbon.fill(e"$target", notice.file.communicate))
 
                       notice.codeRange.let: range =>
                         val source: ScalaSource = highlight(notice.file)
-                        log(range.of(source).display)
+                        log(range.of(source).communicate)
 
                       log(e"$Italic(${notice.message})")
                       log(t"")
@@ -766,17 +760,16 @@ class Builder():
   def build(target: Target)(using Universe)
       (using Monitor,
              Clock,
-             Log[Display],
              WorkingDirectory,
              Internet,
              Installation,
              GitCommand,
              FrontEnd)
-          : Task[Hash] raises BuildError = synchronized:
+          : Task[Hash] raises BuildError logs Message = synchronized:
     builds.establish(target):
-      Log.info(t"Building target $target")
+      Log.info(msg"Building target $target")
       task(t"$target.digest"):
-        Log.info(t"Starting new async for $target")
+        Log.info(msg"Starting new async for $target")
         val workspace =
           tend:
             universe(target.projectId).source match
@@ -794,7 +787,7 @@ class Builder():
             case error: WorkspaceError   => abort(BuildError(error))
             case error: GitError         => abort(BuildError(error))
 
-        Log.info(t"Calculated workspace for $target")
+        Log.info(msg"Calculated workspace for $target")
 
         val goal = workspace(target.projectId)(target.goalId).or:
           abort(BuildError(RefError(target.goalId)))
@@ -830,7 +823,7 @@ class Builder():
             case error: PathError        => abort(BuildError(error))
             case error: StreamError      => abort(BuildError(error))
 
-        Log.info(t"Calculated digest for $target")
+        Log.info(msg"Calculated digest for $target")
 
         digest
 
@@ -841,8 +834,7 @@ class Builder():
       unsafely(installation.build / PathName(hash.take(2)) / PathName(hash.drop(2)))
 
   def run(name: Text, hash: Hash, force: Boolean)
-      (using Log[Display],
-             DaemonService[?],
+      (using DaemonService[?],
              Installation,
              FrontEnd,
              Monitor,
@@ -850,20 +842,20 @@ class Builder():
              Environment,
              Internet)
           : PhaseResult raises ConcurrencyError raises StreamError raises ZipError raises
-             IoError raises PathError raises BuildError raises CompileError =
+             IoError raises PathError raises BuildError raises CompileError logs Message =
 
     if force then outputDirectory(hash).wipe()
     runTask(name, hash).await()
 
 extension (workspace: Workspace)
   def locals()
-      (using Monitor, Log[Display], WorkingDirectory, Internet, Installation, GitCommand)
-          : Map[ProjectId, Definition] raises ConcurrencyError raises WorkspaceError =
+      (using Monitor, WorkingDirectory, Internet, Installation, GitCommand)
+          : Map[ProjectId, Definition] raises ConcurrencyError raises WorkspaceError logs Message =
     Cache.projectsMap(workspace).await()
 
   def universe()
-      (using Monitor, Clock, Log[Display], WorkingDirectory, Internet, Installation, GitCommand)
-          : Universe raises ConcurrencyError raises VaultError raises WorkspaceError =
+      (using Monitor, Clock, WorkingDirectory, Internet, Installation, GitCommand)
+          : Universe raises ConcurrencyError raises VaultError raises WorkspaceError logs Message =
     Log.info(msg"Constructing universe")
 
     given Timezone = tz"Etc/UTC"
@@ -888,14 +880,13 @@ extension (workspace: Workspace)
              Internet,
              Monitor,
              WorkingDirectory,
-             Log[Display],
              FrontEnd,
              Errant[ConcurrencyError],
              Errant[GitError],
              Errant[PathError],
              Errant[ExecError],
              Errant[IoError])
-          : Path =
+          : Path logs Message =
 
     workspace.mounts.keys.where(_.precedes(path)).lay(workspace.directory.path + path.link): mount =>
       Cache(workspace.mounts(mount).repo).await().path + path.link
@@ -950,8 +941,8 @@ extension (basis: Basis)
   def path(using Installation): Path =
     unsafely(installation.basis / PathName(t"${basis.encode}-${installation.buildId}.jar"))
 
-  def apply()(using FrontEnd, Monitor, Environment, Installation, Log[Display], DaemonService[?])
-          : Task[File] raises BuildError =
+  def apply()(using FrontEnd, Monitor, Environment, Installation, DaemonService[?])
+  : Task[File] raises BuildError logs Message =
     task(t"basis"):
       basis.synchronized:
 
@@ -1000,8 +991,8 @@ val warningRibbon = Ribbon(rgb"#FF9900", rgb"#FFCC66")
 val infoRibbon = Ribbon(rgb"#006666", rgb"#6699CC")
 
 extension (ecosystem: Ecosystem)
-  def path(using installation: Installation)(using Log[Display], WorkingDirectory)
-          : Path raises PathError =
+  def path(using installation: Installation)(using WorkingDirectory)
+      : Path raises PathError logs Message =
 
     val localPath: Optional[Path] =
       installation.config.ecosystems.where(_.id == ecosystem.id).let(_.path)
