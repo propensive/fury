@@ -107,6 +107,7 @@ object Cache:
 
     snapshots.establish(snapshot):
       async:
+        given Message transcribes GitEvent = _.communicate
         val destination = summon[Installation].snapshots.path / PathName(snapshot.commit.show)
 
         if destination.exists() then destination.as[Directory] else
@@ -171,7 +172,8 @@ object Cache:
               given commitDecoder: CodlDecoder[CommitHash] = CodlDecoder.field[CommitHash]
               given branchDecoder: CodlDecoder[Branch] = CodlDecoder.field[Branch]
 
-              Codl.read[Release](path.as[File])
+              val source = path.as[File].readAs[Text]
+              Codl.read[Release](source)
 
             .filter: release =>
               release.date + release.lifetime.days > today()

@@ -25,7 +25,7 @@ import acyclicity.*
 import scala.collection.concurrent as scc
 import scala.collection.mutable as scm
 
-def report[InfoType: Printable](info: InfoType)(using frontEnd: FrontEnd): Unit = frontEnd.log(info)
+def report[InfoType: Printable](info: InfoType)(using frontEnd: FrontEnd): Unit = frontEnd.report(info)
 def output(text: Text)(using frontEnd: FrontEnd): Unit = frontEnd.output(text)
 
 object FrontEnd:

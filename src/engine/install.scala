@@ -48,7 +48,8 @@ object Installation:
       given pathDecoder: CodlDecoder[Path] = CodlDecoder.field[Path]
       given ecosystemIdDecoder: CodlDecoder[EcosystemId] = CodlDecoder.field[EcosystemId]
 
-      val config: Config = Codl.read[Config]((configPath / p"config.codl").as[File])
+      val configSource = (configPath / p"confix.codl").as[File].readAs[Text]
+      val config: Config = Codl.read[Config](configSource)
       val vault: Directory = (cache / p"vault").as[Directory]
       val snapshots: Directory = (cache / p"repos").as[Directory]
       val tmp: Directory = (cache / p"tmp").as[Directory]

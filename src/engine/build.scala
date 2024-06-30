@@ -182,7 +182,7 @@ class Builder():
 
   extension (exec: Exec)
     def phase(workspace: Workspace, target: Target)
-        (using Installation, Internet, Universe, Monitor, WorkingDirectory, FrontEnd)
+        (using Installation, Internet, Universe, Monitor, WorkingDirectory, FrontEnd, GitCommand)
             : ExecPhase raises ConcurrencyError raises GitError raises PathError raises ExecError raises
                IoError raises BuildError raises StreamError logs Message =
 
@@ -199,7 +199,7 @@ class Builder():
 
   extension (module: Module)
     def phase(workspace: Workspace, target: Target)
-        (using Installation, Internet, Universe, Monitor, WorkingDirectory, FrontEnd)
+        (using Installation, Internet, Universe, Monitor, WorkingDirectory, FrontEnd, GitCommand)
             : ModulePhase raises ConcurrencyError raises GitError raises PathError raises ExecError raises
                IoError raises BuildError raises StreamError logs Message =
 
@@ -464,6 +464,7 @@ class Builder():
             tend:
               summon[Internet].require: (online: Online) ?=> // FIXME: Why is this necessary?
                 Log.info(msg"Initiating $target")
+                given Message transcribes HttpEvent = _.communicate
                 val response: HttpResponse = library.url.get()
 
                 val size: Double =
@@ -633,7 +634,7 @@ class Builder():
                 case AggregateError(errors) => errors.each:
                   case BuildError(error) =>
                     Log.warn(msg"There was a build error in an input to $target: ${error.message}")
-                    Log.warn(error.stackTrace.communicate)
+                    report(error.stackTrace.teletype)
 
             if inputs.exists(_.failure)
             then
@@ -662,12 +663,11 @@ class Builder():
                   case error: IoError   => abort(BuildError(error))
 
               classpathEntries.pipe: classpath =>
-                if sourceMap.isEmpty
-                then tend(output.as[Directory]).remedy:
-                  case error: IoError => abort(BuildError(error))
-                else
+                given BuildError mitigates IoError = BuildError(_)
+
+                if sourceMap.isEmpty then output.as[Directory] else
                   val process: CompileProcess =
-                    Log.envelop(target):
+                    //Log.envelop(target):
                       compiler match
                         case Compiler.Java =>
                           tend(Javac(Nil)(classpath)(sourceMap, work.path)).remedy:
@@ -721,20 +721,20 @@ class Builder():
                     process.notices.each: notice =>
                       notice.importance match
                         case Importance.Error =>
-                          log(errorRibbon.fill(e"$target", notice.file.communicate))
+                          report(errorRibbon.fill(e"$target", notice.file.teletype))
 
                         case Importance.Warning =>
-                          log(warningRibbon.fill(e"$target", notice.file.communicate))
+                          report(warningRibbon.fill(e"$target", notice.file.teletype))
 
                         case Importance.Info =>
-                          log(infoRibbon.fill(e"$target", notice.file.communicate))
+                          report(infoRibbon.fill(e"$target", notice.file.teletype))
 
                       notice.codeRange.let: range =>
                         val source: ScalaSource = highlight(notice.file)
-                        log(range.of(source).communicate)
+                        report(range.of(source).teletype)
 
-                      log(e"$Italic(${notice.message})")
-                      log(t"")
+                      report(e"$Italic(${notice.message})")
+                      report(t"")
 
                   tend(process.complete()).remedy:
                     case error: ConcurrencyError => abort(BuildError(error))
@@ -881,6 +881,7 @@ extension (workspace: Workspace)
              Monitor,
              WorkingDirectory,
              FrontEnd,
+             GitCommand,
              Errant[ConcurrencyError],
              Errant[GitError],
              Errant[PathError],
