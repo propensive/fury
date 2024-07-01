@@ -135,8 +135,8 @@ def main(): Unit =
 
       intercept:
         case error: Throwable =>
-          Log.fail(m"Detected an async failure in ${trace.debug}")
-          Log.fail(error.debug)
+          Log.fail(m"Detected an async failure in ${trace.inspect}")
+          Log.fail(error.inspect)
           Transgression.Absorb
 
       initTime.let: initTime =>
@@ -168,7 +168,7 @@ def main(): Unit =
               case Config() :: _ =>
                 execute:
                   frontEnd:
-                    log(installation.config.debug)
+                    log(installation.config.inspect)
                     ExitStatus.Ok
 
               case Clean() :: _ =>
@@ -296,7 +296,7 @@ def main(): Unit =
                 execute:
                   tend:
                     val workspace = Workspace()
-                    Out.println(Workspace().build.actions.prim.debug)
+                    Out.println(Workspace().build.actions.prim.inspect)
                     ExitStatus.Ok
                   .remedy:
                     case WorkspaceError(_) =>
