@@ -198,10 +198,10 @@ object ReleaseError:
     case NoLicense
 
   given Reason is Communicable =
-    case Reason.NoLicense => msg"the license has not been specified"
+    case Reason.NoLicense => m"the license has not been specified"
 
 case class ReleaseError(reason: ReleaseError.Reason)
-extends Error(msg"The project is not ready for release because $reason")
+extends Error(m"The project is not ready for release because $reason")
 
 case class Assist(target: Target, module: GoalId)
 
@@ -476,10 +476,10 @@ object WorkspaceError:
     case BadData(text: Text)
 
   given Reason is Communicable =
-    case Reason.Unreadable(path)     => msg"$path could not be read"
-    case Reason.BadContent           => msg"the content was not valid CoDL"
+    case Reason.Unreadable(path)     => m"$path could not be read"
+    case Reason.BadContent           => m"the content was not valid CoDL"
     case Reason.Explanation(message) => message
-    case Reason.BadData(text)        => msg"the value $text was not in the correct format"
+    case Reason.BadData(text)        => m"the value $text was not in the correct format"
 
 case class WorkspaceError(reason: WorkspaceError.Reason)
-extends Error(msg"the workspace could not be read because $reason")
+extends Error(m"the workspace could not be read because $reason")

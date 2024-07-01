@@ -74,7 +74,7 @@ import scala.collection.mutable as scm
 // inline given (using Log[Message]): Codicil = _.delegate: orphan =>
 //   compiletime.summonFrom:
 //     case given Log[Text] =>
-//       Log.warn(msg"Codicil cleaned up an orphan task: ${orphan.stack}")
+//       Log.warn(m"Codicil cleaned up an orphan task: ${orphan.stack}")
 //       orphan.cancel()
 //     case _ =>
 //       System.err.nn.println(t"Codicil cleaned up an orphan task: ${orphan.stack}")
@@ -88,10 +88,10 @@ object Config:
 case class Config(log: LogConfig = LogConfig(), ecosystems: List[EcosystemFork])
 case class LogConfig(path: Path = Unix / p"var" / p"log" / p"fury.log")
 
-case class AbortError(n: Int) extends Error(msg"the build was aborted by the user ($n)")
+case class AbortError(n: Int) extends Error(m"the build was aborted by the user ($n)")
 
 case class BuildError(error: Error)
-extends Error(msg"the build could not run because ${error.message}")
+extends Error(m"the build could not run because ${error.message}")
 
 val Isolation: Semaphore = Semaphore()
 val Epoch: LocalTime = 2000-Jan-1 at 0.00.am in tz"Etc/UTC"
@@ -113,7 +113,7 @@ class Builder():
              Internet)
           : Task[PhaseResult] logs Message =
 
-    Log.info(msg"Building task for $hash")
+    Log.info(m"Building task for $hash")
 
     tasks.isolate: tasks =>
       synchronized:
@@ -463,7 +463,7 @@ class Builder():
           then
             tend:
               summon[Internet].require: (online: Online) ?=> // FIXME: Why is this necessary?
-                Log.info(msg"Initiating $target")
+                Log.info(m"Initiating $target")
                 given Message transcribes HttpEvent = _.communicate
                 val response: HttpResponse = library.url.get()
 
@@ -486,7 +486,7 @@ class Builder():
                   case error: IoError     => abort(BuildError(error))
                   case error: StreamError => abort(BuildError(error))
 
-                Log.info(msg"Downloaded ${target}")
+                Log.info(m"Downloaded ${target}")
 
                 tend:
                   jarfileChecksum().writeTo(checksum.as[File])
@@ -612,7 +612,7 @@ class Builder():
       attempt[AggregateError[BuildError]]:
         validate[BuildError]:
 
-          Log.info(msg"Starting to build")
+          Log.info(m"Starting to build")
 
           val inputs =
             tend:
@@ -633,12 +633,12 @@ class Builder():
               input.acknowledge:
                 case AggregateError(errors) => errors.each:
                   case BuildError(error) =>
-                    Log.warn(msg"There was a build error in an input to $target: ${error.message}")
+                    Log.warn(m"There was a build error in an input to $target: ${error.message}")
                     report(error.stackTrace.teletype)
 
             if inputs.exists(_.failure)
             then
-              Log.info(msg"One of the inputs did not complete")
+              Log.info(m"One of the inputs did not complete")
               abort(BuildError(AbortError(3)))
             else
               val work = tend((installation.work / PathName(Uuid().show)).as[Directory]).remedy:
@@ -767,9 +767,9 @@ class Builder():
              FrontEnd)
           : Task[Hash] raises BuildError logs Message = synchronized:
     builds.establish(target):
-      Log.info(msg"Building target $target")
+      Log.info(m"Building target $target")
       task(t"$target.digest"):
-        Log.info(msg"Starting new async for $target")
+        Log.info(m"Starting new async for $target")
         val workspace =
           tend:
             universe(target.projectId).source match
@@ -787,7 +787,7 @@ class Builder():
             case error: WorkspaceError   => abort(BuildError(error))
             case error: GitError         => abort(BuildError(error))
 
-        Log.info(msg"Calculated workspace for $target")
+        Log.info(m"Calculated workspace for $target")
 
         val goal = workspace(target.projectId)(target.goalId).or:
           abort(BuildError(RefError(target.goalId)))
@@ -823,7 +823,7 @@ class Builder():
             case error: PathError        => abort(BuildError(error))
             case error: StreamError      => abort(BuildError(error))
 
-        Log.info(msg"Calculated digest for $target")
+        Log.info(m"Calculated digest for $target")
 
         digest
 
@@ -856,20 +856,20 @@ extension (workspace: Workspace)
   def universe()
       (using Monitor, Clock, WorkingDirectory, Internet, Installation, GitCommand)
           : Universe raises ConcurrencyError raises VaultError raises WorkspaceError logs Message =
-    Log.info(msg"Constructing universe")
+    Log.info(m"Constructing universe")
 
     given Timezone = tz"Etc/UTC"
-    Log.info(msg"Got timezone")
+    Log.info(m"Got timezone")
     val vaultProjects = Cache(workspace.ecosystem).await()
-    Log.info(msg"Got vaultProjects")
+    Log.info(m"Got vaultProjects")
     val localProjects = locals()
-    Log.info(msg"Got locals")
+    Log.info(m"Got locals")
 
     val projects: Map[ProjectId, Definition] =
       vaultProjects.releases.filter(_.expiry <= today()).map: release =>
         (release.id, release.definition(vaultProjects))
       .to(Map)
-    Log.info(msg"Got projects")
+    Log.info(m"Got projects")
 
     Universe(projects -- localProjects.keySet ++ localProjects)
 

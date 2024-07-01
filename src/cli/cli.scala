@@ -103,7 +103,7 @@ object cli:
 given (using Errant[UserError]): HomeDirectory =
   tend(homeDirectories.virtualMachine).remedy:
     case SystemPropertyError(property) =>
-      abort(UserError(msg"""
+      abort(UserError(m"""
         Could not access the home directory because the $property system property was not set.
       """))
 
@@ -112,7 +112,7 @@ given (using Cli): WorkingDirectory = workingDirectories.daemonClient
 given (using Errant[UserError]): Installation =
   tend(Installation()).remedy:
     case ConfigError(message) =>
-      abort(UserError(msg"The configuration file could not be read because $message"))
+      abort(UserError(m"The configuration file could not be read because $message"))
 
 @main
 def main(): Unit =
@@ -129,18 +129,18 @@ def main(): Unit =
           Log.route[Display]:
             case _ => installation.config.log.path.as[File]
         .remedy:
-          case error: IoError     => abort(InitError(msg"An I/O error occurred when trying to create the log"))
-          case error: StreamError => abort(InitError(msg"A stream error occurred while logging"))
+          case error: IoError     => abort(InitError(m"An I/O error occurred when trying to create the log"))
+          case error: StreamError => abort(InitError(m"A stream error occurred while logging"))
           case error: UserError   => abort(InitError(error.message))*/
 
       intercept:
         case error: Throwable =>
-          Log.fail(msg"Detected an async failure in ${trace.debug}")
+          Log.fail(m"Detected an async failure in ${trace.debug}")
           Log.fail(error.debug)
           Transgression.Absorb
 
       initTime.let: initTime =>
-        Log.info(msg"Initialized Fury in ${(now() - initTime).show}")
+        Log.info(m"Initialized Fury in ${(now() - initTime).show}")
 
       cliService:
         attempt[UserError]:
@@ -162,7 +162,7 @@ def main(): Unit =
                 execute:
                   frontEnd:
                     val directory = safely(workingDirectory).or:
-                      abort(UserError(msg"The working directory could not be determined."))
+                      abort(UserError(m"The working directory could not be determined."))
                     actions.build.initialize(directory)
 
               case Config() :: _ =>
@@ -212,16 +212,16 @@ def main(): Unit =
                             actions.build.run(target().decodeAs[Target], watch, force, concise)
                           .remedy:
                             case InvalidRefError(ref, refType) =>
-                              abort(UserError(msg"The target $ref could not be decoded"))
+                              abort(UserError(m"The target $ref could not be decoded"))
 
                             case IoError(_) =>
-                              abort(UserError(msg"An I/O error occurred"))
+                              abort(UserError(m"An I/O error occurred"))
 
                             case PathError(_, _) =>
-                              abort(UserError(msg"A path error occurred"))
+                              abort(UserError(m"A path error occurred"))
 
                             case ExecError(_, _, _) =>
-                              abort(UserError(msg"An execution error occurred"))
+                              abort(UserError(m"An execution error occurred"))
 
                         daemon:
                           terminal.events.stream.each:
@@ -230,7 +230,7 @@ def main(): Unit =
 
                         tend(buildTask.await()).remedy:
                           case ConcurrencyError(reason) =>
-                            abort(UserError(msg"The build was aborted"))
+                            abort(UserError(m"The build was aborted"))
                         .also(Out.print(t"\e[?25h"))
 
               case Universe() :: subcommands =>
@@ -270,16 +270,16 @@ def main(): Unit =
                           actions.project.publish(projectId().decodeAs[ProjectId], Stream())
                         .remedy:
                           case InvalidRefError(ref, refType) =>
-                            abort(UserError(msg"The target $ref could not be decoded"))
+                            abort(UserError(m"The target $ref could not be decoded"))
 
                           case IoError(_) =>
-                            abort(UserError(msg"An I/O error occurred"))
+                            abort(UserError(m"An I/O error occurred"))
 
                           case PathError(path, reason) =>
-                            abort(UserError(msg"The path $path is not valid because $reason"))
+                            abort(UserError(m"The path $path is not valid because $reason"))
 
                           case ExecError(_, _, _) =>
-                            abort(UserError(msg"An execution error occurred"))
+                            abort(UserError(m"An execution error occurred"))
 
 
                 case _ =>
@@ -325,7 +325,7 @@ def main(): Unit =
                         subcommand.let: subcommand =>
                           tend(subcommand().populated.let(ActionName(_))).remedy:
                             case InvalidRefError(ref, _) =>
-                              abort(UserError(msg"The reference $ref is not valid"))
+                              abort(UserError(m"The reference $ref is not valid"))
                           .or(workspace.build.default).let: action =>
                             workspace.build.actions.where(_.name == action).let: action =>
                               internet(online):
@@ -336,18 +336,18 @@ def main(): Unit =
                                         action.modules.each(actions.build.run(_, watch, force, concise))
                                       .remedy:
                                         case PathError(path, reason) =>
-                                          abort(UserError(msg"The path $path is not valid"))
+                                          abort(UserError(m"The path $path is not valid"))
 
                                         case ExecError(_, _, _) =>
-                                          abort(UserError(msg"An execution error occurred"))
+                                          abort(UserError(m"An execution error occurred"))
 
                                         case IoError(_) =>
-                                          abort(UserError(msg"An I/O error occurred"))
+                                          abort(UserError(m"An I/O error occurred"))
 
                                     daemon:
                                       terminal.events.stream.each:
                                         case Keypress.Escape | Keypress.Ctrl('C') =>
-                                          log(msg"Aborting the build.")
+                                          log(m"Aborting the build.")
                                           summon[FrontEnd].abort()
 
                                         case TerminalInfo.WindowSize(rows, cols) =>
@@ -365,7 +365,7 @@ def main(): Unit =
 
                                 tend(main.await()).remedy:
                                   case ConcurrencyError(_) =>
-                                    abort(UserError(msg"The task was aborted"))
+                                    abort(UserError(m"The task was aborted"))
 
                         .or:
                           subcommand.let(frontEnd(actions.invalidSubcommand(_))).or:
@@ -388,7 +388,7 @@ def main(): Unit =
     //   ExitStatus.Fail(2)
 
     case ConcurrencyError(reason) =>
-      println(msg"There was a concurrency error")
+      println(m"There was a concurrency error")
       ExitStatus.Fail(3)
 
 def about()(using stdio: Stdio): ExitStatus =

@@ -31,7 +31,7 @@ import hieroglyph.*, charEncoders.utf8
 export Ids.*
 
 case class InvalidRefError(id: Text, refType: RefType)
-extends Error(msg"The value '$id' is not a valid ${refType.name}")
+extends Error(m"The value '$id' is not a valid ${refType.name}")
 
 case class AppError(userMessage: Message, underlyingCause: Optional[Error] = Unset)
 extends Error(userMessage)
@@ -41,10 +41,10 @@ object RefError:
     new RefError(ref.show)
 
 case class RefError(ref: Text)
-extends Error(msg"the reference $ref could not be resolved")
+extends Error(m"the reference $ref could not be resolved")
 
 case class BuildfileError(path: Path, issues: List[Error])
-extends Error(msg"There were problems with the build file $path")
+extends Error(m"There were problems with the build file $path")
 
 trait RefType(val name: Text)
 

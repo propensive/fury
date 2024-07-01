@@ -56,20 +56,20 @@ object Installation:
 
       val buildId: Int =
         safely((Classpath / p"build.id")().readAs[Text].trim.decodeAs[Int]).or:
-          throw Panic(msg"The build.id file was missing or corrupt")
+          throw Panic(m"The build.id file was missing or corrupt")
 
       Installation(buildId, config, cache, vault, tmp, snapshots)
 
     .remedy:
-      case StreamError(_)                => abort(ConfigError(msg"The stream was cut while reading a file"))
-      case error: AggregateError[?]      => abort(ConfigError(msg"Could not read the configuration file"))
-      case EnvironmentError(variable)    => abort(ConfigError(msg"The environment variable $variable could not be accessed"))
-      case error: CharDecodeError        => abort(ConfigError(msg"The configuration file contained bad character data"))
-      case error: InvalidRefError        => abort(ConfigError(msg"The configuration contained a nonexistent reference"))
-      case SystemPropertyError(property) => abort(ConfigError(msg"The JVM system property $property could not be read."))
-      case IoError(path)                 => abort(ConfigError(msg"An I/O error occurred while trying to access $path"))
-      case CodlReadError(label)          => abort(ConfigError(msg"The field ${label.or(t"unknown")} could not be read"))
-      case PathError(path, reason)       => abort(ConfigError(msg"The path $path was not valid because $reason"))
+      case StreamError(_)                => abort(ConfigError(m"The stream was cut while reading a file"))
+      case error: AggregateError[?]      => abort(ConfigError(m"Could not read the configuration file"))
+      case EnvironmentError(variable)    => abort(ConfigError(m"The environment variable $variable could not be accessed"))
+      case error: CharDecodeError        => abort(ConfigError(m"The configuration file contained bad character data"))
+      case error: InvalidRefError        => abort(ConfigError(m"The configuration contained a nonexistent reference"))
+      case SystemPropertyError(property) => abort(ConfigError(m"The JVM system property $property could not be read."))
+      case IoError(path)                 => abort(ConfigError(m"An I/O error occurred while trying to access $path"))
+      case CodlReadError(label)          => abort(ConfigError(m"The field ${label.or(t"unknown")} could not be read"))
+      case PathError(path, reason)       => abort(ConfigError(m"The path $path was not valid because $reason"))
 
 case class Installation
    (buildId:   Int,

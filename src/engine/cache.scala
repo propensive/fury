@@ -111,7 +111,7 @@ object Cache:
         val destination = summon[Installation].snapshots.path / PathName(snapshot.commit.show)
 
         if destination.exists() then destination.as[Directory] else
-          Log.info(msg"Cloning ${snapshot.url}")
+          Log.info(m"Cloning ${snapshot.url}")
           val process = Git.cloneCommit(snapshot.url, destination, snapshot.commit)
           val target = unsafely(Target(ProjectId(t"git"), GoalId(snapshot.commit.show)))
           summon[FrontEnd].start(target)
@@ -121,7 +121,7 @@ object Cache:
           summon[FrontEnd].stop(target)
 
           process.complete().workTree.vouch(using Unsafe).also:
-            Log.info(msg"Finished cloning ${snapshot.url}")
+            Log.info(m"Finished cloning ${snapshot.url}")
 
   def apply(ecosystem: Ecosystem)(using installation: Installation)
       (using Internet, WorkingDirectory, GitCommand)
@@ -129,13 +129,13 @@ object Cache:
 
     ecosystems.establish(ecosystem):
       async:
-        Log.info(msg"Started async to fetch ecosystem")
+        Log.info(m"Started async to fetch ecosystem")
 
         val destination = tend(ecosystem.path).remedy:
           case PathError(path, _) => abort(VaultError())
 
         if !destination.exists() then
-          Log.info(msg"Cloning ${ecosystem.url}")
+          Log.info(m"Cloning ${ecosystem.url}")
 
           val process =
             given VaultError mitigates GitError  = _ => VaultError()
@@ -147,7 +147,7 @@ object Cache:
             Git.clone(ecosystem.url, destination, branch = ecosystem.branch)
 
           process.complete().also:
-            Log.info(msg"Finished cloning ${ecosystem.url}")
+            Log.info(m"Finished cloning ${ecosystem.url}")
 
         val dataDir = tend((destination / p"data").as[Directory]).remedy:
           case IoError(_) => abort(VaultError())
@@ -219,6 +219,6 @@ object Cache:
 
         maps.foldLeft(workspace.projects.view.mapValues(_.definition(workspace)).toMap)(_ ++ _)
 
-case class VaultError() extends Error(msg"the vault file is not valid")
+case class VaultError() extends Error(m"the vault file is not valid")
 
 given Realm = realm"fury"
