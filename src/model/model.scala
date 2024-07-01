@@ -352,7 +352,7 @@ object WorkPath:
   given WorkPath is Navigable[GeneralForbidden, Unit] as navigable:
     def root(path: WorkPath): Unit = ()
     def prefix(root: Unit): Text = t""
-    def descent(path: WorkPath): List[PathName[GeneralForbidden]] = path.descent
+    def descent(path: WorkPath): List[Name[GeneralForbidden]] = path.descent
     def separator(path: WorkPath): Text = t"/"
 
   given rootParser: RootParser[WorkPath, Unit] = text => ((), text)
@@ -373,7 +373,7 @@ object WorkPath:
     type Operand = WorkPath
     def add(left: Path, right: WorkPath): Path = right.descent.reverse.foldLeft(left)(_ / _)
 
-case class WorkPath(descent: List[PathName[GeneralForbidden]]):
+case class WorkPath(descent: List[Name[GeneralForbidden]]):
   def link: SafeLink = SafeLink(0, descent)
 
 case class Definition

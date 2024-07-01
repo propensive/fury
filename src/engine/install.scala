@@ -41,8 +41,8 @@ object Installation:
 
     tend:
       val script: Text = Properties.ethereal.name[Text]()
-      val cache: Directory = (Xdg.cacheHome[Path] / PathName(script)).as[Directory]
-      val configPath: Path = Home.Config() / PathName(script)
+      val cache: Directory = (Xdg.cacheHome[Path] / Name(script)).as[Directory]
+      val configPath: Path = Home.Config() / Name(script)
 
       // FIXME: This shouldn't be necessary
       given pathDecoder: CodlDecoder[Path] = CodlDecoder.field[Path]

@@ -108,7 +108,7 @@ object Cache:
     snapshots.establish(snapshot):
       async:
         given Message transcribes GitEvent = _.communicate
-        val destination = summon[Installation].snapshots.path / PathName(snapshot.commit.show)
+        val destination = summon[Installation].snapshots.path / Name(snapshot.commit.show)
 
         if destination.exists() then destination.as[Directory] else
           Log.info(m"Cloning ${snapshot.url}")

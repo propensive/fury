@@ -162,7 +162,7 @@ class Builder():
       val resourceMap: Map[Path, SafeLink] =
         artifact.resources.map: resource =>
           val path = workspace(resource.path)
-          (path, resource.jarPath.lay(? / unsafely(PathName(path.name)))(_.link))
+          (path, resource.jarPath.lay(? / unsafely(Name(path.name)))(_.link))
         .to(Map)
 
       val watches = Set(prefixPaths, suffixPaths).compact.flatten
@@ -243,7 +243,7 @@ class Builder():
     def runtimeClasspath = digest :: classpath
 
     lazy val output: Path = digest.serialize[Base32].pipe: hash =>
-      unsafely(build / PathName(hash.take(2)) / PathName(hash.drop(2)))
+      unsafely(build / Name(hash.take(2)) / Name(hash.drop(2)))
 
     def run(name: Text, hash: Hash)
         (using FrontEnd, DaemonService[?], Installation, Monitor, SystemProperties, Environment, Internet)
@@ -303,7 +303,7 @@ class Builder():
 
           if savedChecksum.absent || fileChecksum.absent || savedChecksum != fileChecksum || counterPath.present
           then
-            val tmpPath = unsafely(installation.work / PathName(Uuid().show))
+            val tmpPath = unsafely(installation.work / Name(Uuid().show))
 
             val zipFile =
               tend:
@@ -390,7 +390,7 @@ class Builder():
 
                 val tmpFile =
                   tend:
-                    unsafely(installation.work / PathName(Uuid().show)).as[File]
+                    unsafely(installation.work / Name(Uuid().show)).as[File]
                   .remedy:
                     case error: IoError => abort(BuildError(error))
 
@@ -538,7 +538,7 @@ class Builder():
           val basis = unsafely(Basis.Runtime().await().path.show)
           val baseClasspath = LocalClasspath(List(ClasspathEntry.Jarfile(basis)))
 
-          val work = tend((installation.work / PathName(Uuid().show)).as[Directory]).remedy:
+          val work = tend((installation.work / Name(Uuid().show)).as[Directory]).remedy:
             case error: IoError        => abort(BuildError(error))
             case error@PathError(_, _) => abort(BuildError(error))
 
@@ -641,7 +641,7 @@ class Builder():
               Log.info(m"One of the inputs did not complete")
               abort(BuildError(AbortError(3)))
             else
-              val work = tend((installation.work / PathName(Uuid().show)).as[Directory]).remedy:
+              val work = tend((installation.work / Name(Uuid().show)).as[Directory]).remedy:
                 case error: IoError   => abort(BuildError(error))
                 case error: PathError => abort(BuildError(error))
 
@@ -831,7 +831,7 @@ class Builder():
 
   def outputDirectory(hash: Hash)(using Installation): Path =
     hash.serialize[Base32].pipe: hash =>
-      unsafely(installation.build / PathName(hash.take(2)) / PathName(hash.drop(2)))
+      unsafely(installation.build / Name(hash.take(2)) / Name(hash.drop(2)))
 
   def run(name: Text, hash: Hash, force: Boolean)
       (using DaemonService[?],
@@ -940,7 +940,7 @@ extension (basis: Basis)
     case Basis.Minimum => Set()
 
   def path(using Installation): Path =
-    unsafely(installation.basis / PathName(t"${basis.encode}-${installation.buildId}.jar"))
+    unsafely(installation.basis / Name(t"${basis.encode}-${installation.buildId}.jar"))
 
   def apply()(using FrontEnd, Monitor, Environment, Installation, DaemonService[?])
   : Task[File] raises BuildError logs Message =
@@ -999,4 +999,4 @@ extension (ecosystem: Ecosystem)
       installation.config.ecosystems.where(_.id == ecosystem.id).let(_.path)
 
     localPath.or:
-      installation.vault.path / PathName(ecosystem.id.show) / PathName(ecosystem.branch.show)
+      installation.vault.path / Name(ecosystem.id.show) / Name(ecosystem.branch.show)
