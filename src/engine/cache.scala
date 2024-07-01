@@ -68,7 +68,7 @@ object Cache:
     val lastModified = file.lastModified
 
     def cachedFile() =
-      val task = async(file.readAs[Text])
+      val task = async(file.read[Text])
       CachedFile(lastModified, task, task.map(_.digest[Sha2[256]]))
 
     val cached = files.establish(path)(cachedFile())
@@ -172,7 +172,7 @@ object Cache:
               given commitDecoder: CodlDecoder[CommitHash] = CodlDecoder.field[CommitHash]
               given branchDecoder: CodlDecoder[Branch] = CodlDecoder.field[Branch]
 
-              val source = path.as[File].readAs[Text]
+              val source = path.as[File].read[Text]
               Codl.read[Release](source)
 
             .filter: release =>

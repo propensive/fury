@@ -48,14 +48,14 @@ object Installation:
       given pathDecoder: CodlDecoder[Path] = CodlDecoder.field[Path]
       given ecosystemIdDecoder: CodlDecoder[EcosystemId] = CodlDecoder.field[EcosystemId]
 
-      val configSource = (configPath / p"confix.codl").as[File].readAs[Text]
+      val configSource = (configPath / p"confix.codl").as[File].read[Text]
       val config: Config = Codl.read[Config](configSource)
       val vault: Directory = (cache / p"vault").as[Directory]
       val snapshots: Directory = (cache / p"repos").as[Directory]
       val tmp: Directory = (cache / p"tmp").as[Directory]
 
       val buildId: Int =
-        safely((Classpath / p"build.id")().readAs[Text].trim.decodeAs[Int]).or:
+        safely((Classpath / p"build.id")().read[Text].trim.decodeAs[Int]).or:
           throw Panic(m"The build.id file was missing or corrupt")
 
       Installation(buildId, config, cache, vault, tmp, snapshots)

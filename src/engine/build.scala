@@ -289,7 +289,7 @@ class Builder():
 
           def savedChecksum =
             tend:
-              if checksumPath.exists() then checksumPath.as[File].readAs[Text] else Unset
+              if checksumPath.exists() then checksumPath.as[File].read[Text] else Unset
             .remedy:
               case error: IoError     => abort(BuildError(error))
               case error: StreamError => abort(BuildError(error))
@@ -415,7 +415,7 @@ class Builder():
               if executable.or(false) then file.executable() = true
 
               counterPath.let: counter =>
-                safely(counter.as[File].readAs[Text].trim.decodeAs[Int]).let: count =>
+                safely(counter.as[File].read[Text].trim.decodeAs[Int]).let: count =>
                   tend(t"${count + 1}\n".writeTo(counter.as[File])).remedy:
                     case error: IoError     => abort(BuildError(error))
                     case error: StreamError => abort(BuildError(error))
@@ -455,7 +455,7 @@ class Builder():
               case error: IoError     => abort(BuildError(error))
               case error: StreamError => abort(BuildError(error))
 
-          def storedChecksum(): Text = tend(checksum.as[File].readAs[Text].trim).remedy:
+          def storedChecksum(): Text = tend(checksum.as[File].read[Text].trim).remedy:
             case error: IoError     => abort(BuildError(error))
             case error: StreamError => abort(BuildError(error))
 

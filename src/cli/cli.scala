@@ -406,12 +406,12 @@ def about()(using stdio: Stdio): ExitStatus =
     Out.print(t" "*19)
     Out.println(line)
 
-  val buildId = safely((Classpath / p"build.id")().readAs[Text].trim)
+  val buildId = safely((Classpath / p"build.id")().read[Text].trim)
 
   val scalaProperties = unsafely:
     val resource = Classpath / p"compiler.properties"
 
-    resource().readAs[Text].cut(t"\n").flatMap:
+    resource().read[Text].cut(t"\n").flatMap:
       case r"$key([^=]*)=$value(.*)" => List(key -> value)
       case _                         => Nil
     .to(Map)
