@@ -299,7 +299,7 @@ case class Content(path: WorkPath, replacements: List[Replacement])
 
 object Target extends RefType(t"target"):
   given moduleRefEncoder: Encoder[Target] = _.show
-  given Debug[Target] as moduleRefDebug = _.show
+  given Target is Inspectable as moduleRefInspect = _.show
   given Target is Communicable as moduleRefCommunicable = target => Message(target.show)
   given moduleRefDecoder(using Errant[InvalidRefError]): Decoder[Target] = Target(_)
 
@@ -362,7 +362,7 @@ object WorkPath:
 
   given WorkPath is Showable = _.render
   given encoder: Encoder[WorkPath] = _.render
-  //given debug: Debug[WorkPath] = _.render
+  //given WorkPath is Inspectable = _.render
   given WorkPath is Digestible = (acc, path) => acc.append(path.show.bytes)
 
   given decoder(using path: Errant[PathError]): Decoder[WorkPath] = new Decoder[WorkPath]:
