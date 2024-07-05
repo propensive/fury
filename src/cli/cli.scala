@@ -69,17 +69,17 @@ object cli:
   val All = Switch(t"all", false, List('a'), t"Clean system artifacts as well")
   val ForceRebuild = Switch(t"force", false, List('f'), t"Force the module to be rebuilt")
 
-  def Dir(using Errant[PathError]) =
+  def Dir(using Tactic[PathError]) =
     Flag[Path](t"dir", false, List('d'), t"Specify the working directory")
 
   val Offline = Switch(t"offline", false, List('o'), t"Work offline, if possible")
   val Watch = Switch(t"watch", false, List('w'), t"Watch source directories for changes")
   val Concise = Switch(t"concise", false, List(), t"Produce less output")
 
-  def Generation(using Errant[NumberError]) =
+  def Generation(using Tactic[NumberError]) =
     Flag[Int](t"generation", false, List('g'), t"Use universe generation number")
 
-  def Stream(using Errant[InvalidRefError]) =
+  def Stream(using Tactic[InvalidRefError]) =
     Flag[StreamId](t"stream", false, List('s'), t"Which stream to publish to")
 
   val About          = Subcommand(t"about",     e"About Fury")
@@ -100,7 +100,7 @@ object cli:
   val Clean          = Subcommand(t"clean",     e"Clean the cache")
   val Details        = Subcommand(t"info",      e"Information about cache usage")
 
-given (using Errant[UserError]): HomeDirectory =
+given (using Tactic[UserError]): HomeDirectory =
   tend(homeDirectories.virtualMachine).remedy:
     case SystemPropertyError(property) =>
       abort(UserError(m"""
@@ -109,7 +109,7 @@ given (using Errant[UserError]): HomeDirectory =
 
 given (using Cli): WorkingDirectory = workingDirectories.daemonClient
 
-given (using Errant[UserError]): Installation =
+given (using Tactic[UserError]): Installation =
   tend(Installation()).remedy:
     case ConfigError(message) =>
       abort(UserError(m"The configuration file could not be read because $message"))

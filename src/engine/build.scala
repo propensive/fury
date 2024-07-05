@@ -882,11 +882,11 @@ extension (workspace: Workspace)
              WorkingDirectory,
              FrontEnd,
              GitCommand,
-             Errant[ConcurrencyError],
-             Errant[GitError],
-             Errant[PathError],
-             Errant[ExecError],
-             Errant[IoError])
+             Tactic[ConcurrencyError],
+             Tactic[GitError],
+             Tactic[PathError],
+             Tactic[ExecError],
+             Tactic[IoError])
           : Path logs Message =
 
     workspace.mounts.keys.where(_.precedes(path)).lay(workspace.directory.path + path.link): mount =>

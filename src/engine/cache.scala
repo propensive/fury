@@ -99,10 +99,10 @@ object Cache:
              WorkingDirectory,
              GitCommand,
              FrontEnd,
-             Errant[ExecError],
-             Errant[PathError],
-             Errant[IoError],
-             Errant[GitError])
+             Tactic[ExecError],
+             Tactic[PathError],
+             Tactic[IoError],
+             Tactic[GitError])
           : Task[Directory] logs Message =
 
     snapshots.establish(snapshot):
