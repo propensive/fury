@@ -42,7 +42,7 @@ import acyclicity.*
 import hieroglyph.*,
     charEncoders.utf8,
     charDecoders.utf8,
-    encodingMitigation.skip,
+    sanitization.skip,
     textMetrics.uniform
 
 import guillotine.*

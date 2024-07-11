@@ -24,7 +24,7 @@ import eucalyptus.*
 import galilei.*,
     filesystemOptions.{dereferenceSymlinks, createNonexistent, createNonexistentParents}
 
-import hieroglyph.*, charDecoders.utf8, encodingMitigation.skip
+import hieroglyph.*, charDecoders.utf8, sanitization.skip
 import nettlesome.*
 import octogenarian.*
 import parasite.*, asyncOptions.cancelOrphans

@@ -37,7 +37,7 @@ import vacuous.*
 
 object Installation:
   def apply()(using HomeDirectory, SystemProperties): Installation raises ConfigError =
-    import encodingMitigation.strict
+    import sanitization.strict
 
     tend:
       val script: Text = Properties.ethereal.name[Text]()
