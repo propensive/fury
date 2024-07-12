@@ -56,7 +56,7 @@ import monotonous.*, alphabets.base32.zBase32Unpadded
 import nettlesome.*
 import octogenarian.*
 import revolution.*
-import parasite.*, asyncOptions.cancelOrphans
+import parasite.*, orphanDisposal.cancel
 import iridescence.*
 import contingency.*
 import cellulose.*

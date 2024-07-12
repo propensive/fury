@@ -38,7 +38,7 @@ import inimitable.*
 import iridescence.*, colors.*
 import kaleidoscope.*
 import nettlesome.*
-import parasite.*, threadModels.platform, asyncOptions.cancelOrphans
+import parasite.*, threadModels.platform, orphanDisposal.cancel
 import profanity.*
 import quantitative.*
 import rudiments.*, homeDirectories.virtualMachine

@@ -27,7 +27,7 @@ import galilei.*,
 import hieroglyph.*, charDecoders.utf8, sanitization.skip
 import nettlesome.*
 import octogenarian.*
-import parasite.*, asyncOptions.cancelOrphans
+import parasite.*, orphanDisposal.cancel
 import contingency.*
 import guillotine.*
 import fulminate.*

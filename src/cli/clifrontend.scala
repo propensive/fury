@@ -21,7 +21,7 @@ import turbulence.*
 import exoskeleton.*
 import acyclicity.*
 import contingency.*
-import parasite.*, asyncOptions.cancelOrphans
+import parasite.*, orphanDisposal.cancel
 import dendrology.*, dagStyles.default
 import vacuous.*
 import hieroglyph.*, textMetrics.uniform
