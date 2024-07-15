@@ -27,7 +27,7 @@ import filesystemOptions.{doNotCreateNonexistent, dereferenceSymlinks}
 import filesystemApi.galileiPath
 import gastronomy.*
 import gossamer.{where as _, *}
-import hieroglyph.*, charEncoders.utf8, charDecoders.utf8, sanitization.strict
+import hieroglyph.*, charEncoders.utf8, charDecoders.utf8, textSanitizers.strict
 import digression.*
 import kaleidoscope.*
 import monotonous.*
