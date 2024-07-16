@@ -38,7 +38,7 @@ import gastronomy.*
 import escapade.*
 import rudiments.*
 import vacuous.*
-import serpentine.*, hierarchies.unixOrWindows
+import serpentine.*, pathHierarchies.unixOrWindows
 import spectacular.*
 import turbulence.*
 

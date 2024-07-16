@@ -30,7 +30,7 @@ import imperial.*
 import hellenism.*, classloaders.threadContext
 import contingency.*
 import rudiments.*
-import serpentine.*, hierarchies.unixOrWindows
+import serpentine.*, pathHierarchies.unixOrWindows
 import spectacular.*
 import turbulence.*
 import vacuous.*

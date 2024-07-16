@@ -62,7 +62,7 @@ import contingency.*
 import cellulose.*
 import dendrology.*
 import rudiments.{at as _, *}
-import serpentine.*, hierarchies.unixOrWindows
+import serpentine.*, pathHierarchies.unixOrWindows
 import spectacular.*
 import turbulence.*
 import vacuous.*

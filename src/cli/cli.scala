@@ -42,7 +42,7 @@ import parasite.*, threadModels.platform, orphanDisposal.cancel
 import profanity.*
 import quantitative.*
 import rudiments.*, homeDirectories.virtualMachine
-import serpentine.*, hierarchies.unixOrWindows
+import serpentine.*, pathHierarchies.unixOrWindows
 import spectacular.*
 import turbulence.*
 import vacuous.*

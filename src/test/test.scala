@@ -176,7 +176,7 @@ object Tests extends Suite(t"Fury Model Tests"):
       """
 
       suite(t"Local file")
-        import hierarchies.unix
+        import pathHierarchies.unix
 
         test(t"Parse forks"):
           Codl.read[Local](localFile)

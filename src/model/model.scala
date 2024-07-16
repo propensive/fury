@@ -36,7 +36,7 @@ import octogenarian.*
 import contingency.*
 import punctuation.*
 import rudiments.*
-import serpentine.*, hierarchies.unixOrWindows
+import serpentine.*, pathHierarchies.unixOrWindows
 import spectacular.*
 import symbolism.*
 import turbulence.*
@@ -386,7 +386,7 @@ case class Definition
 
 object Workspace:
   def apply()(using WorkingDirectory): Workspace raises WorkspaceError =
-    quell:
+    tend:
       case pathError: PathError =>
         WorkspaceError(WorkspaceError.Reason.Explanation(pathError.message))
     .within(apply(workingDirectory[Path]))
@@ -434,7 +434,7 @@ object Workspace:
       case CharDecodeError(_, _) => WorkspaceError(WorkspaceError.Reason.BadContent)
     */
 
-    quell:
+    tend:
       case _: AggregateError[?]       => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
       //case HostnameError(text, _)     => abort(WorkspaceError(WorkspaceError.Reason.BadData(text)))
       //case CodlReadError(_)           => abort(WorkspaceError(WorkspaceError.Reason.BadContent))

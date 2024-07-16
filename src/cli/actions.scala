@@ -42,7 +42,7 @@ import profanity.*
 import quantitative.*
 import cellulose.*, codlPrinters.standard
 import rudiments.*
-import serpentine.*, hierarchies.unixOrWindows
+import serpentine.*, pathHierarchies.unixOrWindows
 import spectacular.*
 import turbulence.*
 import vacuous.*
