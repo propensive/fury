@@ -83,7 +83,7 @@ object Ids:
         if part.length == 0 then raise(InvalidRefError(value, this), GitRefType[Type](value))
 
         for ch <- List('*', '[', '\\', ' ', '^', '~', ':', '?')
-        do if part.has(ch) then raise(InvalidRefError(value, this), GitRefType[Type](value))
+        do if part.contains(ch) then raise(InvalidRefError(value, this), GitRefType[Type](value))
 
       value.asInstanceOf[Type]
 

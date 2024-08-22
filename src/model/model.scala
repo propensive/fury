@@ -38,6 +38,7 @@ import punctuation.*
 import rudiments.*
 import serpentine.*, pathHierarchies.unixOrWindows
 import spectacular.*
+import prepositional.*
 import symbolism.*
 import turbulence.*
 import vacuous.*
@@ -435,7 +436,6 @@ object Workspace:
     */
 
     tend:
-      case _: AggregateError[?]       => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
       //case HostnameError(text, _)     => abort(WorkspaceError(WorkspaceError.Reason.BadData(text)))
       //case CodlReadError(_)           => abort(WorkspaceError(WorkspaceError.Reason.BadContent))
       //case GitRefError(text)          => abort(WorkspaceError(WorkspaceError.Reason.BadData(text)))

@@ -101,18 +101,20 @@ object cli:
   val Details        = Subcommand(t"info",      e"Information about cache usage")
 
 given (using Tactic[UserError]): HomeDirectory =
-  tend(homeDirectories.virtualMachine).remedy:
+  tend:
     case SystemPropertyError(property) =>
-      abort(UserError(m"""
+      UserError(m"""
         Could not access the home directory because the $property system property was not set.
-      """))
+      """)
+  .within(homeDirectories.virtualMachine)
 
 given (using Cli): WorkingDirectory = workingDirectories.daemonClient
 
 given (using Tactic[UserError]): Installation =
-  tend(Installation()).remedy:
+  tend:
     case ConfigError(message) =>
-      abort(UserError(m"The configuration file could not be read because $message"))
+      UserError(m"The configuration file could not be read because $message")
+  .within(Installation())
 
 @main
 def main(): Unit =
@@ -209,29 +211,30 @@ def main(): Unit =
                       frontEnd:
                         val buildTask = task(t"build"):
                           tend:
-                            actions.build.run(target().decodeAs[Target], watch, force, concise)
-                          .remedy:
                             case InvalidRefError(ref, refType) =>
-                              abort(UserError(m"The target $ref could not be decoded"))
+                              UserError(m"The target $ref could not be decoded")
 
                             case IoError(_) =>
-                              abort(UserError(m"An I/O error occurred"))
+                              UserError(m"An I/O error occurred")
 
                             case PathError(_, _) =>
-                              abort(UserError(m"A path error occurred"))
+                              UserError(m"A path error occurred")
 
                             case ExecError(_, _, _) =>
-                              abort(UserError(m"An execution error occurred"))
+                              UserError(m"An execution error occurred")
+
+                          .within:
+                            actions.build.run(target().decodeAs[Target], watch, force, concise)
 
                         daemon:
                           terminal.events.stream.each:
                             case Keypress.Escape | Keypress.Ctrl('C') => summon[FrontEnd].abort()
                             case other => ()
 
-                        tend(buildTask.await()).remedy:
+                        tend:
                           case ConcurrencyError(reason) =>
-                            abort(UserError(m"The build was aborted"))
-                        .also(Out.print(t"\e[?25h"))
+                            UserError(m"The build was aborted")
+                        .within(buildTask.await()).also(Out.print(t"\e[?25h"))
 
               case Universe() :: subcommands =>
                 val online = Offline().absent
@@ -267,19 +270,19 @@ def main(): Unit =
                     execute:
                       internet(online):
                         tend:
-                          actions.project.publish(projectId().decodeAs[ProjectId], Stream())
-                        .remedy:
                           case InvalidRefError(ref, refType) =>
-                            abort(UserError(m"The target $ref could not be decoded"))
+                            UserError(m"The target $ref could not be decoded")
 
                           case IoError(_) =>
-                            abort(UserError(m"An I/O error occurred"))
+                            UserError(m"An I/O error occurred")
 
                           case PathError(path, reason) =>
-                            abort(UserError(m"The path $path is not valid because $reason"))
+                            UserError(m"The path $path is not valid because $reason")
 
                           case ExecError(_, _, _) =>
-                            abort(UserError(m"An execution error occurred"))
+                            UserError(m"An execution error occurred")
+
+                        .within(actions.project.publish(projectId().decodeAs[ProjectId], Stream()))
 
 
                 case _ =>
@@ -295,12 +298,12 @@ def main(): Unit =
               case Nil =>
                 execute:
                   tend:
+                    case WorkspaceError(_) =>
+                      ExitStatus.Fail(1)
+                  .within:
                     val workspace = Workspace()
                     Out.println(Workspace().build.actions.prim.inspect)
                     ExitStatus.Ok
-                  .remedy:
-                    case WorkspaceError(_) =>
-                      ExitStatus.Fail(1)
 
               case subcommands =>
                 if Version().present then execute(frontEnd(actions.versionInfo())) else
@@ -323,9 +326,10 @@ def main(): Unit =
                     execute:
                       workspace.lay(ExitStatus.Fail(2)): workspace =>
                         subcommand.let: subcommand =>
-                          tend(subcommand().populated.let(ActionName(_))).remedy:
+                          tend:
                             case InvalidRefError(ref, _) =>
                               abort(UserError(m"The reference $ref is not valid"))
+                          .within(subcommand().populated.let(ActionName(_)))
                           .or(workspace.build.default).let: action =>
                             workspace.build.actions.where(_.name == action).let: action =>
                               internet(online):
