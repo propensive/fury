@@ -96,12 +96,10 @@ extends Error(m"the build could not run because ${error.message}")
 val Isolation: Semaphore = Semaphore()
 val Epoch: LocalTime = 2000-Jan-1 at 0.00.am in tz"Etc/UTC"
 
-type PhaseResult = Attempt[Directory, AggregateError[BuildError]]
-
 class Builder():
   private val phases: scc.TrieMap[Hash, Phase] = scc.TrieMap()
   private val builds: scc.TrieMap[Target, Task[Hash]] = scc.TrieMap()
-  private val tasks: Mutex[scm.HashMap[Hash, Task[PhaseResult]]] = Mutex(scm.HashMap())
+  private val tasks: Mutex[scm.HashMap[Hash, Task[Directory]]] = Mutex(scm.HashMap())
 
   def runTask(name: Text, hash: Hash)
       (using Monitor,
@@ -111,7 +109,7 @@ class Builder():
              Installation,
              DaemonService[?],
              Internet)
-          : Task[PhaseResult] logs Message =
+          : Task[Directory] logs Message =
 
     Log.info(m"Building task for $hash")
 
@@ -247,7 +245,7 @@ class Builder():
 
     def run(name: Text, hash: Hash)
         (using FrontEnd, DaemonService[?], Installation, Monitor, SystemProperties, Environment, Internet)
-            : PhaseResult logs Message
+            : Directory logs Message raises BuildError
 
   case class ArtifactPhase
      (build:       Path,
@@ -277,164 +275,163 @@ class Builder():
                SystemProperties,
                Environment,
                Internet)
-            : PhaseResult logs Message =
+            : Directory logs Message raises BuildError =
 
-      attempt[AggregateError[BuildError]]:
-        validate[BuildError]:
+      antecedents.each: (hash, name) =>
+        runTask(name, hash)
 
-          antecedents.each: (hash, name) =>
-            runTask(name, hash)
+      val checksumPath = output / p"checksum"
 
-          val checksumPath = output / p"checksum"
+      def savedChecksum =
+        tend:
+          case error: IoError     => BuildError(error)
+          case error: StreamError => BuildError(error)
+        .within:
+          if checksumPath.exists() then checksumPath.as[File].read[Text] else Unset
 
-          def savedChecksum =
-            tend:
-              case error: IoError     => BuildError(error)
-              case error: StreamError => BuildError(error)
-            .within:
-              if checksumPath.exists() then checksumPath.as[File].read[Text] else Unset
+      def fileChecksum = if !destination.exists() then Unset else
+        tend:
+          case error: IoError     => BuildError(error)
+          case error: StreamError => BuildError(error)
+        .within:
+          destination.as[File].checksum[Sha2[256]].serialize[Base32]
 
-          def fileChecksum = if !destination.exists() then Unset else
-            tend:
-              case error: IoError     => BuildError(error)
-              case error: StreamError => BuildError(error)
-            .within:
-              destination.as[File].checksum[Sha2[256]].serialize[Base32]
+      if savedChecksum.absent || fileChecksum.absent || savedChecksum != fileChecksum || counterPath.present
+      then
+        val tmpPath = unsafely(installation.work / Name(Uuid().show))
 
-          if savedChecksum.absent || fileChecksum.absent || savedChecksum != fileChecksum || counterPath.present
-          then
-            val tmpPath = unsafely(installation.work / Name(Uuid().show))
+        val zipFile =
+          tend:
+            case error: IoError          => BuildError(error)
+            case error: StreamError      => BuildError(error)
+            case error: ConcurrencyError => BuildError(error)
+          .within:
+            basis.lay(ZipFile.create(tmpPath)): basis =>
+              basis().await().copyTo(tmpPath)
+              ZipFile(tmpPath.as[File])
 
-            val zipFile =
-              tend:
-                case error: IoError          => BuildError(error)
-                case error: StreamError      => BuildError(error)
-                case error: ConcurrencyError => BuildError(error)
-              .within:
-                basis.lay(ZipFile.create(tmpPath)): basis =>
-                  basis().await().copyTo(tmpPath)
-                  ZipFile(tmpPath.as[File])
+        val todo = (dag(hash) - this).sorted.map(_.digest)
+        val total = todo.size.toDouble
+        var done = 0
 
-            val todo = (dag(hash) - this).sorted.map(_.digest)
-            val total = todo.size.toDouble
-            var done = 0
+        todo.each: hash =>
+          tend:
+            case error: ConcurrencyError => BuildError(error)
+          .within:
+            val directory = tasks()(hash).await()
 
-            todo.each: hash =>
-              tend:
-                case error: ConcurrencyError => BuildError(error)
-              .within(tasks()(hash).await())
-              .map: directory =>
-                if summon[FrontEnd].continue then
-                  val entries =
-                    tend:
-                      case error: IoError     => BuildError(error)
-                      case error: PathError   => BuildError(error)
-                      case error: StreamError => BuildError(error)
-                    .within:
-                      directory.descendants.filter(_.is[File]).map: path =>
-                        ZipEntry(ZipRef(t"/"+path.relativeTo(directory.path).show), path.as[File])
+            if summon[FrontEnd].continue then
+              val entries =
+                tend:
+                  case error: IoError     => BuildError(error)
+                  case error: PathError   => BuildError(error)
+                  case error: StreamError => BuildError(error)
+                .within:
+                  directory.descendants.filter(_.is[File]).map: path =>
+                    ZipEntry(ZipRef(t"/"+path.relativeTo(directory.path).show), path.as[File])
 
-                  val manifestEntry = artifact.main.lay(LazyList()): mainClass =>
-                    val manifest: Manifest =
-                      Manifest
-                       (manifestAttributes.ManifestVersion(VersionNumber(1, 0)),
-                         manifestAttributes.CreatedBy(t"Fury"),
-                         manifestAttributes.MainClass(mainClass))
+              val manifestEntry = artifact.main.lay(LazyList()): mainClass =>
+                val manifest: Manifest =
+                  Manifest
+                   (manifestAttributes.ManifestVersion(VersionNumber(1, 0)),
+                     manifestAttributes.CreatedBy(t"Fury"),
+                     manifestAttributes.MainClass(mainClass))
 
-                    tend:
-                      case error: PathError => BuildError(error)
-                    .within(LazyList(ZipEntry(ZipRef(t"/META-INF/MANIFEST.MF"), manifest)))
+                tend:
+                  case error: PathError => BuildError(error)
+                .within(LazyList(ZipEntry(ZipRef(t"/META-INF/MANIFEST.MF"), manifest)))
 
-                  val resourceEntries = resourceMap.flatMap: (source, destination) =>
-                    tend:
-                      case error: StreamError => BuildError(error)
-                      case error: IoError     => BuildError(error)
-                      case error: PathError   => BuildError(error)
-                    .within:
-                      if source.is[Directory]
-                      then source.as[Directory].descendants.filter(_.is[File]).map: descendant =>
-                        ZipEntry(ZipRef(descendant.relativeTo(source).show), descendant.as[File])
-                      else Iterable(ZipEntry(ZipRef(t"/$destination"), source.as[File]))
-
-                  tend:
-                    case error: StreamError => BuildError(error)
-                    case error: ZipError    => BuildError(error)
-                  .within(zipFile.append(manifestEntry ++ entries ++ resourceEntries, Epoch))
-                  done += 1
-                  summon[FrontEnd](target) = done/total
-
-                else
-                  tend:
-                    case error: IoError => BuildError(error)
-                  .within(tmpPath.wipe())
-
-                  abort(BuildError(AbortError(1)))
-
-
-            tend:
-              case error: IoError   => BuildError(error)
-            .within(tmpPath.as[File]).tap: file =>
-              tend:
-                case error: IoError => BuildError(error)
-              .within(output.as[Directory])
-
-              if prefixPaths.isEmpty && suffixPaths.isEmpty then file else
-                val prefixBytes: LazyList[Bytes] =
-                  tend:
-                    case error: IoError     => BuildError(error)
-                    case error: StreamError => BuildError(error)
-                  .within:
-                    prefixPaths.to(LazyList).flatMap(_.as[File].stream[Bytes]).or(LazyList())
-
-                val suffixBytes: LazyList[Bytes] =
-                  tend:
-                    case error: IoError     => BuildError(error)
-                    case error: StreamError => BuildError(error)
-                  .within
-                    suffixPaths.to(LazyList).flatMap(_.as[File].stream[Bytes]).or(LazyList())
-
-                val tmpFile =
-                  tend:
-                    case error: IoError => BuildError(error)
-                  .within:
-                    unsafely(installation.work / Name(Uuid().show)).as[File]
-
+              val resourceEntries = resourceMap.flatMap: (source, destination) =>
                 tend:
                   case error: StreamError => BuildError(error)
                   case error: IoError     => BuildError(error)
-                .within((prefixBytes ++ file.stream[Bytes] ++ suffixBytes).writeTo(tmpFile))
-
-                tend:
-                  case error: IoError => BuildError(error)
+                  case error: PathError   => BuildError(error)
                 .within:
-                  file.delete()
-                  tmpFile.moveTo(file.path)
+                  if source.is[Directory]
+                  then source.as[Directory].descendants.filter(_.is[File]).map: descendant =>
+                    ZipEntry(ZipRef(descendant.relativeTo(source).show), descendant.as[File])
+                  else Iterable(ZipEntry(ZipRef(t"/$destination"), source.as[File]))
+
+              tend:
+                case error: StreamError => BuildError(error)
+                case error: ZipError    => BuildError(error)
+              .within(zipFile.append(manifestEntry ++ entries ++ resourceEntries, Epoch))
+              done += 1
+              summon[FrontEnd](target) = done/total
+
+            else
+              tend:
+                case error: IoError => BuildError(error)
+              .within(tmpPath.wipe())
+
+              abort(BuildError(AbortError(1)))
 
 
+        tend:
+          case error: IoError   => BuildError(error)
+        .within(tmpPath.as[File]).tap: file =>
+          tend:
+            case error: IoError => BuildError(error)
+          .within(output.as[Directory])
+
+          if prefixPaths.isEmpty && suffixPaths.isEmpty then file else
+            val prefixBytes: LazyList[Bytes] =
               tend:
                 case error: IoError     => BuildError(error)
                 case error: StreamError => BuildError(error)
               .within:
-                file.checksum[Sha2[256]].serialize[Base32].writeTo(checksumPath.as[File])
+                prefixPaths.to(LazyList).flatMap(_.as[File].stream[Bytes]).or(LazyList())
 
-              if executable.or(false) then file.executable() = true
-
-              counterPath.let: counter =>
-                safely(counter.as[File].read[Text].trim.decodeAs[Int]).let: count =>
-                  tend:
-                    case error: IoError     => BuildError(error)
-                    case error: StreamError => BuildError(error)
-                  within(t"${count + 1}\n".writeTo(counter.as[File]))
-
+            val suffixBytes: LazyList[Bytes] =
               tend:
                 case error: IoError     => BuildError(error)
+                case error: StreamError => BuildError(error)
               .within:
-                destination.wipe()
-                file.moveTo(destination)
-          else summon[FrontEnd](target) = -1.0
+                suffixPaths.to(LazyList).flatMap(_.as[File].stream[Bytes]).or(LazyList())
 
-          tend(output.as[Directory]).remedy:
-            case error: IoError => BuildError(error)
+            val tmpFile =
+              tend:
+                case error: IoError => BuildError(error)
+              .within:
+                unsafely(installation.work / Name(Uuid().show)).as[File]
+
+            tend:
+              case error: StreamError => BuildError(error)
+              case error: IoError     => BuildError(error)
+            .within((prefixBytes ++ file.stream[Bytes] ++ suffixBytes).writeTo(tmpFile))
+
+            tend:
+              case error: IoError => BuildError(error)
+            .within:
+              file.delete()
+              tmpFile.moveTo(file.path)
+
+
+          tend:
+            case error: IoError     => BuildError(error)
+            case error: StreamError => BuildError(error)
+          .within:
+            file.checksum[Sha2[256]].serialize[Base32].writeTo(checksumPath.as[File])
+
+          if executable.or(false) then file.executable() = true
+
+          counterPath.let: counter =>
+            safely(counter.as[File].read[Text].trim.decodeAs[Int]).let: count =>
+              tend:
+                case error: IoError     => BuildError(error)
+                case error: StreamError => BuildError(error)
+              .within(t"${count + 1}\n".writeTo(counter.as[File]))
+
+          tend:
+            case error: IoError     => BuildError(error)
+          .within:
+            destination.wipe()
+            file.moveTo(destination)
+      else summon[FrontEnd](target) = -1.0
+
+      tend:
+        case error: IoError => BuildError(error)
+      .within(output.as[Directory])
 
   case class LibraryPhase(build: Path, library: Library, target: Target) extends Phase:
     val antecedents: Map[Hash, Text] = Map()
@@ -445,11 +442,9 @@ class Builder():
 
     def run(name: Text, hash: Hash)
         (using FrontEnd, DaemonService[?], Installation, Monitor, SystemProperties, Environment, Internet)
-            : PhaseResult logs Message =
+            : Directory logs Message =
 
       attempt[AggregateError[BuildError]]:
-        validate[BuildError]:
-
           tend:
             case error: IoError => BuildError(error)
           .within(output.as[Directory])
@@ -461,13 +456,13 @@ class Builder():
             tend:
               case error: IoError     => BuildError(error)
               case error: StreamError => BuildError(error)
-            within(jarfile.as[File].checksum[Sha2[256]].serialize[Base32])
+            .within(jarfile.as[File].checksum[Sha2[256]].serialize[Base32])
 
           def storedChecksum(): Text =
             tend:
               case error: IoError     => BuildError(error)
               case error: StreamError => BuildError(error)
-            within(checksum.as[File].read[Text].trim)
+            .within(checksum.as[File].read[Text].trim)
 
           if !(jarfile.exists() && checksum.exists() && jarfileChecksum() == storedChecksum())
           then
@@ -501,11 +496,11 @@ class Builder():
                 Log.info(m"Downloaded ${target}")
 
                 tend:
-                  jarfileChecksum().writeTo(checksum.as[File])
-                  output.as[Directory]
-                .remedy:
                   case error: IoError      => BuildError(error)
                   case error: StreamError  => BuildError(error)
+                .within:
+                  jarfileChecksum().writeTo(checksum.as[File])
+                  output.as[Directory]
           else
             summon[FrontEnd](target) = -1.0
 
@@ -532,69 +527,67 @@ class Builder():
                SystemProperties,
                Environment,
                Internet)
-            : PhaseResult logs Message =
+            : Directory logs Message raises BuildError =
 
-      attempt[AggregateError[BuildError]]:
-        validate[BuildError]:
-
-          val inputs =
-            antecedents.to(List).map: (hash, name) =>
-              runTask(name, hash)
-            .map: task =>
-              tend:
-                case error: ConcurrencyError => BuildError(error)
-              .within(task.await())
-
-
-          summon[FrontEnd].output(t"\e[K")
-          val basis = unsafely(Basis.Runtime().await().path.show)
-          val baseClasspath = LocalClasspath(List(ClasspathEntry.Jarfile(basis)))
-
-          val work = tend((installation.work / Name(Uuid().show)).as[Directory]).remedy:
-            case error: IoError        => abort(BuildError(error))
-            case error@PathError(_, _) => abort(BuildError(error))
-
-          given WorkingDirectory = WorkingDirectory(work.path)
-
-          val allBinaries =
-            classpath.flatMap(phases(_).binaries).map(outputDirectory(_) / p"library.jar")
-
-          val javaHome: Path =
-            tend:
-              case error: PathError           => abort(BuildError(error))
-              case error: SystemPropertyError => abort(BuildError(error))
-            .within(Properties.java.home[Path]())
-
-          val javaCommand: Path = javaHome / p"bin" / p"java"
-
+      val inputs =
+        antecedents.to(List).map: (hash, name) =>
+          runTask(name, hash)
+        .map: task =>
           tend:
-            (classpath.map(outputDirectory(_)) ++ allBinaries).foldLeft(baseClasspath)(_ + _)
-          .remedy:
-            case error: PathError => abort(BuildError(error))
-            case error: IoError   => abort(BuildError(error))
-          .pipe: classpath =>
-            val command = sh"$javaCommand -classpath ${classpath()} ${exec.main}"
-            val process = tend(command.fork[ExitStatus]()).remedy:
-              case error: ExecError => abort(BuildError(error))
+            case error: ConcurrencyError => BuildError(error)
+          .within(task.await())
 
-            tend:
-              async:
-                tend(process.stdout().stream[Text]).remedy:
-                  case error: StreamError => abort(BuildError(error))
-                .each: text =>
-                  summon[FrontEnd].output(text)
-              .await()
 
-            .remedy:
-              case error: ConcurrencyError => abort(BuildError(error))
+      summon[FrontEnd].output(t"\e[K")
+      val basis = unsafely(Basis.Runtime().await().path.show)
+      val baseClasspath = LocalClasspath(List(ClasspathEntry.Jarfile(basis)))
 
-            process.await() match
-              case ExitStatus.Ok =>
-                tend(work.moveTo(output).as[Directory]).remedy:
-                  case error: IoError => abort(BuildError(error))
+      val work =
+        tend:
+          case error: IoError        => BuildError(error)
+          case error@PathError(_, _) => BuildError(error)
+        .within:
+           (installation.work / Name(Uuid().show)).as[Directory]
 
-              case _ =>
-                abort(BuildError(AbortError(1)))
+      given WorkingDirectory = WorkingDirectory(work.path)
+
+      val allBinaries =
+        classpath.flatMap(phases(_).binaries).map(outputDirectory(_) / p"library.jar")
+
+      val javaHome: Path =
+        tend:
+          case error: PathError           => BuildError(error)
+          case error: SystemPropertyError => BuildError(error)
+        .within(Properties.java.home[Path]())
+
+      val javaCommand: Path = javaHome / p"bin" / p"java"
+
+      tend:
+        case error: PathError => BuildError(error)
+        case error: IoError   => BuildError(error)
+      .within:
+        (classpath.map(outputDirectory(_)) ++ allBinaries).foldLeft(baseClasspath)(_ + _)
+      .pipe: classpath =>
+        val command = sh"$javaCommand -classpath ${classpath()} ${exec.main}"
+        val process = tend { case error: ExecError => BuildError(error) }.within:
+          command.fork[ExitStatus]()
+
+        tend { case error: ConcurrencyError => BuildError(error) }.within:
+          async:
+            tend { case error: StreamError => BuildError(error) }.within:
+              process.stdout().stream[Text]
+            .each: text =>
+              summon[FrontEnd].output(text)
+          .await()
+
+
+        process.await() match
+          case ExitStatus.Ok =>
+            tend { case error: IoError => BuildError(error) }.within:
+              work.moveTo(output).as[Directory]
+
+          case _ =>
+            abort(BuildError(AbortError(1)))
 
 
   case class ModulePhase
@@ -621,151 +614,145 @@ class Builder():
                SystemProperties,
                Environment,
                Internet)
-            : PhaseResult logs Message =
+            : Directory logs Message raises BuildError =
 
-      attempt[AggregateError[BuildError]]:
-        validate[BuildError]:
+      Log.info(m"Starting to build")
 
-          Log.info(m"Starting to build")
+      val inputs =
+        tend { case error: ConcurrencyError => BuildError(error) }.within:
+          antecedents.to(List).map { (hash, name) => runTask(name, hash) }.map(_.await())
 
-          val inputs =
+      if !summon[FrontEnd].continue then abort(BuildError(AbortError(2)))
+
+      if output.exists() then
+        summon[FrontEnd](target) = -1.0
+        tend { case error: IoError => BuildError(error) }.within:
+          output.as[Directory].tap(_.touch())
+      else
+        inputs.filter(_.failure).each: input =>
+          input.acknowledge:
+            case AggregateError(errors) => errors.each:
+              case BuildError(error) =>
+                Log.warn(m"There was a build error in an input to $target: ${error.message}")
+                report(error.stackTrace.teletype)
+
+        if inputs.exists(_.failure)
+        then
+          Log.info(m"One of the inputs did not complete")
+          abort(BuildError(AbortError(3)))
+        else
+          val work =
             tend:
-              antecedents.to(List).map: (hash, name) =>
-                runTask(name, hash)
-              .map(_.await())
-            .remedy:
-              case error: ConcurrencyError => abort(BuildError(error))
+              case error: IoError   => BuildError(error)
+              case error: PathError => BuildError(error)
+            .within((installation.work / Name(Uuid().show)).as[Directory])
 
-          if !summon[FrontEnd].continue then abort(BuildError(AbortError(2)))
+          val basis = unsafely(Basis.Tools().await().path.show)
+          val baseClasspath = LocalClasspath(List(ClasspathEntry.Jarfile(basis)))
+          val syntax: scc.TrieMap[Text, Task[IArray[Seq[SourceToken]]]] = scc.TrieMap()
 
-          if output.exists() then
-            summon[FrontEnd](target) = -1.0
+          def highlight(filename: Text): SourceCode =
+            SourceCode(Scala, sourceMap(filename))
+
+          val allBinaries =
+            classpath.flatMap(phases(_).binaries).map(outputDirectory(_) / p"library.jar")
+
+          val classpathEntries =
             tend:
-              case error: IoError => BuildError(error)
-            .within(output.as[Directory].tap(_.touch()))
-          else
-            inputs.filter(_.failure).each: input =>
-              input.acknowledge:
-                case AggregateError(errors) => errors.each:
-                  case BuildError(error) =>
-                    Log.warn(m"There was a build error in an input to $target: ${error.message}")
-                    report(error.stackTrace.teletype)
+              case error: PathError => BuildError(error)
+              case error: IoError   => BuildError(error)
+            .within:
+              (classpath.map(outputDirectory(_)) ++ allBinaries).foldLeft(baseClasspath)(_ + _)
 
-            if inputs.exists(_.failure)
-            then
-              Log.info(m"One of the inputs did not complete")
-              abort(BuildError(AbortError(3)))
-            else
-              val work =
-                tend:
-                  case error: IoError   => BuildError(error)
-                  case error: PathError => BuildError(error)
-                .within((installation.work / Name(Uuid().show)).as[Directory])
+          classpathEntries.pipe: classpath =>
+            given BuildError mitigates IoError = BuildError(_)
 
-              val basis = unsafely(Basis.Tools().await().path.show)
-              val baseClasspath = LocalClasspath(List(ClasspathEntry.Jarfile(basis)))
-              val syntax: scc.TrieMap[Text, Task[IArray[Seq[Token]]]] = scc.TrieMap()
+            if sourceMap.isEmpty then output.as[Directory] else
+              val process: CompileProcess =
+                //Log.envelop(target):
+                  compiler match
+                    case Compiler.Java =>
+                      tend { case error: CompileError => BuildError(error) }.within:
+                        Javac(Nil)(classpath)(sourceMap, work.path)
 
-              def highlight(filename: Text): ScalaSource =
-                ScalaSource.highlight(sourceMap(filename))
+                    case Compiler.Kotlin =>
+                      abort(BuildError(AbortError(4)))
 
-              val allBinaries =
-                classpath.flatMap(phases(_).binaries).map(outputDirectory(_) / p"library.jar")
+                    case Compiler.Scala =>
+                      import scalacOptions.*
 
-              val classpathEntries =
-                tend:
-                  case error: PathError => BuildError(error)
-                  case error: IoError   => BuildError(error)
-                .within:
-                  (classpath.map(outputDirectory(_)) ++ allBinaries).foldLeft(baseClasspath)(_ + _)
+                      tend:
+                        case error: CompileError => BuildError(error)
+                      .within:
+                        Scalac[3.4]
+                         (List
+                           (language.experimental.fewerBraces,
+                            language.experimental.genericNumberLiterals,
+                            language.experimental.clauseInterleaving,
+                            language.experimental.into,
+                            language.experimental.erasedDefinitions,
+                            language.experimental.saferExceptions,
+                            language.experimental.namedTypeArguments,
+                            advanced.maxInlines(64),
+                            internal.requireTargetName,
+                            internal.explicitNulls,
+                            internal.checkPatterns,
+                            internal.safeInit,
+                            internal.ccNew,
+                            experimental,
+                            sourceFuture,
+                            newSyntax,
+                            warnings.lint.privateShadow,
+                            warnings.lint.typeParameterShadow,
+                            warnings.deprecation,
+                            warnings.feature,
+                            warnings.unused(Unused.All),
+                            warnings.implausiblePatterns))
+                         (classpath)
+                         (sourceMap, work.path)
 
-              classpathEntries.pipe: classpath =>
-                given BuildError mitigates IoError = BuildError(_)
+              val cancellation = daemon:
+                summon[FrontEnd].attend()
+                process.abort()
 
-                if sourceMap.isEmpty then output.as[Directory] else
-                  val process: CompileProcess =
-                    //Log.envelop(target):
-                      compiler match
-                        case Compiler.Java =>
-                          tend(Javac(Nil)(classpath)(sourceMap, work.path)).remedy:
-                            case error: CompileError => abort(BuildError(error))
+              val progressDaemon = daemon:
+                process.progress.each: progress =>
+                  summon[FrontEnd](target) = progress.complete
 
-                        case Compiler.Kotlin =>
-                          abort(BuildError(AbortError(4)))
+              task(t"$target.notices"):
+                process.notices.each: notice =>
+                  notice.importance match
+                    case Importance.Error =>
+                      report(errorRibbon.fill(e"$target", notice.file.teletype))
 
-                        case Compiler.Scala =>
-                          import scalacOptions.*
+                    case Importance.Warning =>
+                      report(warningRibbon.fill(e"$target", notice.file.teletype))
 
-                          tend:
-                            Scalac[3.4]
-                             (List
-                               (language.experimental.fewerBraces,
-                                language.experimental.genericNumberLiterals,
-                                language.experimental.clauseInterleaving,
-                                language.experimental.into,
-                                language.experimental.erasedDefinitions,
-                                language.experimental.saferExceptions,
-                                language.experimental.namedTypeArguments,
-                                advanced.maxInlines(64),
-                                internal.requireTargetName,
-                                internal.explicitNulls,
-                                internal.checkPatterns,
-                                internal.safeInit,
-                                internal.ccNew,
-                                experimental,
-                                sourceFuture,
-                                newSyntax,
-                                warnings.lint.privateShadow,
-                                warnings.lint.typeParameterShadow,
-                                warnings.deprecation,
-                                warnings.feature,
-                                warnings.unused(Unused.All),
-                                warnings.implausiblePatterns))
-                             (classpath)
-                             (sourceMap, work.path)
-                          .remedy:
-                            case error: CompileError => abort(BuildError(error))
+                    case Importance.Info =>
+                      report(infoRibbon.fill(e"$target", notice.file.teletype))
 
-                  val cancellation = daemon:
-                    summon[FrontEnd].attend()
-                    process.abort()
+                  notice.codeRange.let: range =>
+                    val source: SourceCode = SourceCode(Scala, notice.file)
+                    report(range.of(source).teletype)
 
-                  val progressDaemon = daemon:
-                    process.progress.each: progress =>
-                      summon[FrontEnd](target) = progress.complete
+                  report(e"$Italic(${notice.message})")
+                  report(t"")
 
-                  task(t"$target.notices"):
-                    process.notices.each: notice =>
-                      notice.importance match
-                        case Importance.Error =>
-                          report(errorRibbon.fill(e"$target", notice.file.teletype))
+              tend:
+                case error: ConcurrencyError => BuildError(error)
+              .within(process.complete())
 
-                        case Importance.Warning =>
-                          report(warningRibbon.fill(e"$target", notice.file.teletype))
+              progressDaemon.attend()
+              cancellation.cancel()
 
-                        case Importance.Info =>
-                          report(infoRibbon.fill(e"$target", notice.file.teletype))
+              val errorCount = process.notices.count(_.importance == Importance.Error)
+              val warnCount = process.notices.count(_.importance == Importance.Warning)
 
-                      notice.codeRange.let: range =>
-                        val source: ScalaSource = highlight(notice.file)
-                        report(range.of(source).teletype)
-
-                      report(e"$Italic(${notice.message})")
-                      report(t"")
-
-                  tend(process.complete()).remedy:
-                    case error: ConcurrencyError => abort(BuildError(error))
-
-                  progressDaemon.attend()
-                  cancellation.cancel()
-
-                  val errorCount = process.notices.count(_.importance == Importance.Error)
-                  val warnCount = process.notices.count(_.importance == Importance.Warning)
-
-                  if errorCount == 0
-                  then tend(work.moveTo(output).as[Directory]).remedy:
-                    case error: IoError => abort(BuildError(error))
-                  else abort(BuildError(AbortError(5)))
+              if errorCount == 0
+              then
+                tend { case error: IoError => BuildError(error) }.within:
+                  work.moveTo(output).as[Directory]
+              else abort(BuildError(AbortError(5)))
 
   given Phase is Expandable = _.antecedents.keys.map(phases(_)).to(List)
 
@@ -789,20 +776,19 @@ class Builder():
         Log.info(m"Starting new async for $target")
         val workspace =
           tend:
+            case error: RefError         => BuildError(error)
+            case error: IoError          => BuildError(error)
+            case error: ExecError        => BuildError(error)
+            case error: ConcurrencyError => BuildError(error)
+            case error: PathError        => BuildError(error)
+            case error: WorkspaceError   => BuildError(error)
+            case error: GitError         => BuildError(error)
+          .within:
             universe(target.projectId).source match
               case workspace: Workspace => workspace
 
               case vault: Vault =>
                 Workspace(Cache(vault.index.releases(target.projectId).repo).await().path)
-
-          .remedy:
-            case error: RefError         => abort(BuildError(error))
-            case error: IoError          => abort(BuildError(error))
-            case error: ExecError        => abort(BuildError(error))
-            case error: ConcurrencyError => abort(BuildError(error))
-            case error: PathError        => abort(BuildError(error))
-            case error: WorkspaceError   => abort(BuildError(error))
-            case error: GitError         => abort(BuildError(error))
 
         Log.info(m"Calculated workspace for $target")
 
@@ -811,6 +797,13 @@ class Builder():
 
         val digest: Hash =
           tend:
+            case error: ConcurrencyError => BuildError(error)
+            case error: IoError          => BuildError(error)
+            case error: GitError         => BuildError(error)
+            case error: ExecError        => BuildError(error)
+            case error: PathError        => BuildError(error)
+            case error: StreamError      => BuildError(error)
+          .within:
             goal match
               case module: Module =>
                 val phase = module.phase(workspace, target)
@@ -832,13 +825,6 @@ class Builder():
                 phases(phase.digest) = phase
                 phase.digest
 
-          .remedy:
-            case error: ConcurrencyError => abort(BuildError(error))
-            case error: IoError          => abort(BuildError(error))
-            case error: GitError         => abort(BuildError(error))
-            case error: ExecError        => abort(BuildError(error))
-            case error: PathError        => abort(BuildError(error))
-            case error: StreamError      => abort(BuildError(error))
 
         Log.info(m"Calculated digest for $target")
 
@@ -858,7 +844,7 @@ class Builder():
              SystemProperties,
              Environment,
              Internet)
-          : PhaseResult raises ConcurrencyError raises StreamError raises ZipError raises
+          : Directory raises ConcurrencyError raises StreamError raises ZipError raises
              IoError raises PathError raises BuildError raises CompileError logs Message =
 
     if force then outputDirectory(hash).wipe()
@@ -971,14 +957,14 @@ extension (basis: Basis)
             exclusions.pipe: exclusions =>
               val entries: LazyList[ZipEntry] =
                 tend:
+                  case error: IoError     => BuildError(error)
+                  case error: StreamError => BuildError(error)
+                .within:
                   ZipFile(service.script.as[File])
                    .entries()
                    .filter: entry =>
                       val name = entry.ref.show
                       inclusions.exists(name.starts(_)) && !exclusions.exists(name.starts(_))
-                .remedy:
-                  case error: IoError     => abort(BuildError(error))
-                  case error: StreamError => abort(BuildError(error))
 
               val total: Double = entries.length/100.0
               var done: Int = 0
@@ -991,18 +977,19 @@ extension (basis: Basis)
                 entry
 
               tend:
+                case error: ZipError    => BuildError(error)
+                case error: StreamError => BuildError(error)
+                case error: IoError     => BuildError(error)
+              .within:
                 ZipFile.create(path.as[File].path).tap: zipFile =>
                   zipFile.append(trackedEntries, Epoch)
-              .remedy:
-                case error: ZipError    => abort(BuildError(error))
-                case error: StreamError => abort(BuildError(error))
-                case error: IoError     => abort(BuildError(error))
 
           .also:
             summon[FrontEnd].stop(target)
 
-        tend(path.as[File]).remedy:
-          case error: IoError => abort(BuildError(error))
+        tend:
+          case error: IoError => BuildError(error)
+        .within(path.as[File])
 
 val errorRibbon = Ribbon(rgb"#990033", rgb"#CC0033")
 val warningRibbon = Ribbon(rgb"#FF9900", rgb"#FFCC66")

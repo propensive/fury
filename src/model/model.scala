@@ -51,7 +51,7 @@ given Hash is Communicable = hash =>
   import alphabets.base32.crockford
   Message(hash.serialize[Base32])
 
-type Hash = Digest of Sha2[256]
+type Hash = Digest in Sha2[256]
 
 // FIXME: This shouldn't need to exist. AggregateError needs to be replaced.
 given (using CanThrow[AppError]): Tactic[AggregateError[Error]] =

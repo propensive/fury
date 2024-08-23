@@ -40,6 +40,17 @@ object Installation:
     import textSanitizers.strict
 
     tend:
+      case StreamError(_)                => ConfigError(m"The stream was cut while reading a file")
+      case error: AggregateError[?]      => ConfigError(m"Could not read the configuration file")
+      case EnvironmentError(variable)    => ConfigError(m"The environment variable $variable could not be accessed")
+      case error: CharDecodeError        => ConfigError(m"The configuration file contained bad character data")
+      case error: InvalidRefError        => ConfigError(m"The configuration contained a nonexistent reference")
+      case SystemPropertyError(property) => ConfigError(m"The JVM system property $property could not be read.")
+      case IoError(path)                 => ConfigError(m"An I/O error occurred while trying to access $path")
+      case CodlReadError(label)          => ConfigError(m"The field ${label.or(t"unknown")} could not be read")
+      case PathError(path, reason)       => ConfigError(m"The path $path was not valid because $reason")
+
+    .within:
       val script: Text = Properties.ethereal.name[Text]()
       val cache: Directory = (Xdg.cacheHome[Path] / Name(script)).as[Directory]
       val configPath: Path = Home.Config() / Name(script)
@@ -60,16 +71,6 @@ object Installation:
 
       Installation(buildId, config, cache, vault, tmp, snapshots)
 
-    .remedy:
-      case StreamError(_)                => abort(ConfigError(m"The stream was cut while reading a file"))
-      case error: AggregateError[?]      => abort(ConfigError(m"Could not read the configuration file"))
-      case EnvironmentError(variable)    => abort(ConfigError(m"The environment variable $variable could not be accessed"))
-      case error: CharDecodeError        => abort(ConfigError(m"The configuration file contained bad character data"))
-      case error: InvalidRefError        => abort(ConfigError(m"The configuration contained a nonexistent reference"))
-      case SystemPropertyError(property) => abort(ConfigError(m"The JVM system property $property could not be read."))
-      case IoError(path)                 => abort(ConfigError(m"An I/O error occurred while trying to access $path"))
-      case CodlReadError(label)          => abort(ConfigError(m"The field ${label.or(t"unknown")} could not be read"))
-      case PathError(path, reason)       => abort(ConfigError(m"The path $path was not valid because $reason"))
 
 case class Installation
    (buildId:   Int,

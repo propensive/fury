@@ -131,8 +131,10 @@ object Cache:
       async:
         Log.info(m"Started async to fetch ecosystem")
 
-        val destination = tend(ecosystem.path).remedy:
-          case PathError(path, _) => abort(VaultError())
+        val destination =
+          tend:
+            case PathError(path, _) => VaultError()
+          .within(ecosystem.path)
 
         if !destination.exists() then
           Log.info(m"Cloning ${ecosystem.url}")
@@ -149,17 +151,39 @@ object Cache:
           process.complete().also:
             Log.info(m"Finished cloning ${ecosystem.url}")
 
-        val dataDir = tend((destination / p"data").as[Directory]).remedy:
-          case IoError(_) => abort(VaultError())
+        val dataDir =
+          tend:
+            case IoError(_) => VaultError()
+          .within:
+            (destination / p"data").as[Directory]
 
         val current =
-          given projectIdDecoder: Decoder[ProjectId] = tend(summon[Decoder[ProjectId]]).remedy:
-            case _: InvalidRefError => abort(VaultError())
+          given projectIdDecoder: Decoder[ProjectId] =
+            tend:
+              case _: InvalidRefError => VaultError()
+            .within:
+              summon[Decoder[ProjectId]]
 
-          given streamIdDecoder: Decoder[StreamId] = tend(summon[Decoder[StreamId]]).remedy:
-            case _: InvalidRefError => abort(VaultError())
+          given streamIdDecoder: Decoder[StreamId] =
+            tend:
+              case _: InvalidRefError => VaultError()
+            .within:
+              summon[Decoder[StreamId]]
 
           tend:
+            case _: AggregateError[?] => VaultError()
+            case _: IoError           => VaultError()
+            case _: CodlReadError     => VaultError()
+            case _: GitRefError       => VaultError()
+            case _: MarkdownError     => VaultError()
+            case _: FqcnError         => VaultError()
+            case _: DateError         => VaultError()
+            case _: UrlError          => VaultError()
+            case _: NumberError       => VaultError()
+            case _: HostnameError     => VaultError()
+            case _: InvalidRefError   => VaultError()
+            case _: StreamError       => VaultError()
+          .within:
             dataDir.descendants.filter(_.is[File]).to(List).map: path =>
               given licenseDecoder: CodlDecoder[LicenseId] = CodlDecoder.field[LicenseId]
               given mdDecoder: CodlDecoder[InlineMd] = CodlDecoder.field[InlineMd]
@@ -178,19 +202,6 @@ object Cache:
             .filter: release =>
               release.date + release.lifetime.days > today()
 
-          .remedy:
-            case _: AggregateError[?] => abort(VaultError())
-            case _: IoError           => abort(VaultError())
-            case _: CodlReadError     => abort(VaultError())
-            case _: GitRefError       => abort(VaultError())
-            case _: MarkdownError     => abort(VaultError())
-            case _: FqcnError         => abort(VaultError())
-            case _: DateError         => abort(VaultError())
-            case _: UrlError          => abort(VaultError())
-            case _: NumberError       => abort(VaultError())
-            case _: HostnameError     => abort(VaultError())
-            case _: InvalidRefError   => abort(VaultError())
-            case _: StreamError       => abort(VaultError())
 
         Vault(t"vent", 1, current)
 
@@ -198,8 +209,10 @@ object Cache:
       (using Installation, Internet, WorkingDirectory, GitCommand)
           : Task[Workspace] raises WorkspaceError logs Message =
 
-    val lastModified = tend(path.as[File].lastModified).remedy:
-      case IoError(_) => abort(WorkspaceError(WorkspaceError.Reason.Unreadable(path)))
+    val lastModified =
+      tend:
+        case IoError(_) => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
+      .within(path.as[File].lastModified)
 
     val (cacheTime, workspace) =
       workspaces.establish(path):
