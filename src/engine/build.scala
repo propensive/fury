@@ -540,7 +540,7 @@ class Builder():
 
       summon[FrontEnd].output(t"\e[K")
       val basis = unsafely(Basis.Runtime().await().path.show)
-      val baseClasspath = LocalClasspath(List(ClasspathEntry.Jarfile(basis)))
+      val baseClasspath = LocalClasspath(List(ClasspathEntry.Jar(basis)))
 
       val work =
         tend:
@@ -648,7 +648,7 @@ class Builder():
             .within((installation.work / Name(Uuid().show)).as[Directory])
 
           val basis = unsafely(Basis.Tools().await().path.show)
-          val baseClasspath = LocalClasspath(List(ClasspathEntry.Jarfile(basis)))
+          val baseClasspath = LocalClasspath(List(ClasspathEntry.Jar(basis)))
           val syntax: scc.TrieMap[Text, Task[IArray[Seq[SourceToken]]]] = scc.TrieMap()
 
           def highlight(filename: Text): SourceCode =
@@ -913,7 +913,7 @@ enum Compiler:
 
 extension (basis: Basis)
   def classpath(using Installation): LocalClasspath =
-    LocalClasspath(List(ClasspathEntry.Jarfile(unsafely(basis.path.show))))
+    LocalClasspath(List(ClasspathEntry.Jar(unsafely(basis.path.show))))
 
   def inclusions: Set[Text] = basis match
     case Basis.Minimum =>
