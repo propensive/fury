@@ -375,7 +375,7 @@ object WorkPath:
     def add(left: Path, right: WorkPath): Path = right.descent.reverse.foldLeft(left)(_ / _)
 
 case class WorkPath(descent: List[Name[GeneralForbidden]]):
-  def link: SafeLink = SafeLink(0, descent)
+  def link: SafeRelative = SafeRelative(0, descent)
 
 case class Definition
     (name:        Text,

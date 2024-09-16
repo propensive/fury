@@ -140,13 +140,14 @@ object Cache:
           Log.info(m"Cloning ${ecosystem.url}")
 
           val process =
-            given VaultError mitigates GitError  = _ => VaultError()
-            given VaultError mitigates IoError   = _ => VaultError()
-            given VaultError mitigates ExecError = _ => VaultError()
-            given VaultError mitigates PathError = _ => VaultError()
-
-            given GitEvent is Loggable = Log.silent
-            Git.clone(ecosystem.url, destination, branch = ecosystem.branch)
+            tend:
+              case GitError(detail)         => VaultError()
+              case IoError(path)            => VaultError()
+              case ExecError(command, _, _) => VaultError()
+              case PathError(path, reason)  => VaultError()
+            .within:
+              given GitEvent is Loggable = Log.silent
+              Git.clone(ecosystem.url, destination, branch = ecosystem.branch)
 
           process.complete().also:
             Log.info(m"Finished cloning ${ecosystem.url}")

@@ -157,7 +157,7 @@ class Builder():
       val suffixPaths = artifact.suffixes.map(workspace(_))
       val counterPath = artifact.counter.let(workspace(_))
 
-      val resourceMap: Map[Path, SafeLink] =
+      val resourceMap: Map[Path, SafeRelative] =
         artifact.resources.map: resource =>
           val path = workspace(resource.path)
           (path, resource.jarPath.lay(? / unsafely(Name(path.name)))(_.link))
@@ -257,7 +257,7 @@ class Builder():
       prefixPaths: List[Path],
       suffixPaths: List[Path],
       counterPath: Optional[Path],
-      resourceMap: Map[Path, SafeLink],
+      resourceMap: Map[Path, SafeRelative],
       watches:     Set[Path])
   extends Phase:
 
