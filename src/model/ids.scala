@@ -31,7 +31,7 @@ import hieroglyph.*, charEncoders.utf8
 export Ids.*
 
 case class InvalidRefError(id: Text, refType: RefType)
-extends Error(msg"The value '$id' is not a valid ${refType.name}")
+extends Error(m"The value '$id' is not a valid ${refType.name}")
 
 case class AppError(userMessage: Message, underlyingCause: Optional[Error] = Unset)
 extends Error(userMessage)
@@ -41,10 +41,10 @@ object RefError:
     new RefError(ref.show)
 
 case class RefError(ref: Text)
-extends Error(msg"the reference $ref could not be resolved")
+extends Error(m"the reference $ref could not be resolved")
 
 case class BuildfileError(path: Path, issues: List[Error])
-extends Error(msg"There were problems with the build file $path")
+extends Error(m"There were problems with the build file $path")
 
 trait RefType(val name: Text)
 
@@ -58,9 +58,9 @@ object Ids:
   opaque type LicenseId   = Text
 
   class Id[IdType]() extends RefType(t"ID"):
-    def apply(value: Text)(using Errant[InvalidRefError]): IdType = value match
+    def apply(value: Text)(using Tactic[InvalidRefError]): IdType = value match
       case r"[a-z](-?[a-z0-9])*" => value.asInstanceOf[IdType]
-      case _                     => raise(InvalidRefError(value, this))(value.asInstanceOf[IdType])
+      case _                     => raise(InvalidRefError(value, this), value.asInstanceOf[IdType])
 
     def unapply(value: Text): Option[IdType] = safely(Some(apply(value))).or(None)
 
@@ -72,64 +72,64 @@ object Ids:
   object ActionName extends Id[ActionName]()
 
   class GitRefType[Type](ref: Text) extends RefType(ref):
-    def apply(value: Text)(using Errant[InvalidRefError]): Type =
+    def apply(value: Text)(using Tactic[InvalidRefError]): Type =
       value.cut(t"/").each: part =>
         if part.starts(t".") || part.ends(t".")
-        then raise(InvalidRefError(value, this))(GitRefType[Type](value))
+        then raise(InvalidRefError(value, this), GitRefType[Type](value))
 
-        if part.ends(t".lock") then raise(InvalidRefError(value, this))(GitRefType[Type](value))
-        if part.contains(t"@{") then raise(InvalidRefError(value, this))(GitRefType[Type](value))
-        if part.contains(t"..") then raise(InvalidRefError(value, this))(GitRefType[Type](value))
-        if part.length == 0 then raise(InvalidRefError(value, this))(GitRefType[Type](value))
+        if part.ends(t".lock") then raise(InvalidRefError(value, this), GitRefType[Type](value))
+        if part.contains(t"@{") then raise(InvalidRefError(value, this), GitRefType[Type](value))
+        if part.contains(t"..") then raise(InvalidRefError(value, this), GitRefType[Type](value))
+        if part.length == 0 then raise(InvalidRefError(value, this), GitRefType[Type](value))
 
         for ch <- List('*', '[', '\\', ' ', '^', '~', ':', '?')
-        do if part.has(ch) then raise(InvalidRefError(value, this))(GitRefType[Type](value))
+        do if part.contains(ch) then raise(InvalidRefError(value, this), GitRefType[Type](value))
 
       value.asInstanceOf[Type]
 
   object LicenseId extends RefType(t"license ID"):
     def unsafe(value: Text) = value.asInstanceOf[LicenseId]
-    def apply(value: Text)(using Errant[InvalidRefError]): LicenseId = value match
+    def apply(value: Text)(using Tactic[InvalidRefError]): LicenseId = value match
       case r"[a-z]([-.]?[a-z0-9])*" => value.asInstanceOf[LicenseId]
 
       case _ =>
-        raise(InvalidRefError(value, this))(value.asInstanceOf[LicenseId])
+        raise(InvalidRefError(value, this), value.asInstanceOf[LicenseId])
 
   given EcosystemId is Showable = identity(_)
   given ecosystemIdEncoder: Encoder[EcosystemId] = identity(_)
-  given ecosystemIdDecoder(using Errant[InvalidRefError]): Decoder[EcosystemId] = EcosystemId(_)
+  given ecosystemIdDecoder(using Tactic[InvalidRefError]): Decoder[EcosystemId] = EcosystemId(_)
 
   given EcosystemId is Digestible =
     (acc, ecosystemId) => acc.append(ecosystemId.bytes)
 
   given ProjectId is Showable = identity(_)
   given projectIdEncoder: Encoder[ProjectId] = identity(_)
-  given projectIdDecoder(using Errant[InvalidRefError]): Decoder[ProjectId] = ProjectId(_)
+  given projectIdDecoder(using Tactic[InvalidRefError]): Decoder[ProjectId] = ProjectId(_)
   given ProjectId is Digestible = (acc, projectId) => acc.append(projectId.bytes)
 
   given StreamId is Showable = identity(_)
   given streamIdEncoder: Encoder[StreamId] = identity(_)
-  given streamIdDecoder(using Errant[InvalidRefError]): Decoder[StreamId] = StreamId(_)
+  given streamIdDecoder(using Tactic[InvalidRefError]): Decoder[StreamId] = StreamId(_)
   given StreamId is Digestible = (acc, streamId) => acc.append(streamId.bytes)
 
   given LicenseId is Showable = identity(_)
   given licenseIdEncoder: Encoder[LicenseId] = identity(_)
-  given licenseIdDecoder(using Errant[InvalidRefError]): Decoder[LicenseId] = LicenseId(_)
+  given licenseIdDecoder(using Tactic[InvalidRefError]): Decoder[LicenseId] = LicenseId(_)
   given LicenseId is Digestible = (acc, licenseId) => acc.append(licenseId.bytes)
 
   given ActionName is Showable = identity(_)
   given actionNameEncoder: Encoder[ActionName] = identity(_)
-  given actionNameDecoder(using Errant[InvalidRefError]): Decoder[ActionName] = ActionName(_)
+  given actionNameDecoder(using Tactic[InvalidRefError]): Decoder[ActionName] = ActionName(_)
 
   given ActionName is Digestible =
     (acc, actionName) => acc.append(actionName.bytes)
 
   given Keyword is Showable = identity(_)
   given keywordEncoder: Encoder[Keyword] = identity(_)
-  given keywordDecoder(using Errant[InvalidRefError]): Decoder[Keyword] = Keyword(_)
+  given keywordDecoder(using Tactic[InvalidRefError]): Decoder[Keyword] = Keyword(_)
   given Keyword is Digestible = (acc, keyword) => acc.append(keyword.bytes)
 
   given GoalId is Showable = identity(_)
   given goalIdEncoder: Encoder[GoalId] = identity(_)
   given GoalId is Digestible = (acc, goalId) => acc.append(goalId.bytes)
-  given goalIdDecoder(using Errant[InvalidRefError]): Decoder[GoalId] = GoalId(_)
+  given goalIdDecoder(using Tactic[InvalidRefError]): Decoder[GoalId] = GoalId(_)

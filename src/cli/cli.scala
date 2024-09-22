@@ -38,11 +38,11 @@ import inimitable.*
 import iridescence.*, colors.*
 import kaleidoscope.*
 import nettlesome.*
-import parasite.*, threadModels.platform, asyncOptions.cancelOrphans
+import parasite.*, threadModels.platform, orphanDisposal.cancel
 import profanity.*
 import quantitative.*
 import rudiments.*, homeDirectories.virtualMachine
-import serpentine.*, hierarchies.unixOrWindows
+import serpentine.*, pathHierarchies.unixOrWindows
 import spectacular.*
 import turbulence.*
 import vacuous.*
@@ -69,17 +69,17 @@ object cli:
   val All = Switch(t"all", false, List('a'), t"Clean system artifacts as well")
   val ForceRebuild = Switch(t"force", false, List('f'), t"Force the module to be rebuilt")
 
-  def Dir(using Errant[PathError]) =
+  def Dir(using Tactic[PathError]) =
     Flag[Path](t"dir", false, List('d'), t"Specify the working directory")
 
   val Offline = Switch(t"offline", false, List('o'), t"Work offline, if possible")
   val Watch = Switch(t"watch", false, List('w'), t"Watch source directories for changes")
   val Concise = Switch(t"concise", false, List(), t"Produce less output")
 
-  def Generation(using Errant[NumberError]) =
+  def Generation(using Tactic[NumberError]) =
     Flag[Int](t"generation", false, List('g'), t"Use universe generation number")
 
-  def Stream(using Errant[InvalidRefError]) =
+  def Stream(using Tactic[InvalidRefError]) =
     Flag[StreamId](t"stream", false, List('s'), t"Which stream to publish to")
 
   val About          = Subcommand(t"about",     e"About Fury")
@@ -100,19 +100,21 @@ object cli:
   val Clean          = Subcommand(t"clean",     e"Clean the cache")
   val Details        = Subcommand(t"info",      e"Information about cache usage")
 
-given (using Errant[UserError]): HomeDirectory =
-  tend(homeDirectories.virtualMachine).remedy:
+given (using Tactic[UserError]): HomeDirectory =
+  tend:
     case SystemPropertyError(property) =>
-      abort(UserError(msg"""
+      UserError(m"""
         Could not access the home directory because the $property system property was not set.
-      """))
+      """)
+  .within(homeDirectories.virtualMachine)
 
 given (using Cli): WorkingDirectory = workingDirectories.daemonClient
 
-given (using Errant[UserError]): Installation =
-  tend(Installation()).remedy:
+given (using Tactic[UserError]): Installation =
+  tend:
     case ConfigError(message) =>
-      abort(UserError(msg"The configuration file could not be read because $message"))
+      UserError(m"The configuration file could not be read because $message")
+  .within(Installation())
 
 @main
 def main(): Unit =
@@ -129,18 +131,18 @@ def main(): Unit =
           Log.route[Display]:
             case _ => installation.config.log.path.as[File]
         .remedy:
-          case error: IoError     => abort(InitError(msg"An I/O error occurred when trying to create the log"))
-          case error: StreamError => abort(InitError(msg"A stream error occurred while logging"))
+          case error: IoError     => abort(InitError(m"An I/O error occurred when trying to create the log"))
+          case error: StreamError => abort(InitError(m"A stream error occurred while logging"))
           case error: UserError   => abort(InitError(error.message))*/
 
       intercept:
         case error: Throwable =>
-          Log.fail(msg"Detected an async failure in ${trace.debug}")
-          Log.fail(error.debug)
+          Log.fail(m"Detected an async failure in ${trace.inspect}")
+          Log.fail(error.inspect)
           Transgression.Absorb
 
       initTime.let: initTime =>
-        Log.info(msg"Initialized Fury in ${(now() - initTime).show}")
+        Log.info(m"Initialized Fury in ${(now() - initTime).show}")
 
       cliService:
         attempt[UserError]:
@@ -162,13 +164,13 @@ def main(): Unit =
                 execute:
                   frontEnd:
                     val directory = safely(workingDirectory).or:
-                      abort(UserError(msg"The working directory could not be determined."))
+                      abort(UserError(m"The working directory could not be determined."))
                     actions.build.initialize(directory)
 
               case Config() :: _ =>
                 execute:
                   frontEnd:
-                    log(installation.config.debug)
+                    log(installation.config.inspect)
                     ExitStatus.Ok
 
               case Clean() :: _ =>
@@ -209,29 +211,30 @@ def main(): Unit =
                       frontEnd:
                         val buildTask = task(t"build"):
                           tend:
-                            actions.build.run(target().decodeAs[Target], watch, force, concise)
-                          .remedy:
                             case InvalidRefError(ref, refType) =>
-                              abort(UserError(msg"The target $ref could not be decoded"))
+                              UserError(m"The target $ref could not be decoded")
 
                             case IoError(_) =>
-                              abort(UserError(msg"An I/O error occurred"))
+                              UserError(m"An I/O error occurred")
 
                             case PathError(_, _) =>
-                              abort(UserError(msg"A path error occurred"))
+                              UserError(m"A path error occurred")
 
                             case ExecError(_, _, _) =>
-                              abort(UserError(msg"An execution error occurred"))
+                              UserError(m"An execution error occurred")
+
+                          .within:
+                            actions.build.run(target().decodeAs[Target], watch, force, concise)
 
                         daemon:
                           terminal.events.stream.each:
                             case Keypress.Escape | Keypress.Ctrl('C') => summon[FrontEnd].abort()
                             case other => ()
 
-                        tend(buildTask.await()).remedy:
+                        tend:
                           case ConcurrencyError(reason) =>
-                            abort(UserError(msg"The build was aborted"))
-                        .also(Out.print(t"\e[?25h"))
+                            UserError(m"The build was aborted")
+                        .within(buildTask.await()).also(Out.print(t"\e[?25h"))
 
               case Universe() :: subcommands =>
                 val online = Offline().absent
@@ -267,19 +270,19 @@ def main(): Unit =
                     execute:
                       internet(online):
                         tend:
-                          actions.project.publish(projectId().decodeAs[ProjectId], Stream())
-                        .remedy:
                           case InvalidRefError(ref, refType) =>
-                            abort(UserError(msg"The target $ref could not be decoded"))
+                            UserError(m"The target $ref could not be decoded")
 
                           case IoError(_) =>
-                            abort(UserError(msg"An I/O error occurred"))
+                            UserError(m"An I/O error occurred")
 
                           case PathError(path, reason) =>
-                            abort(UserError(msg"The path $path is not valid because $reason"))
+                            UserError(m"The path $path is not valid because $reason")
 
                           case ExecError(_, _, _) =>
-                            abort(UserError(msg"An execution error occurred"))
+                            UserError(m"An execution error occurred")
+
+                        .within(actions.project.publish(projectId().decodeAs[ProjectId], Stream()))
 
 
                 case _ =>
@@ -295,12 +298,12 @@ def main(): Unit =
               case Nil =>
                 execute:
                   tend:
-                    val workspace = Workspace()
-                    Out.println(Workspace().build.actions.prim.debug)
-                    ExitStatus.Ok
-                  .remedy:
                     case WorkspaceError(_) =>
                       ExitStatus.Fail(1)
+                  .within:
+                    val workspace = Workspace()
+                    Out.println(Workspace().build.actions.prim.inspect)
+                    ExitStatus.Ok
 
               case subcommands =>
                 if Version().present then execute(frontEnd(actions.versionInfo())) else
@@ -323,9 +326,10 @@ def main(): Unit =
                     execute:
                       workspace.lay(ExitStatus.Fail(2)): workspace =>
                         subcommand.let: subcommand =>
-                          tend(subcommand().populated.let(ActionName(_))).remedy:
+                          tend:
                             case InvalidRefError(ref, _) =>
-                              abort(UserError(msg"The reference $ref is not valid"))
+                              abort(UserError(m"The reference $ref is not valid"))
+                          .within(subcommand().populated.let(ActionName(_)))
                           .or(workspace.build.default).let: action =>
                             workspace.build.actions.where(_.name == action).let: action =>
                               internet(online):
@@ -336,18 +340,18 @@ def main(): Unit =
                                         action.modules.each(actions.build.run(_, watch, force, concise))
                                       .remedy:
                                         case PathError(path, reason) =>
-                                          abort(UserError(msg"The path $path is not valid"))
+                                          abort(UserError(m"The path $path is not valid"))
 
                                         case ExecError(_, _, _) =>
-                                          abort(UserError(msg"An execution error occurred"))
+                                          abort(UserError(m"An execution error occurred"))
 
                                         case IoError(_) =>
-                                          abort(UserError(msg"An I/O error occurred"))
+                                          abort(UserError(m"An I/O error occurred"))
 
                                     daemon:
                                       terminal.events.stream.each:
                                         case Keypress.Escape | Keypress.Ctrl('C') =>
-                                          log(msg"Aborting the build.")
+                                          log(m"Aborting the build.")
                                           summon[FrontEnd].abort()
 
                                         case TerminalInfo.WindowSize(rows, cols) =>
@@ -365,7 +369,7 @@ def main(): Unit =
 
                                 tend(main.await()).remedy:
                                   case ConcurrencyError(_) =>
-                                    abort(UserError(msg"The task was aborted"))
+                                    abort(UserError(m"The task was aborted"))
 
                         .or:
                           subcommand.let(frontEnd(actions.invalidSubcommand(_))).or:
@@ -388,7 +392,7 @@ def main(): Unit =
     //   ExitStatus.Fail(2)
 
     case ConcurrencyError(reason) =>
-      println(msg"There was a concurrency error")
+      println(m"There was a concurrency error")
       ExitStatus.Fail(3)
 
 def about()(using stdio: Stdio): ExitStatus =
@@ -406,12 +410,12 @@ def about()(using stdio: Stdio): ExitStatus =
     Out.print(t" "*19)
     Out.println(line)
 
-  val buildId = safely((Classpath / p"build.id")().readAs[Text].trim)
+  val buildId = safely((Classpath / p"build.id")().read[Text].trim)
 
   val scalaProperties = unsafely:
     val resource = Classpath / p"compiler.properties"
 
-    resource().readAs[Text].cut(t"\n").flatMap:
+    resource().read[Text].cut(t"\n").flatMap:
       case r"$key([^=]*)=$value(.*)" => List(key -> value)
       case _                         => Nil
     .to(Map)

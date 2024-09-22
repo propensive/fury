@@ -42,7 +42,7 @@ import profanity.*
 import quantitative.*
 import cellulose.*, codlPrinters.standard
 import rudiments.*
-import serpentine.*, hierarchies.unixOrWindows
+import serpentine.*, pathHierarchies.unixOrWindows
 import spectacular.*
 import turbulence.*
 import vacuous.*
@@ -122,13 +122,13 @@ object actions:
 
   object cache:
     def clean()(using FrontEnd): ExitStatus raises UserError =
-      log(msg"Cleaning the cache")
+      log(m"Cleaning the cache")
       Cache.clear()
       ExitStatus.Ok
 
     def about()(using FrontEnd, Monitor): ExitStatus raises UserError = Cache.about.pipe: cache =>
       info
-       (msg"""
+       (m"""
         The cache contains ${cache.ecosystems} ecosystems, ${cache.snapshots} repository snapshots,
         ${cache.workspaces} workspaces and ${cache.files} files, totalling ${cache.dataSize}.
         """)
@@ -139,15 +139,15 @@ object actions:
     def show()(using Internet, WorkingDirectory, Monitor, Log[Display], FrontEnd, Stdio): ExitStatus raises UserError =
       val rootWorkspace = tend(Workspace()).remedy:
         case WorkspaceError(reason) =>
-          abort(UserError(msg"The workspace could not be constructed because $reason"))
+          abort(UserError(m"The workspace could not be constructed because $reason"))
 
       given universe: Universe = tend(rootWorkspace.universe()).remedy:
-        case PathError(path, _)     => abort(UserError(msg"The path $path was not valid"))
-        case VaultError()           => abort(UserError(msg"There was a problem with the vault"))
-        case WorkspaceError(reason) => abort(UserError(msg"The workspace could not be constructed because $reason"))
-        case IoError(_)             => abort(UserError(msg"An I/O error occurred"))
-        case ExecError(_, _, _)     => abort(UserError(msg"An error occurred when executing"))
-        case ConcurrencyError(_)    => abort(UserError(msg"An asynchronous task was aborted"))
+        case PathError(path, _)     => abort(UserError(m"The path $path was not valid"))
+        case VaultError()           => abort(UserError(m"There was a problem with the vault"))
+        case WorkspaceError(reason) => abort(UserError(m"The workspace could not be constructed because $reason"))
+        case IoError(_)             => abort(UserError(m"An I/O error occurred"))
+        case ExecError(_, _, _)     => abort(UserError(m"An error occurred when executing"))
+        case ConcurrencyError(_)    => abort(UserError(m"An asynchronous task was aborted"))
 
       val projects = universe.projects.to(List)
 
@@ -183,11 +183,11 @@ object actions:
 
       val build = tend(Workspace().build).remedy:
         case WorkspaceError(reason) =>
-          abort(UserError(msg"The workspace could not be constructed because $reason"))
+          abort(UserError(m"The workspace could not be constructed because $reason"))
 
       build.projects.where(_.id == projectId).let: project =>
         val directory = safely(workingDirectory).or:
-          abort(UserError(msg"The working directory could not be determined."))
+          abort(UserError(m"The working directory could not be determined."))
 
         tend:
           val repo = GitRepo(directory)
@@ -196,9 +196,9 @@ object actions:
           val snapshot = Snapshot(remote, commit, Unset)
 
           if !repo.status().isEmpty
-          then abort(UserError(msg"The repository contains uncommitted changes. Please commit the changes and try again."))
+          then abort(UserError(m"The repository contains uncommitted changes. Please commit the changes and try again."))
           val stream = project.streams.where(_.id == streamId).or(project.streams.unique).or:
-            abort(UserError(msg"Please specify a stream to publish."))
+            abort(UserError(m"Please specify a stream to publish."))
 
           val release = project.release(stream.id, stream.lifetime, snapshot).codl.show
           val hash: Text = release.digest[Sha2[256]].encodeAs[Base32]
@@ -215,14 +215,14 @@ object actions:
           ecosystemRepo.commit(t"Added latest ${project.name}")
           ecosystemRepo.push()
         .remedy:
-          case PathError(path, _)              => abort(UserError(msg"The path $path was not valid"))
-          case IoError(_)                      => abort(UserError(msg"An I/O error occurred"))
-          case StreamError(_)                  => abort(UserError(msg"A streaming error occurred"))
-          case GitError(_)                     => abort(UserError(msg"A Git error occurred"))
-          case HostnameError(hostname, reason) => abort(UserError(msg"The hostname $hostname is not valid because $reason"))
-          case UrlError(url, position, reason) => abort(UserError(msg"The URL $url was not valid because $reason at $position"))
-          case ExecError(_, _, _)              => abort(UserError(msg"An execution error occurred"))
-          case ReleaseError(reason)            => abort(UserError(msg"There was a problem with the release: $reason"))
+          case PathError(path, _)              => abort(UserError(m"The path $path was not valid"))
+          case IoError(_)                      => abort(UserError(m"An I/O error occurred"))
+          case StreamError(_)                  => abort(UserError(m"A streaming error occurred"))
+          case GitError(_)                     => abort(UserError(m"A Git error occurred"))
+          case HostnameError(hostname, reason) => abort(UserError(m"The hostname $hostname is not valid because $reason"))
+          case UrlError(url, position, reason) => abort(UserError(m"The URL $url was not valid because $reason at $position"))
+          case ExecError(_, _, _)              => abort(UserError(m"An execution error occurred"))
+          case ReleaseError(reason)            => abort(UserError(m"There was a problem with the release: $reason"))
 
         ExitStatus.Ok
       .or:
@@ -232,7 +232,7 @@ object actions:
   object build:
     def initialize(directory: Path)(using CliFrontEnd): ExitStatus raises UserError =
       if (directory / p".fury").exists()
-      then abort(UserError(msg"A build already exists in this directory"))
+      then abort(UserError(m"A build already exists in this directory"))
 
       tend:
         interactive:
@@ -265,40 +265,40 @@ object actions:
       import filesystemOptions.doNotCreateNonexistent
       import filesystemOptions.dereferenceSymlinks
 
-      Log.info(msg"Trying to construct workspace")
+      Log.info(m"Trying to construct workspace")
       val workspace = tend(Workspace()).remedy:
-        case WorkspaceError(_) => abort(UserError(msg"The workspace could not be constructed"))
+        case WorkspaceError(_) => abort(UserError(m"The workspace could not be constructed"))
 
-      Log.info(msg"Finished constructing workspace")
+      Log.info(m"Finished constructing workspace")
 
       given universe: Universe = tend(workspace.universe()).remedy:
-        case VaultError()           => abort(UserError(msg"Could not generate universe"))
-        case WorkspaceError(reason) => abort(UserError(msg"Could not generate universe"))
-        case ConcurrencyError(_)    => abort(UserError(msg"Constructing the universe was interrupted"))
+        case VaultError()           => abort(UserError(m"Could not generate universe"))
+        case WorkspaceError(reason) => abort(UserError(m"Could not generate universe"))
+        case ConcurrencyError(_)    => abort(UserError(m"Constructing the universe was interrupted"))
 
       def build(): Set[Path] =
-        Log.info(msg"Starting $target build...")
+        Log.info(m"Starting $target build...")
         val builder = Builder()
-        Log.info(msg"Constructed the builder")
+        Log.info(m"Constructed the builder")
 
         val hash = tend(builder.build(target).await()).remedy:
-          case BuildError(_)       => abort(UserError(msg"Could not calculated the build hash"))
-          case ConcurrencyError(_) => abort(UserError(msg"Calculating the build hash was cancelled"))
+          case BuildError(_)       => abort(UserError(m"Could not calculated the build hash"))
+          case ConcurrencyError(_) => abort(UserError(m"Calculating the build hash was cancelled"))
 
-        Log.info(msg"Calculated hash")
+        Log.info(m"Calculated hash")
         if !concise then summon[FrontEnd].setSchedule(builder.schedule(hash))
-        Log.info(msg"Invoking run")
+        Log.info(m"Invoking run")
 
         tend(builder.run(target.show, hash, force)).remedy:
-          case StreamError(size)        => abort(UserError(msg"A stream error occurred during the build"))
-          case CompileError()           => abort(UserError(msg"The compiler crashed during the build"))
-          case IoError(path)            => abort(UserError(msg"A disk error occurred during the build"))
-          case ZipError(_)              => abort(UserError(msg"There was a ZIP error during the build"))
-          case PathError(path, expect)  => abort(UserError(msg"An invalid path was encountered during the build"))
-          case BuildError(_)            => abort(UserError(msg"The build failed."))
-          case ConcurrencyError(reason) => abort(UserError(msg"The build aborted early"))
+          case StreamError(size)        => abort(UserError(m"A stream error occurred during the build"))
+          case CompileError()           => abort(UserError(m"The compiler crashed during the build"))
+          case IoError(path)            => abort(UserError(m"A disk error occurred during the build"))
+          case ZipError(_)              => abort(UserError(m"There was a ZIP error during the build"))
+          case PathError(path, expect)  => abort(UserError(m"An invalid path was encountered during the build"))
+          case BuildError(_)            => abort(UserError(m"The build failed."))
+          case ConcurrencyError(reason) => abort(UserError(m"The build aborted early"))
 
-        Log.info(msg"Returning watch directories")
+        Log.info(m"Returning watch directories")
         builder.watchDirectories(hash)
 
       if !watch then build()
@@ -308,18 +308,18 @@ object actions:
             watches.stream.cluster(0.05*Second).head
             summon[FrontEnd].reset()
         .remedy:
-          case IoError(path)           => abort(UserError(msg"An I/O error occurred during filewatching"))
-          case WatchError()            => abort(UserError(msg"There was an error filewatching"))
-          case PathError(text, expect) => abort(UserError(msg"An invalid path was encountered"))
+          case IoError(path)           => abort(UserError(m"An I/O error occurred during filewatching"))
+          case WatchError()            => abort(UserError(m"There was an error filewatching"))
+          case PathError(text, expect) => abort(UserError(m"An invalid path was encountered"))
 
       ExitStatus.Ok
 
   def invalidSubcommand(command: Argument)(using FrontEnd): ExitStatus raises UserError =
-    abort(UserError(msg"${command()} is not a valid subcommand."))
+    abort(UserError(m"${command()} is not a valid subcommand."))
 
   def missingSubcommand()(using FrontEnd): ExitStatus raises UserError =
-    abort(UserError(msg"No subcommand was specified."))
+    abort(UserError(m"No subcommand was specified."))
 
   def versionInfo()(using FrontEnd): ExitStatus =
-    log(msg"Fury version 1.0")
+    log(m"Fury version 1.0")
     ExitStatus.Ok

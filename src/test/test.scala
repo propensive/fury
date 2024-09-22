@@ -23,7 +23,7 @@ import rudiments.*
 import anticipation.*
 import galilei.*
 import serpentine.*
-import contingency.*, errorHandlers.throwUnsafely
+import contingency.*, strategies.throwUnsafely
 import cellulose.*
 
 import unsafeExceptions.canThrowAny
@@ -35,11 +35,11 @@ object Tests extends Suite(t"Fury Model Tests"):
         test(t"Parse a valid module ID"):
           GoalId(t"moduleid")
         .assert(_ == GoalId(t"moduleid"))
-        
+
         test(t"Module ID can have a dash"):
           GoalId(t"module-id")
         .assert(_ == GoalId(t"module-id"))
-        
+
         test(t"Module ID cannot have two adjacent dashes"):
           capture(GoalId(t"module--id"))
         .assert(_ == InvalidRefError(t"module--id", Ids.GoalId))
@@ -48,20 +48,20 @@ object Tests extends Suite(t"Fury Model Tests"):
           test(t"Module ID cannot contain a '$sym'"):
             capture(GoalId(t"module${sym}id"))
           .assert(_ == InvalidRefError(t"module${sym}id", Ids.GoalId))
-        
+
         test(t"Module cannot contain capital letters"):
           capture(GoalId(t"moduleId"))
         .assert(_ == InvalidRefError(t"moduleId", Ids.GoalId))
-      
+
       /*suite(t"Git refs"):
         test(t"Parse a Git Commit"):
           Commit(t"0123456789abcdef0123456789abcdef01234567")
         .assert(_ == Commit(t"0123456789abcdef0123456789abcdef01234567"))
-        
+
         test(t"Parse a Git Commit must have length of 40"):
           capture(Commit(t"0123456789abcdef0123456789abcdef0123456"))
         .assert(_ == InvalidRefError(t"0123456789abcdef0123456789abcdef0123456", Ids.Commit))
-        
+
         test(t"Parse a Git Commit cannot contain non-hex characters"):
           capture(Commit(t"0123456789abcdef0123456789gbcdef0123456"))
         .assert(_ == InvalidRefError(t"0123456789abcdef0123456789gbcdef0123456", Ids.Commit))
@@ -69,57 +69,57 @@ object Tests extends Suite(t"Fury Model Tests"):
         test(t"Parse a Git Branch with a '/'"):
           Branch(t"git/branch")
         .assert(_ == Branch(t"git/branch"))
-        
+
         test(t"A Git Branch part cannot start with a '.'"):
           capture(Branch(t"git/.branch"))
         .assert(_ == InvalidRefError(t"git/.branch", Ids.Branch))
-        
+
         test(t"A Git Branch part cannot endWith '.lock'"):
           capture(Branch(t"git/branch.lock"))
         .assert(_ == InvalidRefError(t"git/branch.lock", Ids.Branch))
-        
+
         test(t"A Git Branch part cannot contain consecutive '.'s"):
           capture(Branch(t"git/branch..name"))
         .assert(_ == InvalidRefError(t"git/branch..name", Ids.Branch))
-        
+
         test(t"A Git Branch part cannot contain consecutive '/'s"):
           capture(Branch(t"git/branch//name"))
         .matches(_ == InvalidRefError(t"git/branch//name", Ids.Branch))
-        
+
         test(t"A Git Branch part cannot end with a '.'"):
           capture(Branch(t"git/branch."))
         .assert(_ == InvalidRefError(t"git/branch.", Ids.Branch))
-        
+
         test(t"A Git Branch cannot contain a '@{'"):
           capture(Branch(t"git/bran@{ch}"))
         .assert(_ == InvalidRefError(t"git/bran@{ch}", Ids.Branch))
-        
+
         for sym <- List(' ', '?', '*', '~', '^', ':', '[', '\\') do
           test(t"A Git Branch part cannot contain '$sym'"):
             capture(Branch(t"git/branch${sym}name"))
           .assert(_ == InvalidRefError(t"git/branch${sym}name", Ids.Branch))
-      
+
         test(t"Package names cannot contain hyphens"):
           capture(Package(t"com.package-name"))
         .assert(_ == InvalidRefError(t"com.package-name", Ids.Package))
-        
+
         test(t"Package names can contain hyphens"):
           Package(t"com.package_name")
         .assert(_ == Package(t"com.package_name"))
-        
+
         test(t"Package names cannot contain two dots"):
           capture(Package(t"com..packagename"))
         .assert(_ == InvalidRefError(t"com..packagename", Ids.Package))
-        
+
         for sym <- List(' ', '?', '*', '~', '^', ':', '[', '\\') do
           test(t"Package names cannot contain '$sym'"):
             capture(Package(t"com${sym}packagename"))
           .assert(_ == InvalidRefError(t"com${sym}packagename", Ids.Package))
-        
+
         test(t"Package name parts cannot start with a number"):
           capture(Package(t"com.123abc"))
         .assert(_ == InvalidRefError(t"com.123abc", Ids.Package))*/
-    
+
     suite(t"CoDL parsing tests"):
       val buildFile = t"""
         :<< "##"
@@ -127,11 +127,11 @@ object Tests extends Suite(t"Fury Model Tests"):
         ecosystem vent 2024 https://example.com/ main
         command build myaction/foo
         default build
-        
+
         project main-project  Main Project
           website      https://github.com/propensive/
           description  A *complicated* project
-          
+
           module core
             sources src/core
             provide org.mainpkg
@@ -150,15 +150,15 @@ object Tests extends Suite(t"Fury Model Tests"):
           keywords     active  software  clever  scala
           date         2021-11-11
           description  A project to demonstrate Fury
-          
+
           repo      https://github.com/  0000000000000000000000000000000000000002  main
           website   https://example.com/
           provide   com.example
-          
+
         release another current
           name         Another Project
           description  _Another_ project to demonstrate Fury
-          
+
           keywords  alternative  scala  project
           license   apache-2
           date      2022-12-20
@@ -169,15 +169,15 @@ object Tests extends Suite(t"Fury Model Tests"):
       test(t"Parse a Vault file"):
         Codl.read[Vault](vaultFile)
       .check()
-      
+
       val localFile = t"""
         fork  rudiments  /home/propensive/work/rudiments
         fork  gossamer   C:\\Documents and Settings\\Files
       """
 
       suite(t"Local file")
-        import hierarchies.unix
-        
+        import pathHierarchies.unix
+
         test(t"Parse forks"):
           Codl.read[Local](localFile)
         .assert(_ == Local(List(
@@ -196,6 +196,3 @@ object Tests extends Suite(t"Fury Model Tests"):
       test(t"Check exactly two modules"):
         build.projects.head.modules.length
       .assert(_ == 2)
-
-
-

@@ -27,16 +27,18 @@ import filesystemOptions.{doNotCreateNonexistent, dereferenceSymlinks}
 import filesystemApi.galileiPath
 import gastronomy.*
 import gossamer.{where as _, *}
-import hieroglyph.*, charEncoders.utf8, charDecoders.utf8, encodingMitigation.strict
+import hieroglyph.*, charEncoders.utf8, charDecoders.utf8, textSanitizers.strict
 import digression.*
 import kaleidoscope.*
+import monotonous.*
 import nettlesome.*
 import octogenarian.*
 import contingency.*
 import punctuation.*
 import rudiments.*
-import serpentine.*, hierarchies.unixOrWindows
+import serpentine.*, pathHierarchies.unixOrWindows
 import spectacular.*
+import prepositional.*
 import symbolism.*
 import turbulence.*
 import vacuous.*
@@ -45,11 +47,15 @@ export gitCommands.environmentDefault
 
 erased given CanThrow[AppError] = ###
 
-type Hash = Digest of Sha2[256]
+given Hash is Communicable = hash =>
+  import alphabets.base32.crockford
+  Message(hash.serialize[Base32])
+
+type Hash = Digest in Sha2[256]
 
 // FIXME: This shouldn't need to exist. AggregateError needs to be replaced.
-given (using CanThrow[AppError]): Errant[AggregateError[Error]] =
-  new Errant[AggregateError[Error]]:
+given (using CanThrow[AppError]): Tactic[AggregateError[Error]] =
+  new Tactic[AggregateError[Error]]:
     def record(error: AggregateError[Error]): Unit = throw AppError(error.message, error)
     def abort(error: AggregateError[Error]): Nothing = throw AppError(error.message, error)
 
@@ -181,7 +187,7 @@ case class Project
       website     = website,
       description = description,
       license     = license.or:
-                      raise(ReleaseError(ReleaseError.Reason.NoLicense))(License.Apache2.id),
+                      raise(ReleaseError(ReleaseError.Reason.NoLicense), License.Apache2.id),
       date        = today(),
       lifetime    = lifetime,
       repo        = snapshot,
@@ -193,20 +199,20 @@ object ReleaseError:
     case NoLicense
 
   given Reason is Communicable =
-    case Reason.NoLicense => msg"the license has not been specified"
+    case Reason.NoLicense => m"the license has not been specified"
 
 case class ReleaseError(reason: ReleaseError.Reason)
-extends Error(msg"The project is not ready for release because $reason")
+extends Error(m"The project is not ready for release because $reason")
 
 case class Assist(target: Target, module: GoalId)
 
 object Basis extends RefType(t"basis"):
   given encoder: Encoder[Basis] = _.toString.tt.lower
-  given decoder(using Errant[InvalidRefError]): Decoder[Basis] =
+  given decoder(using Tactic[InvalidRefError]): Decoder[Basis] =
     case t"minimum" => Basis.Minimum
     case t"runtime" => Basis.Runtime
     case t"tools"   => Basis.Tools
-    case value      => raise(InvalidRefError(value, this))(Basis.Runtime)
+    case value      => raise(InvalidRefError(value, this), Basis.Runtime)
 
 enum Basis:
   case Minimum, Runtime, Tools
@@ -294,19 +300,19 @@ case class Content(path: WorkPath, replacements: List[Replacement])
 
 object Target extends RefType(t"target"):
   given moduleRefEncoder: Encoder[Target] = _.show
-  given Debug[Target] as moduleRefDebug = _.show
+  given Target is Inspectable as moduleRefInspect = _.show
   given Target is Communicable as moduleRefCommunicable = target => Message(target.show)
-  given moduleRefDecoder(using Errant[InvalidRefError]): Decoder[Target] = Target(_)
+  given moduleRefDecoder(using Tactic[InvalidRefError]): Decoder[Target] = Target(_)
 
   given Target is Showable = target =>
     t"${target.projectId.let { projectId => t"$projectId/" }.or(t"")}${target.goalId}"
 
-  def apply(value: Text)(using Errant[InvalidRefError]): Target = value match
+  def apply(value: Text)(using Tactic[InvalidRefError]): Target = value match
     case r"${ProjectId(project)}([^/]+)\/${GoalId(module)}([^/]+)" =>
       Target(project, module)
 
     case _ =>
-      raise(InvalidRefError(value, this))(Target(ProjectId(t"unknown"), GoalId(t"unknown")))
+      raise(InvalidRefError(value, this), Target(ProjectId(t"unknown"), GoalId(t"unknown")))
 
 case class Target(projectId: ProjectId, goalId: GoalId, stream: Optional[StreamId] = Unset):
   def suggestion: Suggestion = Suggestion(this.show, Unset)
@@ -330,12 +336,12 @@ case class Stream(id: StreamId, lifetime: Int, guarantees: List[Guarantee]):
 object Guarantee:
   given encoder: Encoder[Guarantee] = _.toString.tt.lower
 
-  given decoder(using Errant[RefError]): Decoder[Guarantee] =
+  given decoder(using Tactic[RefError]): Decoder[Guarantee] =
     case t"bytecode"      => Guarantee.Bytecode
     case t"tasty"         => Guarantee.Tasty
     case t"source"        => Guarantee.Source
     case t"functionality" => Guarantee.Functionality
-    case value            => raise(RefError(value))(Guarantee.Functionality)
+    case value            => raise(RefError(value), Guarantee.Functionality)
 
 enum Guarantee:
   case Bytecode       // same bytecode API
@@ -347,7 +353,7 @@ object WorkPath:
   given WorkPath is Navigable[GeneralForbidden, Unit] as navigable:
     def root(path: WorkPath): Unit = ()
     def prefix(root: Unit): Text = t""
-    def descent(path: WorkPath): List[PathName[GeneralForbidden]] = path.descent
+    def descent(path: WorkPath): List[Name[GeneralForbidden]] = path.descent
     def separator(path: WorkPath): Text = t"/"
 
   given rootParser: RootParser[WorkPath, Unit] = text => ((), text)
@@ -357,10 +363,10 @@ object WorkPath:
 
   given WorkPath is Showable = _.render
   given encoder: Encoder[WorkPath] = _.render
-  //given debug: Debug[WorkPath] = _.render
+  //given WorkPath is Inspectable = _.render
   given WorkPath is Digestible = (acc, path) => acc.append(path.show.bytes)
 
-  given decoder(using path: Errant[PathError]): Decoder[WorkPath] = new Decoder[WorkPath]:
+  given decoder(using path: Tactic[PathError]): Decoder[WorkPath] = new Decoder[WorkPath]:
     def decode(text: Text): WorkPath = Navigable.decode(text)
 
   inline given Path is Addable as addable:
@@ -368,8 +374,8 @@ object WorkPath:
     type Operand = WorkPath
     def add(left: Path, right: WorkPath): Path = right.descent.reverse.foldLeft(left)(_ / _)
 
-case class WorkPath(descent: List[PathName[GeneralForbidden]]):
-  def link: SafeLink = SafeLink(0, descent)
+case class WorkPath(descent: List[Name[GeneralForbidden]]):
+  def link: SafeRelative = SafeRelative(0, descent)
 
 case class Definition
     (name:        Text,
@@ -381,9 +387,10 @@ case class Definition
 
 object Workspace:
   def apply()(using WorkingDirectory): Workspace raises WorkspaceError =
-    tend(apply(workingDirectory[Path])).remedy:
+    tend:
       case pathError: PathError =>
-        abort(WorkspaceError(WorkspaceError.Reason.Explanation(pathError.message)))
+        WorkspaceError(WorkspaceError.Reason.Explanation(pathError.message))
+    .within(apply(workingDirectory[Path]))
 
   def apply(path: Path): Workspace raises WorkspaceError =
     /*given (WorkspaceError fixes HostnameError) =
@@ -429,24 +436,23 @@ object Workspace:
     */
 
     tend:
-      val dir: Directory = path.as[Directory]
-      val buildFile: File = (dir / p".fury").as[File]
-      val buildDoc: CodlDoc = Codl.parse(buildFile)
-      ???
-    .remedy:
-      case _: AggregateError[?]       => abort(WorkspaceError(WorkspaceError.Reason.Unreadable(path)))
       //case HostnameError(text, _)     => abort(WorkspaceError(WorkspaceError.Reason.BadData(text)))
       //case CodlReadError(_)           => abort(WorkspaceError(WorkspaceError.Reason.BadContent))
       //case GitRefError(text)          => abort(WorkspaceError(WorkspaceError.Reason.BadData(text)))
-      case StreamError(_)             => abort(WorkspaceError(WorkspaceError.Reason.Unreadable(path)))
+      case StreamError(_)             => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
       //case MarkdownError(reason)      => abort(WorkspaceError(WorkspaceError.Reason.Explanation(reason.communicate)))
-      case IoError(path)              => abort(WorkspaceError(WorkspaceError.Reason.Unreadable(path)))
+      case IoError(path)              => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
       //case UrlError(text, _, _)       => abort(WorkspaceError(WorkspaceError.Reason.BadData(text)))
       //case pathError: PathError       => abort(WorkspaceError(WorkspaceError.Reason.Explanation(pathError.message)))
       //case InvalidRefError(text, _)   => abort(WorkspaceError(WorkspaceError.Reason.BadData(text)))
       //case RefError(text)             => abort(WorkspaceError(WorkspaceError.Reason.BadData(text)))
       //case NumberError(text, _)       => abort(WorkspaceError(WorkspaceError.Reason.BadData(text)))
-      case CharDecodeError(_, _) => abort(WorkspaceError(WorkspaceError.Reason.BadContent))
+      case CharDecodeError(_, _) => WorkspaceError(WorkspaceError.Reason.BadContent)
+    .within:
+      val dir: Directory = path.as[Directory]
+      val buildFile: File = (dir / p".fury").as[File]
+      val buildDoc: CodlDoc = Codl.parse(buildFile)
+      ???
 
     /*
     val build: Build = Codl.read[Build](buildFile)
@@ -471,10 +477,10 @@ object WorkspaceError:
     case BadData(text: Text)
 
   given Reason is Communicable =
-    case Reason.Unreadable(path)     => msg"$path could not be read"
-    case Reason.BadContent           => msg"the content was not valid CoDL"
+    case Reason.Unreadable(path)     => m"$path could not be read"
+    case Reason.BadContent           => m"the content was not valid CoDL"
     case Reason.Explanation(message) => message
-    case Reason.BadData(text)        => msg"the value $text was not in the correct format"
+    case Reason.BadData(text)        => m"the value $text was not in the correct format"
 
 case class WorkspaceError(reason: WorkspaceError.Reason)
-extends Error(msg"the workspace could not be read because $reason")
+extends Error(m"the workspace could not be read because $reason")

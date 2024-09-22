@@ -24,10 +24,10 @@ import eucalyptus.*
 import galilei.*,
     filesystemOptions.{dereferenceSymlinks, createNonexistent, createNonexistentParents}
 
-import hieroglyph.*, charDecoders.utf8, encodingMitigation.skip
+import hieroglyph.*, charDecoders.utf8, textSanitizers.skip
 import nettlesome.*
 import octogenarian.*
-import parasite.*, asyncOptions.cancelOrphans
+import parasite.*, orphanDisposal.cancel
 import contingency.*
 import guillotine.*
 import fulminate.*
@@ -38,12 +38,13 @@ import gastronomy.*
 import escapade.*
 import rudiments.*
 import vacuous.*
-import serpentine.*, hierarchies.unixOrWindows
+import serpentine.*, pathHierarchies.unixOrWindows
 import spectacular.*
 import turbulence.*
 
 import scala.collection.concurrent as scc
 
+given Decimalizer = Decimalizer(2)
 given Timezone = tz"Etc/UTC"
 
 case class CachedFile(lastModified: Instant, text: Task[Text], hash: Task[Hash])
@@ -60,18 +61,18 @@ object Cache:
 
   given supervisor: Supervisor = PlatformSupervisor
 
-  def file(path: Path)(using Log[Display])
-          : CachedFile raises IoError raises StreamError raises ConcurrencyError =
+  def file(path: Path)
+      : CachedFile raises IoError raises StreamError raises ConcurrencyError logs Message =
 
     val file = path.as[File]
     val lastModified = file.lastModified
-    
+
     def cachedFile() =
-      val task = async(file.readAs[Text])
+      val task = async(file.read[Text])
       CachedFile(lastModified, task, task.map(_.digest[Sha2[256]]))
 
     val cached = files.establish(path)(cachedFile())
-      
+
     if cached.lastModified == lastModified then cached else cachedFile().tap: entry =>
       files(path) = entry
 
@@ -95,70 +96,95 @@ object Cache:
   def apply(snapshot: Snapshot)
       (using Installation,
              Internet,
-             Log[Display],
              WorkingDirectory,
              GitCommand,
              FrontEnd,
-             Errant[ExecError],
-             Errant[PathError],
-             Errant[IoError],
-             Errant[GitError])
-          : Task[Directory] =
+             Tactic[ExecError],
+             Tactic[PathError],
+             Tactic[IoError],
+             Tactic[GitError])
+          : Task[Directory] logs Message =
 
     snapshots.establish(snapshot):
       async:
-        val destination = summon[Installation].snapshots.path / PathName(snapshot.commit.show)
-        
+        given Message transcribes GitEvent = _.communicate
+        val destination = summon[Installation].snapshots.path / Name(snapshot.commit.show)
+
         if destination.exists() then destination.as[Directory] else
-          Log.info(msg"Cloning ${snapshot.url}")
+          Log.info(m"Cloning ${snapshot.url}")
           val process = Git.cloneCommit(snapshot.url, destination, snapshot.commit)
           val target = unsafely(Target(ProjectId(t"git"), GoalId(snapshot.commit.show)))
           summon[FrontEnd].start(target)
           gitProgress(process.progress).each: progress =>
             summon[FrontEnd](target) = progress
-            
+
           summon[FrontEnd].stop(target)
-          
+
           process.complete().workTree.vouch(using Unsafe).also:
-            Log.info(msg"Finished cloning ${snapshot.url}")
-        
+            Log.info(m"Finished cloning ${snapshot.url}")
+
   def apply(ecosystem: Ecosystem)(using installation: Installation)
-      (using Internet, Log[Display], WorkingDirectory, GitCommand)
-          : Task[Vault] raises VaultError =
-    
+      (using Internet, WorkingDirectory, GitCommand)
+          : Task[Vault] raises VaultError logs Message =
+
     ecosystems.establish(ecosystem):
       async:
-        Log.info(t"Started async to fetch ecosystem")
-  
-        val destination = tend(ecosystem.path).remedy:
-          case PathError(path, _) => abort(VaultError())
-  
-        if !destination.exists() then
-          Log.info(msg"Cloning ${ecosystem.url}")
-          
-          val process =
-            tend(Git.clone(ecosystem.url, destination, branch = ecosystem.branch)).remedy:
-              case GitError(_)        => abort(VaultError())
-              case IoError(_)         => abort(VaultError())
-              case ExecError(_, _, _) => abort(VaultError())
-              case PathError(_, _)    => abort(VaultError())
-            
-          gitProgress(process.progress).map(_.debug).each(Log.info(_))
-            
-          process.complete().also:
-            Log.info(msg"Finished cloning ${ecosystem.url}")            
-        
-        val dataDir = tend((destination / p"data").as[Directory]).remedy:
-          case IoError(_) => abort(VaultError())
-        
-        val current =
-          given projectIdDecoder: Decoder[ProjectId] = tend(summon[Decoder[ProjectId]]).remedy:
-            case _: InvalidRefError => abort(VaultError())
-          
-          given streamIdDecoder: Decoder[StreamId] = tend(summon[Decoder[StreamId]]).remedy:
-            case _: InvalidRefError => abort(VaultError())
-          
+        Log.info(m"Started async to fetch ecosystem")
+
+        val destination =
           tend:
+            case PathError(path, _) => VaultError()
+          .within(ecosystem.path)
+
+        if !destination.exists() then
+          Log.info(m"Cloning ${ecosystem.url}")
+
+          val process =
+            tend:
+              case GitError(detail)         => VaultError()
+              case IoError(path)            => VaultError()
+              case ExecError(command, _, _) => VaultError()
+              case PathError(path, reason)  => VaultError()
+            .within:
+              given GitEvent is Loggable = Log.silent
+              Git.clone(ecosystem.url, destination, branch = ecosystem.branch)
+
+          process.complete().also:
+            Log.info(m"Finished cloning ${ecosystem.url}")
+
+        val dataDir =
+          tend:
+            case IoError(_) => VaultError()
+          .within:
+            (destination / p"data").as[Directory]
+
+        val current =
+          given projectIdDecoder: Decoder[ProjectId] =
+            tend:
+              case _: InvalidRefError => VaultError()
+            .within:
+              summon[Decoder[ProjectId]]
+
+          given streamIdDecoder: Decoder[StreamId] =
+            tend:
+              case _: InvalidRefError => VaultError()
+            .within:
+              summon[Decoder[StreamId]]
+
+          tend:
+            case _: AggregateError[?] => VaultError()
+            case _: IoError           => VaultError()
+            case _: CodlReadError     => VaultError()
+            case _: GitRefError       => VaultError()
+            case _: MarkdownError     => VaultError()
+            case _: FqcnError         => VaultError()
+            case _: DateError         => VaultError()
+            case _: UrlError          => VaultError()
+            case _: NumberError       => VaultError()
+            case _: HostnameError     => VaultError()
+            case _: InvalidRefError   => VaultError()
+            case _: StreamError       => VaultError()
+          .within:
             dataDir.descendants.filter(_.is[File]).to(List).map: path =>
               given licenseDecoder: CodlDecoder[LicenseId] = CodlDecoder.field[LicenseId]
               given mdDecoder: CodlDecoder[InlineMd] = CodlDecoder.field[InlineMd]
@@ -171,52 +197,42 @@ object Cache:
               given commitDecoder: CodlDecoder[CommitHash] = CodlDecoder.field[CommitHash]
               given branchDecoder: CodlDecoder[Branch] = CodlDecoder.field[Branch]
 
-              Codl.read[Release](path.as[File])
+              val source = path.as[File].read[Text]
+              Codl.read[Release](source)
 
             .filter: release =>
               release.date + release.lifetime.days > today()
 
-          .remedy:
-            case _: AggregateError[?] => abort(VaultError())
-            case _: IoError           => abort(VaultError())
-            case _: CodlReadError     => abort(VaultError())
-            case _: GitRefError       => abort(VaultError())
-            case _: MarkdownError     => abort(VaultError())
-            case _: FqcnError         => abort(VaultError())
-            case _: DateError         => abort(VaultError())
-            case _: UrlError          => abort(VaultError())
-            case _: NumberError       => abort(VaultError())
-            case _: HostnameError     => abort(VaultError())
-            case _: InvalidRefError   => abort(VaultError())
-            case _: StreamError       => abort(VaultError())
 
         Vault(t"vent", 1, current)
 
   def workspace(path: Path)
-      (using Installation, Internet, Log[Display], WorkingDirectory, GitCommand)
-          : Task[Workspace] raises WorkspaceError =
+      (using Installation, Internet, WorkingDirectory, GitCommand)
+          : Task[Workspace] raises WorkspaceError logs Message =
 
-    val lastModified = tend(path.as[File].lastModified).remedy:
-      case IoError(_) => abort(WorkspaceError(WorkspaceError.Reason.Unreadable(path)))
-    
+    val lastModified =
+      tend:
+        case IoError(_) => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
+      .within(path.as[File].lastModified)
+
     val (cacheTime, workspace) =
       workspaces.establish(path):
         (lastModified, async(Workspace(path)))
-      
+
     if cacheTime == lastModified then workspace else async(Workspace(path)).tap: async =>
       workspaces(path) = (lastModified, async)
 
   def projectsMap(workspace: Workspace)
-      (using Installation, Internet, Log[Display], WorkingDirectory, GitCommand)
-          : Task[Map[ProjectId, Definition]] raises WorkspaceError raises ConcurrencyError =
-    
+      (using Installation, Internet, WorkingDirectory, GitCommand)
+          : Task[Map[ProjectId, Definition]] raises WorkspaceError raises ConcurrencyError logs Message =
+
     locals.establish(workspace):
       async:
         val maps: List[Map[ProjectId, Definition]] = workspace.local.let(_.forks).or(Nil).map: fork =>
           Cache.workspace(fork.path).flatMap(projectsMap(_)).await()
-        
+
         maps.foldLeft(workspace.projects.view.mapValues(_.definition(workspace)).toMap)(_ ++ _)
 
-case class VaultError() extends Error(msg"the vault file is not valid")
+case class VaultError() extends Error(m"the vault file is not valid")
 
 given Realm = realm"fury"

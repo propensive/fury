@@ -30,45 +30,47 @@ import imperial.*
 import hellenism.*, classloaders.threadContext
 import contingency.*
 import rudiments.*
-import serpentine.*, hierarchies.unixOrWindows
+import serpentine.*, pathHierarchies.unixOrWindows
 import spectacular.*
 import turbulence.*
 import vacuous.*
 
 object Installation:
   def apply()(using HomeDirectory, SystemProperties): Installation raises ConfigError =
-    import encodingMitigation.strict
+    import textSanitizers.strict
 
     tend:
+      case StreamError(_)                => ConfigError(m"The stream was cut while reading a file")
+      case error: AggregateError[?]      => ConfigError(m"Could not read the configuration file")
+      case EnvironmentError(variable)    => ConfigError(m"The environment variable $variable could not be accessed")
+      case error: CharDecodeError        => ConfigError(m"The configuration file contained bad character data")
+      case error: InvalidRefError        => ConfigError(m"The configuration contained a nonexistent reference")
+      case SystemPropertyError(property) => ConfigError(m"The JVM system property $property could not be read.")
+      case IoError(path)                 => ConfigError(m"An I/O error occurred while trying to access $path")
+      case CodlReadError(label)          => ConfigError(m"The field ${label.or(t"unknown")} could not be read")
+      case PathError(path, reason)       => ConfigError(m"The path $path was not valid because $reason")
+
+    .within:
       val script: Text = Properties.ethereal.name[Text]()
-      val cache: Directory = (Xdg.cacheHome[Path] / PathName(script)).as[Directory]
-      val configPath: Path = Home.Config() / PathName(script)
+      val cache: Directory = (Xdg.cacheHome[Path] / Name(script)).as[Directory]
+      val configPath: Path = Home.Config() / Name(script)
 
       // FIXME: This shouldn't be necessary
       given pathDecoder: CodlDecoder[Path] = CodlDecoder.field[Path]
       given ecosystemIdDecoder: CodlDecoder[EcosystemId] = CodlDecoder.field[EcosystemId]
 
-      val config: Config = Codl.read[Config]((configPath / p"config.codl").as[File])
+      val configSource = (configPath / p"confix.codl").as[File].read[Text]
+      val config: Config = Codl.read[Config](configSource)
       val vault: Directory = (cache / p"vault").as[Directory]
       val snapshots: Directory = (cache / p"repos").as[Directory]
       val tmp: Directory = (cache / p"tmp").as[Directory]
 
       val buildId: Int =
-        safely((Classpath / p"build.id")().readAs[Text].trim.decodeAs[Int]).or:
-          throw Panic(msg"The build.id file was missing or corrupt")
+        safely((Classpath / p"build.id")().read[Text].trim.decodeAs[Int]).or:
+          throw Panic(m"The build.id file was missing or corrupt")
 
       Installation(buildId, config, cache, vault, tmp, snapshots)
 
-    .remedy:
-      case StreamError(_)                => abort(ConfigError(msg"The stream was cut while reading a file"))
-      case error: AggregateError[?]      => abort(ConfigError(msg"Could not read the configuration file"))
-      case EnvironmentError(variable)    => abort(ConfigError(msg"The environment variable $variable could not be accessed"))
-      case error: CharDecodeError        => abort(ConfigError(msg"The configuration file contained bad character data"))
-      case error: InvalidRefError        => abort(ConfigError(msg"The configuration contained a nonexistent reference"))
-      case SystemPropertyError(property) => abort(ConfigError(msg"The JVM system property $property could not be read."))
-      case IoError(path)                 => abort(ConfigError(msg"An I/O error occurred while trying to access $path"))
-      case CodlReadError(label)          => abort(ConfigError(msg"The field ${label.or(t"unknown")} could not be read"))
-      case PathError(path, reason)       => abort(ConfigError(msg"The path $path was not valid because $reason"))
 
 case class Installation
    (buildId:   Int,

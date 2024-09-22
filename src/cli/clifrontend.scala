@@ -21,7 +21,7 @@ import turbulence.*
 import exoskeleton.*
 import acyclicity.*
 import contingency.*
-import parasite.*, asyncOptions.cancelOrphans
+import parasite.*, orphanDisposal.cancel
 import dendrology.*, dagStyles.default
 import vacuous.*
 import hieroglyph.*, textMetrics.uniform
@@ -82,7 +82,7 @@ class CliFrontEnd()(using Terminal) extends FrontEnd:
     misc.clear()
     Out.println(t"\e[1J")
 
-  def log[InfoType: Printable](info: InfoType) =
+  def report[InfoType: Printable](info: InfoType) =
     queue.add(summon[Printable[InfoType]].print(info, terminal.stdio.termcap))
 
   def output(text: Text) = queue2.add(text)

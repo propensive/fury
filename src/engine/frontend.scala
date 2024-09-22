@@ -25,7 +25,7 @@ import acyclicity.*
 import scala.collection.concurrent as scc
 import scala.collection.mutable as scm
 
-def log[InfoType: Printable](info: InfoType)(using frontEnd: FrontEnd): Unit = frontEnd.log(info)
+def report[InfoType: Printable](info: InfoType)(using frontEnd: FrontEnd): Unit = frontEnd.report(info)
 def output(text: Text)(using frontEnd: FrontEnd): Unit = frontEnd.output(text)
 
 object FrontEnd:
@@ -51,7 +51,7 @@ trait FrontEnd:
   def setSchedule(diagram: Dag[Target]): Unit
   def start(target: Target): Unit = unscheduled.synchronized(unscheduled.add(target))
   def stop(target: Target): Unit = unscheduled.synchronized(unscheduled.remove(target))
-  def log[InfoType: Printable](info: InfoType): Unit
+  def report[InfoType: Printable](info: InfoType): Unit
   def output(text: Text): Unit
   def abort(): Unit = aborted.offer(())
   def attend(): Unit = aborted.attend()
