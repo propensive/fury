@@ -41,7 +41,7 @@ object Installation:
 
     tend:
       case StreamError(_)                => ConfigError(m"The stream was cut while reading a file")
-      case error: AggregateError[?]      => ConfigError(m"Could not read the configuration file")
+      case error: CodlError              => ConfigError(m"Could not read the configuration file")
       case EnvironmentError(variable)    => ConfigError(m"The environment variable $variable could not be accessed")
       case error: CharDecodeError        => ConfigError(m"The configuration file contained bad character data")
       case error: InvalidRefError        => ConfigError(m"The configuration contained a nonexistent reference")
@@ -66,7 +66,7 @@ object Installation:
       val tmp: Directory = (cache / p"tmp").as[Directory]
 
       val buildId: Int =
-        safely((Classpath / p"build.id")().read[Text].trim.decodeAs[Int]).or:
+        safely((Classpath / p"build.id")().read[Text].trim.decode[Int]).or:
           throw Panic(m"The build.id file was missing or corrupt")
 
       Installation(buildId, config, cache, vault, tmp, snapshots)

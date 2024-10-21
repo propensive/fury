@@ -42,6 +42,8 @@ import serpentine.*, pathHierarchies.unixOrWindows
 import spectacular.*
 import turbulence.*
 
+import fulminate.errorDiagnostics.stackTraces
+
 import scala.collection.concurrent as scc
 
 given Decimalizer = Decimalizer(2)
@@ -172,7 +174,7 @@ object Cache:
               summon[Decoder[StreamId]]
 
           tend:
-            case _: AggregateError[?] => VaultError()
+            case _: CodlError         => VaultError()
             case _: IoError           => VaultError()
             case _: CodlReadError     => VaultError()
             case _: GitRefError       => VaultError()
@@ -233,6 +235,6 @@ object Cache:
 
         maps.foldLeft(workspace.projects.view.mapValues(_.definition(workspace)).toMap)(_ ++ _)
 
-case class VaultError() extends Error(m"the vault file is not valid")
+case class VaultError()(using Diagnostics) extends Error(m"the vault file is not valid")
 
 given Realm = realm"fury"

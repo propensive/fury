@@ -19,6 +19,7 @@ package fury
 import rudiments.*
 import vacuous.*
 import fulminate.*
+import prepositional.*
 import gossamer.*
 import anticipation.*
 import gastronomy.*
@@ -28,22 +29,24 @@ import spectacular.*
 import kaleidoscope.*
 import hieroglyph.*, charEncoders.utf8
 
+import errorDiagnostics.stackTraces
+
 export Ids.*
 
-case class InvalidRefError(id: Text, refType: RefType)
+case class InvalidRefError(id: Text, refType: RefType)(using Diagnostics)
 extends Error(m"The value '$id' is not a valid ${refType.name}")
 
-case class AppError(userMessage: Message, underlyingCause: Optional[Error] = Unset)
+case class AppError(userMessage: Message, underlyingCause: Optional[Error] = Unset)(using Diagnostics)
 extends Error(userMessage)
 
 object RefError:
   def apply[IdType: Showable](ref: IdType): RefError =
     new RefError(ref.show)
 
-case class RefError(ref: Text)
+case class RefError(ref: Text)(using Diagnostics)
 extends Error(m"the reference $ref could not be resolved")
 
-case class BuildfileError(path: Path, issues: List[Error])
+case class BuildfileError(path: Path on Posix, issues: List[Error])
 extends Error(m"There were problems with the build file $path")
 
 trait RefType(val name: Text)

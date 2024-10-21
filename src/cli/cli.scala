@@ -158,7 +158,7 @@ def main(): Unit =
                     if interactive then actions.install.installInteractive(force, noTabCompletions)
                     else actions.install.batch(force, noTabCompletions)
 
-                  ExitStatus.Ok
+                  Exit.Ok
 
               case Init() :: _ =>
                 execute:
@@ -171,7 +171,7 @@ def main(): Unit =
                 execute:
                   frontEnd:
                     log(installation.config.inspect)
-                    ExitStatus.Ok
+                    Exit.Ok
 
               case Clean() :: _ =>
                 val all: Boolean = All().present
@@ -189,7 +189,7 @@ def main(): Unit =
                 case Nil =>
                   execute:
                     Out.println(t"Module has not been specified")
-                    ExitStatus.Fail(1)
+                    Exit.Fail(1)
 
                 case target :: _ =>
                   val online = Offline().absent
@@ -224,7 +224,7 @@ def main(): Unit =
                               UserError(m"An execution error occurred")
 
                           .within:
-                            actions.build.run(target().decodeAs[Target], watch, force, concise)
+                            actions.build.run(target().decode[Target], watch, force, concise)
 
                         daemon:
                           terminal.events.stream.each:
@@ -248,14 +248,14 @@ def main(): Unit =
                     Out.println:
                       e"Command $Italic(${command.vouch(using Unsafe)()}) was not recognized."
 
-                    ExitStatus.Fail(1)
+                    Exit.Fail(1)
 
               case Ecosystem() :: subcommands => subcommands match
                 case Publish() :: target => target match
                   case Nil =>
                     execute:
                       Out.println(t"Project has not been specified")
-                      ExitStatus.Fail(1)
+                      Exit.Fail(1)
 
                   case projectId :: _ =>
                     val workspace = safely(Workspace())
@@ -282,28 +282,28 @@ def main(): Unit =
                           case ExecError(_, _, _) =>
                             UserError(m"An execution error occurred")
 
-                        .within(actions.project.publish(projectId().decodeAs[ProjectId], Stream()))
+                        .within(actions.project.publish(projectId().decode[ProjectId], Stream()))
 
 
                 case _ =>
                   execute:
                     Out.println(t"Unknown command")
-                    ExitStatus.Fail(1)
+                    Exit.Fail(1)
 
               case Shutdown() :: Nil => execute:
                 FrontEnd.shutdown()
                 service.shutdown()
-                ExitStatus.Ok
+                Exit.Ok
 
               case Nil =>
                 execute:
                   tend:
                     case WorkspaceError(_) =>
-                      ExitStatus.Fail(1)
+                      Exit.Fail(1)
                   .within:
                     val workspace = Workspace()
                     Out.println(Workspace().build.actions.prim.inspect)
-                    ExitStatus.Ok
+                    Exit.Ok
 
               case subcommands =>
                 if Version().present then execute(frontEnd(actions.versionInfo())) else
@@ -313,7 +313,7 @@ def main(): Unit =
                   if subcommand.present && subcommand.lay(false)(_().contains(t"/")) then execute:
                     unsafely:
                       Out.println(e"Executing script $Bold(${subcommand.vouch()})...")
-                    ExitStatus.Fail(1)
+                    Exit.Fail(1)
                   else
                     val online = Offline().absent
                     val watch = Watch().present
@@ -324,7 +324,7 @@ def main(): Unit =
                       subcommand.let(_.suggest(previous ++ workspace.build.actions.map(_.suggestion)))
 
                     execute:
-                      workspace.lay(ExitStatus.Fail(2)): workspace =>
+                      workspace.lay(Exit.Fail(2)): workspace =>
                         subcommand.let: subcommand =>
                           tend:
                             case InvalidRefError(ref, _) =>
@@ -362,10 +362,10 @@ def main(): Unit =
 
                                     tend:
                                       buildTask.await().also(Out.print(t"\e[?25h"))
-                                      ExitStatus.Ok
+                                      Exit.Ok
                                     .remedy:
                                       case ConcurrencyError(_) =>
-                                        ExitStatus.Fail(1)
+                                        Exit.Fail(1)
 
                                 tend(main.await()).remedy:
                                   case ConcurrencyError(_) =>
@@ -374,28 +374,28 @@ def main(): Unit =
                         .or:
                           subcommand.let(frontEnd(actions.invalidSubcommand(_))).or:
                             Out.println(t"No subcommand was specified.")
-                            ExitStatus.Fail(1)
+                            Exit.Fail(1)
 
         .recover: userError =>
           execute:
             Out.println(userError.message)
             Log.fail(userError)
-            ExitStatus.Fail(4)
+            Exit.Fail(4)
 
   .remedy:
     // case InitError(message) =>
     //   println(message)
-    //   ExitStatus.Fail(2)
+    //   Exit.Fail(2)
 
     // case error: IoError =>
     //   println(error.message)
-    //   ExitStatus.Fail(2)
+    //   Exit.Fail(2)
 
     case ConcurrencyError(reason) =>
       println(m"There was a concurrency error")
-      ExitStatus.Fail(3)
+      Exit.Fail(3)
 
-def about()(using stdio: Stdio): ExitStatus =
+def about()(using stdio: Stdio): Exit =
   safely:
     Out.println:
       stdio.termcap.color match
@@ -447,4 +447,4 @@ def about()(using stdio: Stdio): ExitStatus =
     Out.println:
       e"  ${Italic}(${Properties.os.name()} ${Properties.os.version()}, ${Properties.os.arch()})\n"
 
-  ExitStatus.Ok
+  Exit.Ok

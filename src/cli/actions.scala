@@ -65,7 +65,7 @@ object actions:
                CliFrontEnd,
                Terminal,
                Stdio)
-            : ExitStatus raises UserError =
+            : Exit raises UserError =
 
       tend:
         val directories = Installer.candidateTargets().map(_.path)
@@ -80,11 +80,11 @@ object actions:
 
         if !noTabCompletions then Out.println(TabCompletions.install(force = true).communicate)
 
-        ExitStatus.Ok
+        Exit.Ok
 
       .remedy:
         case InstallError(message) => abort(UserError(message.communicate))
-        case DismissError()        => ExitStatus.Fail(1)
+        case DismissError()        => Exit.Fail(1)
 
     def batch(force: Boolean, noTabCompletions: Boolean)
         (using DaemonService[?],
@@ -95,16 +95,16 @@ object actions:
                WorkingDirectory,
                HomeDirectory,
                Effectful)
-            : ExitStatus raises UserError =
+            : Exit raises UserError =
 
       tend:
         log(Installer.install(force).communicate)
         if !noTabCompletions then info(TabCompletions.install(force = true).communicate)
-        ExitStatus.Ok
+        Exit.Ok
       .remedy:
         case InstallError(message) => abort(UserError(message.communicate))
 
-  def clean(all: Boolean)(using FrontEnd, Installation): ExitStatus raises UserError =
+  def clean(all: Boolean)(using FrontEnd, Installation): Exit raises UserError =
     import filesystemOptions.
        {doNotCreateNonexistent, doNotDereferenceSymlinks, deleteRecursively}
 
@@ -118,25 +118,25 @@ object actions:
 
     val size = safely(size0 - installation.cache.as[Directory].size()).or(0.b)
     log(t"$size was cleaned up")
-    ExitStatus.Ok
+    Exit.Ok
 
   object cache:
-    def clean()(using FrontEnd): ExitStatus raises UserError =
+    def clean()(using FrontEnd): Exit raises UserError =
       log(m"Cleaning the cache")
       Cache.clear()
-      ExitStatus.Ok
+      Exit.Ok
 
-    def about()(using FrontEnd, Monitor): ExitStatus raises UserError = Cache.about.pipe: cache =>
+    def about()(using FrontEnd, Monitor): Exit raises UserError = Cache.about.pipe: cache =>
       info
        (m"""
         The cache contains ${cache.ecosystems} ecosystems, ${cache.snapshots} repository snapshots,
         ${cache.workspaces} workspaces and ${cache.files} files, totalling ${cache.dataSize}.
         """)
-      ExitStatus.Ok
+      Exit.Ok
 
   object universe:
 
-    def show()(using Internet, WorkingDirectory, Monitor, Log[Display], FrontEnd, Stdio): ExitStatus raises UserError =
+    def show()(using Internet, WorkingDirectory, Monitor, Log[Display], FrontEnd, Stdio): Exit raises UserError =
       val rootWorkspace = tend(Workspace()).remedy:
         case WorkspaceError(reason) =>
           abort(UserError(m"The workspace could not be constructed because $reason"))
@@ -167,7 +167,7 @@ object actions:
                 e"$DeepSkyBlue(${vault.name})")
 
       log(table.tabulate(projects))
-      ExitStatus.Ok
+      Exit.Ok
 
   object project:
     def publish(projectId: ProjectId, streamId: Optional[StreamId])
@@ -178,7 +178,7 @@ object actions:
                GitCommand,
                Log[Display],
                Internet)
-            : ExitStatus raises UserError =
+            : Exit raises UserError =
       import filesystemOptions.doNotCreateNonexistent
 
       val build = tend(Workspace().build).remedy:
@@ -224,13 +224,13 @@ object actions:
           case ExecError(_, _, _)              => abort(UserError(m"An execution error occurred"))
           case ReleaseError(reason)            => abort(UserError(m"There was a problem with the release: $reason"))
 
-        ExitStatus.Ok
+        Exit.Ok
       .or:
         Out.println(t"Project $projectId is not defined in this workspace")
-        ExitStatus.Fail(1)
+        Exit.Fail(1)
 
   object build:
-    def initialize(directory: Path)(using CliFrontEnd): ExitStatus raises UserError =
+    def initialize(directory: Path)(using CliFrontEnd): Exit raises UserError =
       if (directory / p".fury").exists()
       then abort(UserError(m"A build already exists in this directory"))
 
@@ -244,10 +244,10 @@ object actions:
               LineEditor(t"").ask: description =>
                 Out.println(e"You chose $Bold($id), $Bold($name), and $Bold($description)")
 
-        ExitStatus.Ok
+        Exit.Ok
 
       .remedy:
-        case DismissError() => ExitStatus.Fail(1)
+        case DismissError() => Exit.Fail(1)
 
     def run(target: Target, watch: Boolean, force: Boolean, concise: Boolean)
        (using CliFrontEnd,
@@ -260,7 +260,7 @@ object actions:
               GitCommand,
               SystemProperties,
               Environment)
-            : ExitStatus raises UserError =
+            : Exit raises UserError =
 
       import filesystemOptions.doNotCreateNonexistent
       import filesystemOptions.dereferenceSymlinks
@@ -312,14 +312,14 @@ object actions:
           case WatchError()            => abort(UserError(m"There was an error filewatching"))
           case PathError(text, expect) => abort(UserError(m"An invalid path was encountered"))
 
-      ExitStatus.Ok
+      Exit.Ok
 
-  def invalidSubcommand(command: Argument)(using FrontEnd): ExitStatus raises UserError =
+  def invalidSubcommand(command: Argument)(using FrontEnd): Exit raises UserError =
     abort(UserError(m"${command()} is not a valid subcommand."))
 
-  def missingSubcommand()(using FrontEnd): ExitStatus raises UserError =
+  def missingSubcommand()(using FrontEnd): Exit raises UserError =
     abort(UserError(m"No subcommand was specified."))
 
-  def versionInfo()(using FrontEnd): ExitStatus =
+  def versionInfo()(using FrontEnd): Exit =
     log(m"Fury version 1.0")
-    ExitStatus.Ok
+    Exit.Ok

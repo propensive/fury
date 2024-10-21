@@ -68,6 +68,8 @@ import turbulence.*
 import vacuous.*
 import zeppelin.*
 
+import errorDiagnostics.stackTraces
+
 import scala.collection.concurrent as scc
 import scala.collection.mutable as scm
 
@@ -90,8 +92,10 @@ case class LogConfig(path: Path = Unix / p"var" / p"log" / p"fury.log")
 
 case class AbortError(n: Int) extends Error(m"the build was aborted by the user ($n)")
 
-case class BuildError(error: Error)
-extends Error(m"the build could not run because ${error.message}")
+case class BuildError(errors: Error*)
+extends Error
+   (errors.foldLeft(m"the build could not run because: "): (message, next) =>
+      m"$message\n${next.message}")
 
 val Isolation: Semaphore = Semaphore()
 val Epoch: LocalTime = 2000-Jan-1 at 0.00.am in tz"Etc/UTC"
@@ -116,7 +120,7 @@ class Builder():
     tasks.isolate: tasks =>
       synchronized:
         tasks.establish(hash):
-          task(name)(phases(hash).run(name, hash))
+          unsafely(task(name)(phases(hash).run(name, hash)))
 
   extension (library: Library)
     def phase(workspace: Workspace, target: Target)
@@ -416,7 +420,7 @@ class Builder():
           if executable.or(false) then file.executable() = true
 
           counterPath.let: counter =>
-            safely(counter.as[File].read[Text].trim.decodeAs[Int]).let: count =>
+            safely(counter.as[File].read[Text].trim.decode[Int]).let: count =>
               tend:
                 case error: IoError     => BuildError(error)
                 case error: StreamError => BuildError(error)
@@ -442,9 +446,12 @@ class Builder():
 
     def run(name: Text, hash: Hash)
         (using FrontEnd, DaemonService[?], Installation, Monitor, SystemProperties, Environment, Internet)
-            : Directory logs Message =
+            : Directory raises BuildError logs Message =
 
-      attempt[AggregateError[BuildError]]:
+      accrue(BuildError()):
+        case BuildError(error) =>
+          BuildError((accrual.errors :+ error)*)
+      .within:
           tend:
             case error: IoError => BuildError(error)
           .within(output.as[Directory])
@@ -570,7 +577,7 @@ class Builder():
       .pipe: classpath =>
         val command = sh"$javaCommand -classpath ${classpath()} ${exec.main}"
         val process = tend { case error: ExecError => BuildError(error) }.within:
-          command.fork[ExitStatus]()
+          command.fork[Exit]()
 
         tend { case error: ConcurrencyError => BuildError(error) }.within:
           async:
@@ -582,7 +589,7 @@ class Builder():
 
 
         process.await() match
-          case ExitStatus.Ok =>
+          case Exit.Ok =>
             tend { case error: IoError => BuildError(error) }.within:
               work.moveTo(output).as[Directory]
 
@@ -618,7 +625,7 @@ class Builder():
 
       Log.info(m"Starting to build")
 
-      val inputs =
+      val inputs: List[Directory] =
         tend { case error: ConcurrencyError => BuildError(error) }.within:
           antecedents.to(List).map { (hash, name) => runTask(name, hash) }.map(_.await())
 
@@ -629,15 +636,10 @@ class Builder():
         tend { case error: IoError => BuildError(error) }.within:
           output.as[Directory].tap(_.touch())
       else
-        inputs.filter(_.failure).each: input =>
-          input.acknowledge:
-            case AggregateError(errors) => errors.each:
-              case BuildError(error) =>
-                Log.warn(m"There was a build error in an input to $target: ${error.message}")
-                report(error.stackTrace.teletype)
+        Log.warn(m"There was a build error in an input to $target")
+        raise(BuildError(AbortError(2)))
 
-        if inputs.exists(_.failure)
-        then
+        if inputs.exists(!_.path.exists()) then
           Log.info(m"One of the inputs did not complete")
           abort(BuildError(AbortError(3)))
         else
@@ -665,94 +667,95 @@ class Builder():
               (classpath.map(outputDirectory(_)) ++ allBinaries).foldLeft(baseClasspath)(_ + _)
 
           classpathEntries.pipe: classpath =>
-            given BuildError mitigates IoError = BuildError(_)
+            tend:
+              case error: IoError => BuildError(error)
+            .within:
+              if sourceMap.isEmpty then output.as[Directory] else
+                val process: CompileProcess =
+                  //Log.envelop(target):
+                    compiler match
+                      case Compiler.Java =>
+                        tend { case error: CompileError => BuildError(error) }.within:
+                          Javac(Nil)(classpath)(sourceMap, work.path)
 
-            if sourceMap.isEmpty then output.as[Directory] else
-              val process: CompileProcess =
-                //Log.envelop(target):
-                  compiler match
-                    case Compiler.Java =>
-                      tend { case error: CompileError => BuildError(error) }.within:
-                        Javac(Nil)(classpath)(sourceMap, work.path)
+                      case Compiler.Kotlin =>
+                        abort(BuildError(AbortError(4)))
 
-                    case Compiler.Kotlin =>
-                      abort(BuildError(AbortError(4)))
+                      case Compiler.Scala =>
+                        import scalacOptions.*
 
-                    case Compiler.Scala =>
-                      import scalacOptions.*
+                        tend:
+                          case error: CompileError => BuildError(error)
+                        .within:
+                          Scalac[3.4]
+                           (List
+                             (language.experimental.fewerBraces,
+                              language.experimental.genericNumberLiterals,
+                              language.experimental.clauseInterleaving,
+                              language.experimental.into,
+                              language.experimental.erasedDefinitions,
+                              language.experimental.saferExceptions,
+                              language.experimental.namedTypeArguments,
+                              advanced.maxInlines(64),
+                              internal.requireTargetName,
+                              internal.explicitNulls,
+                              internal.checkPatterns,
+                              internal.safeInit,
+                              internal.ccNew,
+                              experimental,
+                              sourceFuture,
+                              newSyntax,
+                              warnings.lint.privateShadow,
+                              warnings.lint.typeParameterShadow,
+                              warnings.deprecation,
+                              warnings.feature,
+                              warnings.unused(Unused.All),
+                              warnings.implausiblePatterns))
+                           (classpath)
+                           (sourceMap, work.path)
 
-                      tend:
-                        case error: CompileError => BuildError(error)
-                      .within:
-                        Scalac[3.4]
-                         (List
-                           (language.experimental.fewerBraces,
-                            language.experimental.genericNumberLiterals,
-                            language.experimental.clauseInterleaving,
-                            language.experimental.into,
-                            language.experimental.erasedDefinitions,
-                            language.experimental.saferExceptions,
-                            language.experimental.namedTypeArguments,
-                            advanced.maxInlines(64),
-                            internal.requireTargetName,
-                            internal.explicitNulls,
-                            internal.checkPatterns,
-                            internal.safeInit,
-                            internal.ccNew,
-                            experimental,
-                            sourceFuture,
-                            newSyntax,
-                            warnings.lint.privateShadow,
-                            warnings.lint.typeParameterShadow,
-                            warnings.deprecation,
-                            warnings.feature,
-                            warnings.unused(Unused.All),
-                            warnings.implausiblePatterns))
-                         (classpath)
-                         (sourceMap, work.path)
+                val cancellation = daemon:
+                  summon[FrontEnd].attend()
+                  process.abort()
 
-              val cancellation = daemon:
-                summon[FrontEnd].attend()
-                process.abort()
+                val progressDaemon = daemon:
+                  process.progress.each: progress =>
+                    summon[FrontEnd](target) = progress.complete
 
-              val progressDaemon = daemon:
-                process.progress.each: progress =>
-                  summon[FrontEnd](target) = progress.complete
+                task(t"$target.notices"):
+                  process.notices.each: notice =>
+                    notice.importance match
+                      case Importance.Error =>
+                        report(errorRibbon.fill(e"$target", notice.file.teletype))
 
-              task(t"$target.notices"):
-                process.notices.each: notice =>
-                  notice.importance match
-                    case Importance.Error =>
-                      report(errorRibbon.fill(e"$target", notice.file.teletype))
+                      case Importance.Warning =>
+                        report(warningRibbon.fill(e"$target", notice.file.teletype))
 
-                    case Importance.Warning =>
-                      report(warningRibbon.fill(e"$target", notice.file.teletype))
+                      case Importance.Info =>
+                        report(infoRibbon.fill(e"$target", notice.file.teletype))
 
-                    case Importance.Info =>
-                      report(infoRibbon.fill(e"$target", notice.file.teletype))
+                    notice.codeRange.let: range =>
+                      val source: SourceCode = SourceCode(Scala, notice.file)
+                      report(range.of(source).teletype)
 
-                  notice.codeRange.let: range =>
-                    val source: SourceCode = SourceCode(Scala, notice.file)
-                    report(range.of(source).teletype)
+                    report(e"$Italic(${notice.message})")
+                    report(t"")
 
-                  report(e"$Italic(${notice.message})")
-                  report(t"")
+                tend:
+                  case error: ConcurrencyError => BuildError(error)
+                .within(process.complete())
 
-              tend:
-                case error: ConcurrencyError => BuildError(error)
-              .within(process.complete())
+                progressDaemon.attend()
+                cancellation.cancel()
 
-              progressDaemon.attend()
-              cancellation.cancel()
+                val errorCount = process.notices.count(_.importance == Importance.Error)
+                val warnCount = process.notices.count(_.importance == Importance.Warning)
 
-              val errorCount = process.notices.count(_.importance == Importance.Error)
-              val warnCount = process.notices.count(_.importance == Importance.Warning)
-
-              if errorCount == 0
-              then
-                tend { case error: IoError => BuildError(error) }.within:
-                  work.moveTo(output).as[Directory]
-              else abort(BuildError(AbortError(5)))
+                if errorCount == 0
+                then
+                  tend { case error: IoError => BuildError(error) }.within:
+                    work.moveTo(output).as[Directory]
+                else abort(BuildError(AbortError(5)))
 
   given Phase is Expandable = _.antecedents.keys.map(phases(_)).to(List)
 

@@ -23,10 +23,11 @@ import escapade.*
 import exoskeleton.*
 import fulminate.*
 import galilei.*
-import filesystemOptions.{doNotCreateNonexistent, dereferenceSymlinks}
+import filesystemOptions.dereferenceSymlinks.enabled
+import filesystemOptions.createNonexistent.disabled
 import filesystemApi.galileiPath
 import gastronomy.*
-import gossamer.{where as _, *}
+import gossamer.*
 import hieroglyph.*, charEncoders.utf8, charDecoders.utf8, textSanitizers.strict
 import digression.*
 import kaleidoscope.*
@@ -43,6 +44,8 @@ import symbolism.*
 import turbulence.*
 import vacuous.*
 
+import errorDiagnostics.stackTraces
+
 export gitCommands.environmentDefault
 
 erased given CanThrow[AppError] = ###
@@ -52,12 +55,6 @@ given Hash is Communicable = hash =>
   Message(hash.serialize[Base32])
 
 type Hash = Digest in Sha2[256]
-
-// FIXME: This shouldn't need to exist. AggregateError needs to be replaced.
-given (using CanThrow[AppError]): Tactic[AggregateError[Error]] =
-  new Tactic[AggregateError[Error]]:
-    def record(error: AggregateError[Error]): Unit = throw AppError(error.message, error)
-    def abort(error: AggregateError[Error]): Nothing = throw AppError(error.message, error)
 
 import Ids.*
 
@@ -201,7 +198,7 @@ object ReleaseError:
   given Reason is Communicable =
     case Reason.NoLicense => m"the license has not been specified"
 
-case class ReleaseError(reason: ReleaseError.Reason)
+case class ReleaseError(reason: ReleaseError.Reason)(using Diagnostics)
 extends Error(m"The project is not ready for release because $reason")
 
 case class Assist(target: Target, module: GoalId)
@@ -374,8 +371,8 @@ object WorkPath:
     type Operand = WorkPath
     def add(left: Path, right: WorkPath): Path = right.descent.reverse.foldLeft(left)(_ / _)
 
-case class WorkPath(descent: List[Name[GeneralForbidden]]):
-  def link: SafeRelative = SafeRelative(0, descent)
+case class WorkPath(descent: List[Name[Posix]]):
+  def link: Relative = Relative(0, descent)
 
 case class Definition
     (name:        Text,
@@ -390,9 +387,9 @@ object Workspace:
     tend:
       case pathError: PathError =>
         WorkspaceError(WorkspaceError.Reason.Explanation(pathError.message))
-    .within(apply(workingDirectory[Path]))
+    .within(apply(workingDirectory))
 
-  def apply(path: Path): Workspace raises WorkspaceError =
+  def apply(path: Path on Posix): Workspace raises WorkspaceError =
     /*given (WorkspaceError fixes HostnameError) =
       case HostnameError(text, _) => WorkspaceError(WorkspaceError.Reason.BadData(text))
 
@@ -441,7 +438,8 @@ object Workspace:
       //case GitRefError(text)          => abort(WorkspaceError(WorkspaceError.Reason.BadData(text)))
       case StreamError(_)             => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
       //case MarkdownError(reason)      => abort(WorkspaceError(WorkspaceError.Reason.Explanation(reason.communicate)))
-      case IoError(path)              => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
+      case IoError(path, _, _)        => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
+      case CodlError(_, _, _, _)      => WorkspaceError(WorkspaceError.Reason.Unreadable(path))
       //case UrlError(text, _, _)       => abort(WorkspaceError(WorkspaceError.Reason.BadData(text)))
       //case pathError: PathError       => abort(WorkspaceError(WorkspaceError.Reason.Explanation(pathError.message)))
       //case InvalidRefError(text, _)   => abort(WorkspaceError(WorkspaceError.Reason.BadData(text)))
@@ -449,14 +447,13 @@ object Workspace:
       //case NumberError(text, _)       => abort(WorkspaceError(WorkspaceError.Reason.BadData(text)))
       case CharDecodeError(_, _) => WorkspaceError(WorkspaceError.Reason.BadContent)
     .within:
-      val dir: Directory = path.as[Directory]
-      val buildFile: File = (dir / p".fury").as[File]
+      val buildFile: Path on Posix = (path / n".fury")
       val buildDoc: CodlDoc = Codl.parse(buildFile)
       ???
 
     /*
     val build: Build = Codl.read[Build](buildFile)
-    val localPath: Path = dir / p".local"
+    val localPath: Path = dir / n".local"
     val localFile: Optional[File] = if localPath.exists() then localPath.as[File] else Unset
     val local: Optional[Local] = localFile.let(Codl.read[Local](_))
 
