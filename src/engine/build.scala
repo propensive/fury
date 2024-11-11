@@ -106,13 +106,13 @@ class Builder():
   private val tasks: Mutex[scm.HashMap[Hash, Task[Directory]]] = Mutex(scm.HashMap())
 
   def runTask(name: Text, hash: Hash)
-      (using Monitor,
-             Environment,
-             FrontEnd,
-             SystemProperties,
-             Installation,
-             DaemonService[?],
-             Internet)
+     (using Monitor,
+            Environment,
+            FrontEnd,
+            SystemProperties,
+            Installation,
+            DaemonService[?],
+            Internet)
           : Task[Directory] logs Message =
 
     Log.info(m"Building task for $hash")
@@ -124,26 +124,26 @@ class Builder():
 
   extension (library: Library)
     def phase(workspace: Workspace, target: Target)
-        (using Installation,
-               Internet,
-               Monitor,
-               WorkingDirectory,
-               Universe,
-               GitCommand,
-               FrontEnd)
+       (using Installation,
+              Internet,
+              Monitor,
+              WorkingDirectory,
+              Universe,
+              GitCommand,
+              FrontEnd)
             : LibraryPhase raises ConcurrencyError raises PathError raises GitError raises
                BuildError raises ExecError raises IoError logs Message =
       LibraryPhase(installation.build, library, target)
 
   extension (artifact: Artifact)
     def phase(workspace: Workspace, target: Target)
-        (using Installation,
-               Internet,
-               Monitor,
-               WorkingDirectory,
-               Universe,
-               GitCommand,
-               FrontEnd)
+       (using Installation,
+              Internet,
+              Monitor,
+              WorkingDirectory,
+              Universe,
+              GitCommand,
+              FrontEnd)
             : ArtifactPhase raises ConcurrencyError raises PathError raises GitError raises
                BuildError raises ExecError raises IoError logs Message =
 
@@ -184,7 +184,7 @@ class Builder():
 
   extension (exec: Exec)
     def phase(workspace: Workspace, target: Target)
-        (using Installation, Internet, Universe, Monitor, WorkingDirectory, FrontEnd, GitCommand)
+       (using Installation, Internet, Universe, Monitor, WorkingDirectory, FrontEnd, GitCommand)
             : ExecPhase raises ConcurrencyError raises GitError raises PathError raises ExecError raises
                IoError raises BuildError raises StreamError logs Message =
 
@@ -201,7 +201,7 @@ class Builder():
 
   extension (module: Module)
     def phase(workspace: Workspace, target: Target)
-        (using Installation, Internet, Universe, Monitor, WorkingDirectory, FrontEnd, GitCommand)
+       (using Installation, Internet, Universe, Monitor, WorkingDirectory, FrontEnd, GitCommand)
             : ModulePhase raises ConcurrencyError raises GitError raises PathError raises ExecError raises
                IoError raises BuildError raises StreamError logs Message =
 
@@ -248,7 +248,7 @@ class Builder():
       unsafely(build / Name(hash.keep(2)) / Name(hash.skip(2)))
 
     def run(name: Text, hash: Hash)
-        (using FrontEnd, DaemonService[?], Installation, Monitor, SystemProperties, Environment, Internet)
+       (using FrontEnd, DaemonService[?], Installation, Monitor, SystemProperties, Environment, Internet)
             : Directory logs Message raises BuildError
 
   case class ArtifactPhase
@@ -272,13 +272,13 @@ class Builder():
     val binaries: List[Hash] = Nil
 
     def run(name: Text, hash: Hash)
-        (using FrontEnd,
-               DaemonService[?],
-               Installation,
-               Monitor,
-               SystemProperties,
-               Environment,
-               Internet)
+       (using FrontEnd,
+              DaemonService[?],
+              Installation,
+              Monitor,
+              SystemProperties,
+              Environment,
+              Internet)
             : Directory logs Message raises BuildError =
 
       antecedents.each: (hash, name) =>
@@ -445,7 +445,7 @@ class Builder():
     val binaries: List[Hash] = List(digest)
 
     def run(name: Text, hash: Hash)
-        (using FrontEnd, DaemonService[?], Installation, Monitor, SystemProperties, Environment, Internet)
+       (using FrontEnd, DaemonService[?], Installation, Monitor, SystemProperties, Environment, Internet)
             : Directory raises BuildError logs Message =
 
       accrue(BuildError()):
@@ -516,24 +516,24 @@ class Builder():
             .within(output.as[Directory])
 
   case class ExecPhase
-      (build:       Path,
-       target:      Target,
-       exec:        Exec,
-       classpath:   List[Hash],
-       antecedents: Map[Hash, Text],
-       watches:     Set[Path])
+     (build:       Path,
+      target:      Target,
+      exec:        Exec,
+      classpath:   List[Hash],
+      antecedents: Map[Hash, Text],
+      watches:     Set[Path])
   extends Phase:
 
     def digest = (antecedents).digest[Sha2[256]]
     def binaries: List[Hash] = Nil
     def run(name: Text, hash: Hash)
-        (using FrontEnd,
-               DaemonService[?],
-               Installation,
-               Monitor,
-               SystemProperties,
-               Environment,
-               Internet)
+       (using FrontEnd,
+              DaemonService[?],
+              Installation,
+              Monitor,
+              SystemProperties,
+              Environment,
+              Internet)
             : Directory logs Message raises BuildError =
 
       val inputs =
@@ -614,13 +614,13 @@ class Builder():
     val binaries: List[Hash] = Nil
 
     def run(name: Text, hash: Hash)
-        (using FrontEnd,
-               DaemonService[?],
-               Installation,
-               Monitor,
-               SystemProperties,
-               Environment,
-               Internet)
+       (using FrontEnd,
+              DaemonService[?],
+              Installation,
+              Monitor,
+              SystemProperties,
+              Environment,
+              Internet)
             : Directory logs Message raises BuildError =
 
       Log.info(m"Starting to build")
@@ -765,13 +765,13 @@ class Builder():
   def schedule(digest: Hash): Dag[Target] = dag(digest).map(_.target)
 
   def build(target: Target)(using Universe)
-      (using Monitor,
-             Clock,
-             WorkingDirectory,
-             Internet,
-             Installation,
-             GitCommand,
-             FrontEnd)
+     (using Monitor,
+            Clock,
+            WorkingDirectory,
+            Internet,
+            Installation,
+            GitCommand,
+            FrontEnd)
           : Task[Hash] raises BuildError logs Message = synchronized:
     builds.establish(target):
       Log.info(m"Building target $target")
@@ -840,13 +840,13 @@ class Builder():
       unsafely(installation.build / Name(hash.keep(2)) / Name(hash.skip(2)))
 
   def run(name: Text, hash: Hash, force: Boolean)
-      (using DaemonService[?],
-             Installation,
-             FrontEnd,
-             Monitor,
-             SystemProperties,
-             Environment,
-             Internet)
+     (using DaemonService[?],
+            Installation,
+            FrontEnd,
+            Monitor,
+            SystemProperties,
+            Environment,
+            Internet)
           : Directory raises ConcurrencyError raises StreamError raises ZipError raises
              IoError raises PathError raises BuildError raises CompileError logs Message =
 
@@ -855,12 +855,12 @@ class Builder():
 
 extension (workspace: Workspace)
   def locals()
-      (using Monitor, WorkingDirectory, Internet, Installation, GitCommand)
+     (using Monitor, WorkingDirectory, Internet, Installation, GitCommand)
           : Map[ProjectId, Definition] raises ConcurrencyError raises WorkspaceError logs Message =
     Cache.projectsMap(workspace).await()
 
   def universe()
-      (using Monitor, Clock, WorkingDirectory, Internet, Installation, GitCommand)
+     (using Monitor, Clock, WorkingDirectory, Internet, Installation, GitCommand)
           : Universe raises ConcurrencyError raises VaultError raises WorkspaceError logs Message =
     Log.info(m"Constructing universe")
 
@@ -882,17 +882,17 @@ extension (workspace: Workspace)
   def apply(projectId: ProjectId): Project = workspace.projects(projectId)
 
   def apply(path: WorkPath)
-      (using Installation,
-             Internet,
-             Monitor,
-             WorkingDirectory,
-             FrontEnd,
-             GitCommand,
-             Tactic[ConcurrencyError],
-             Tactic[GitError],
-             Tactic[PathError],
-             Tactic[ExecError],
-             Tactic[IoError])
+     (using Installation,
+            Internet,
+            Monitor,
+            WorkingDirectory,
+            FrontEnd,
+            GitCommand,
+            Tactic[ConcurrencyError],
+            Tactic[GitError],
+            Tactic[PathError],
+            Tactic[ExecError],
+            Tactic[IoError])
           : Path logs Message =
 
     workspace.mounts.keys.where(_.precedes(path)).lay(workspace.directory.path + path.link): mount =>

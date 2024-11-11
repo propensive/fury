@@ -70,17 +70,17 @@ object Release:
   given relabelling: CodlRelabelling[Release] = () => Map(t"packages" -> t"provide")
 
 case class Release
-    (id:          ProjectId,
-     stream:      StreamId,
-     name:        Text,
-     website:     Optional[HttpUrl],
-     description: InlineMd,
-     license:     LicenseId,
-     date:        Date,
-     lifetime:    Int,
-     repo:        Snapshot,
-     packages:    List[Fqcn],
-     keywords:    List[Keyword]):
+   (id:          ProjectId,
+    stream:      StreamId,
+    name:        Text,
+    website:     Optional[HttpUrl],
+    description: InlineMd,
+    license:     LicenseId,
+    date:        Date,
+    lifetime:    Int,
+    repo:        Snapshot,
+    packages:    List[Fqcn],
+    keywords:    List[Keyword]):
 
   def expiry: Date = date + lifetime.days
 
@@ -122,12 +122,12 @@ object Build:
        t"mounts" -> t"mount")
 
 case class Build
-    (prelude:   Optional[Prelude],
-     ecosystem: Ecosystem,
-     actions:   List[Action],
-     default:   Optional[ActionName],
-     projects:  List[Project],
-     mounts:    List[Mount]):
+   (prelude:   Optional[Prelude],
+    ecosystem: Ecosystem,
+    actions:   List[Action],
+    default:   Optional[ActionName],
+    projects:  List[Project],
+    mounts:    List[Mount]):
   def defaultAction: Optional[Action] = actions.where(_.name == default)
 
 case class Prelude(terminator: Text, comment: List[Text])
@@ -145,20 +145,20 @@ object Project:
       t"streams"      -> t"stream")
 
 case class Project
-    (id:          ProjectId,
-     name:        Text,
-     description: InlineMd,
-     modules:     List[Module],
-     libraries:   List[Library],
-     artifacts:   List[Artifact],
-     containers:  List[Container],
-     loads:       List[Load],
-     variables:   List[Variable],
-     execs:       List[Exec],
-     website:     HttpUrl,
-     license:     Optional[LicenseId],
-     keywords:    List[Keyword],
-     streams:     List[Stream]):
+   (id:          ProjectId,
+    name:        Text,
+    description: InlineMd,
+    modules:     List[Module],
+    libraries:   List[Library],
+    artifacts:   List[Artifact],
+    containers:  List[Container],
+    loads:       List[Load],
+    variables:   List[Variable],
+    execs:       List[Exec],
+    website:     HttpUrl,
+    license:     Optional[LicenseId],
+    keywords:    List[Keyword],
+    streams:     List[Stream]):
 
   def suggestion: Suggestion = Suggestion(id.show, t"$name: $description")
 
@@ -224,17 +224,17 @@ object Artifact:
       t"suffixes"  -> t"suffix")
 
 case class Artifact
-    (id:         GoalId,
-     path:       WorkPath,
-     basis:      Optional[Basis],
-     includes:   List[Target],
-     main:       Optional[Fqcn],
-     prefixes:   List[WorkPath],
-     suffixes:   List[WorkPath],
-     counter:    Optional[WorkPath],
-     executable: Optional[Boolean],
-     manifest:   List[ManifestEntry],
-     resources:  List[Resource])
+   (id:         GoalId,
+    path:       WorkPath,
+    basis:      Optional[Basis],
+    includes:   List[Target],
+    main:       Optional[Fqcn],
+    prefixes:   List[WorkPath],
+    suffixes:   List[WorkPath],
+    counter:    Optional[WorkPath],
+    executable: Optional[Boolean],
+    manifest:   List[ManifestEntry],
+    resources:  List[Resource])
 
 case class Resource(path: WorkPath, jarPath: WorkPath)
 
@@ -248,11 +248,11 @@ case class Insertion(source: WorkPath, destination: WorkPath)
 case class Extraction(source: WorkPath, destination: WorkPath)
 
 case class Container
-    (id:          GoalId,
-     dockerfile:  WorkPath,
-     root:        WorkPath,
-     insertions:  List[Insertion],
-     extractions: List[Extraction])
+   (id:          GoalId,
+    dockerfile:  WorkPath,
+    root:        WorkPath,
+    insertions:  List[Insertion],
+    extractions: List[Extraction])
 
 object Exec:
   given relabelling: CodlRelabelling[Exec] = () =>
@@ -271,17 +271,17 @@ object Module:
       t"assists"      -> t"assist")
 
 case class Module
-    (id:           GoalId,
-     includes:     List[Target],
-     requirements: List[Target],
-     sources:      List[WorkPath],
-     packages:     List[Fqcn],
-     usages:       List[Target],
-     omissions:    List[Target],
-     assists:      List[Assist],
-     compiler:     Optional[Text],
-     main:         Optional[Fqcn],
-     coverage:     Optional[Target])
+   (id:           GoalId,
+    includes:     List[Target],
+    requirements: List[Target],
+    sources:      List[WorkPath],
+    packages:     List[Fqcn],
+    usages:       List[Target],
+    omissions:    List[Target],
+    assists:      List[Assist],
+    compiler:     Optional[Text],
+    main:         Optional[Fqcn],
+    coverage:     Optional[Target])
 
 case class Library(id: GoalId, url: HttpUrl)
 
@@ -375,12 +375,12 @@ case class WorkPath(descent: List[Name[Posix]]):
   def link: Relative = Relative(0, descent)
 
 case class Definition
-    (name:        Text,
-     description: InlineMd,
-     website:     Optional[HttpUrl],
-     license:     Optional[LicenseId],
-     keywords:    List[Keyword],
-     source:      Vault | Workspace)
+   (name:        Text,
+    description: InlineMd,
+    website:     Optional[HttpUrl],
+    license:     Optional[LicenseId],
+    keywords:    List[Keyword],
+    source:      Vault | Workspace)
 
 object Workspace:
   def apply()(using WorkingDirectory): Workspace raises WorkspaceError =

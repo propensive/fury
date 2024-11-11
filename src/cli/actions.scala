@@ -55,16 +55,16 @@ case class InitError(initMessage: Message) extends Error(initMessage)
 object actions:
   object install:
     def installInteractive(force: Boolean, noTabCompletions: Boolean)
-        (using DaemonService[?],
-               Log[Display],
-               SystemProperties,
-               Environment,
-               WorkingDirectory,
-               HomeDirectory,
-               Effectful,
-               CliFrontEnd,
-               Terminal,
-               Stdio)
+       (using DaemonService[?],
+              Log[Display],
+              SystemProperties,
+              Environment,
+              WorkingDirectory,
+              HomeDirectory,
+              Effectful,
+              CliFrontEnd,
+              Terminal,
+              Stdio)
             : Exit raises UserError =
 
       tend:
@@ -87,14 +87,14 @@ object actions:
         case DismissError()        => Exit.Fail(1)
 
     def batch(force: Boolean, noTabCompletions: Boolean)
-        (using DaemonService[?],
-               FrontEnd,
-               Log[Display],
-               SystemProperties,
-               Environment,
-               WorkingDirectory,
-               HomeDirectory,
-               Effectful)
+       (using DaemonService[?],
+              FrontEnd,
+              Log[Display],
+              SystemProperties,
+              Environment,
+              WorkingDirectory,
+              HomeDirectory,
+              Effectful)
             : Exit raises UserError =
 
       tend:
@@ -171,13 +171,13 @@ object actions:
 
   object project:
     def publish(projectId: ProjectId, streamId: Optional[StreamId])
-        (using WorkingDirectory,
-               Stdio,
-               Environment,
-               SystemProperties,
-               GitCommand,
-               Log[Display],
-               Internet)
+       (using WorkingDirectory,
+              Stdio,
+              Environment,
+              SystemProperties,
+              GitCommand,
+              Log[Display],
+              Internet)
             : Exit raises UserError =
       import filesystemOptions.doNotCreateNonexistent
 

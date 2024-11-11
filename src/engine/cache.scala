@@ -52,7 +52,7 @@ given Timezone = tz"Etc/UTC"
 case class CachedFile(lastModified: Instant, text: Task[Text], hash: Task[Hash])
 
 case class CacheInfo
-    (ecosystems: Int, snapshots: Int, workspaces: Int, files: Int, dataSize: ByteSize)
+   (ecosystems: Int, snapshots: Int, workspaces: Int, files: Int, dataSize: ByteSize)
 
 object Cache:
   private val ecosystems: scc.TrieMap[Ecosystem, Task[Vault]] = scc.TrieMap()
@@ -96,15 +96,15 @@ object Cache:
     case Progress.RemoteCompressing(percent) => 0.8 + percent/5.0
 
   def apply(snapshot: Snapshot)
-      (using Installation,
-             Internet,
-             WorkingDirectory,
-             GitCommand,
-             FrontEnd,
-             Tactic[ExecError],
-             Tactic[PathError],
-             Tactic[IoError],
-             Tactic[GitError])
+     (using Installation,
+            Internet,
+            WorkingDirectory,
+            GitCommand,
+            FrontEnd,
+            Tactic[ExecError],
+            Tactic[PathError],
+            Tactic[IoError],
+            Tactic[GitError])
           : Task[Directory] logs Message =
 
     snapshots.establish(snapshot):
@@ -126,7 +126,7 @@ object Cache:
             Log.info(m"Finished cloning ${snapshot.url}")
 
   def apply(ecosystem: Ecosystem)(using installation: Installation)
-      (using Internet, WorkingDirectory, GitCommand)
+     (using Internet, WorkingDirectory, GitCommand)
           : Task[Vault] raises VaultError logs Message =
 
     ecosystems.establish(ecosystem):
@@ -209,7 +209,7 @@ object Cache:
         Vault(t"vent", 1, current)
 
   def workspace(path: Path)
-      (using Installation, Internet, WorkingDirectory, GitCommand)
+     (using Installation, Internet, WorkingDirectory, GitCommand)
           : Task[Workspace] raises WorkspaceError logs Message =
 
     val lastModified =
@@ -225,7 +225,7 @@ object Cache:
       workspaces(path) = (lastModified, async)
 
   def projectsMap(workspace: Workspace)
-      (using Installation, Internet, WorkingDirectory, GitCommand)
+     (using Installation, Internet, WorkingDirectory, GitCommand)
           : Task[Map[ProjectId, Definition]] raises WorkspaceError raises ConcurrencyError logs Message =
 
     locals.establish(workspace):

@@ -40,7 +40,7 @@ import java.util.concurrent as juc
 
 
 def frontEnd[ResultType](lambda: CliFrontEnd ?=> Terminal ?=> ResultType)
-    (using Cli, Log[Display], Monitor)
+   (using Cli, Log[Display], Monitor)
         : ResultType =
   terminal:
     val frontEnd = CliFrontEnd()
@@ -57,7 +57,7 @@ def frontEnd[ResultType](lambda: CliFrontEnd ?=> Terminal ?=> ResultType)
       FrontEnd.unregister(frontEnd)
 
 def interactive[ResultType](using frontEnd: CliFrontEnd)
-    (block: Stdio ?=> Interactivity[TerminalEvent] ?=> ResultType)
+   (block: Stdio ?=> Interactivity[TerminalEvent] ?=> ResultType)
         : ResultType =
 
   block(using frontEnd.terminal.stdio)(using frontEnd.terminal)
