@@ -99,40 +99,41 @@ object Ids:
         raise(InvalidRefError(value, this), value.asInstanceOf[LicenseId])
 
   given EcosystemId is Showable = identity(_)
-  given ecosystemIdEncoder: Encoder[EcosystemId] = identity(_)
-  given ecosystemIdDecoder(using Tactic[InvalidRefError]): Decoder[EcosystemId] = EcosystemId(_)
+  given EcosystemId is Encodable in Text as ecosystemIdEncoder = identity(_)
+
+  given (using Tactic[InvalidRefError]) => Decoder[EcosystemId] as ecosystemIdDecoder =
+    EcosystemId(_)
 
   given EcosystemId is Digestible =
     (acc, ecosystemId) => acc.append(ecosystemId.bytes)
 
   given ProjectId is Showable = identity(_)
-  given projectIdEncoder: Encoder[ProjectId] = identity(_)
-  given projectIdDecoder(using Tactic[InvalidRefError]): Decoder[ProjectId] = ProjectId(_)
+  given ProjectId is Encodable in Text as projectIdEncoder = identity(_)
+  given (using Tactic[InvalidRefError]) => Decoder[ProjectId] as projectIdDecoder = ProjectId(_)
   given ProjectId is Digestible = (acc, projectId) => acc.append(projectId.bytes)
 
   given StreamId is Showable = identity(_)
-  given streamIdEncoder: Encoder[StreamId] = identity(_)
-  given streamIdDecoder(using Tactic[InvalidRefError]): Decoder[StreamId] = StreamId(_)
+  given StreamId is Encodable in Text as streamIdEncoder = identity(_)
+  given (using Tactic[InvalidRefError]) => Decoder[StreamId] as streamIdDecoder = StreamId(_)
   given StreamId is Digestible = (acc, streamId) => acc.append(streamId.bytes)
 
   given LicenseId is Showable = identity(_)
-  given licenseIdEncoder: Encoder[LicenseId] = identity(_)
-  given licenseIdDecoder(using Tactic[InvalidRefError]): Decoder[LicenseId] = LicenseId(_)
+  given LicenseId is Encodable in Text as licenseIdEncoder = identity(_)
+  given (using Tactic[InvalidRefError]) => Decoder[LicenseId] as licenseIdDecoder = LicenseId(_)
   given LicenseId is Digestible = (acc, licenseId) => acc.append(licenseId.bytes)
 
   given ActionName is Showable = identity(_)
-  given actionNameEncoder: Encoder[ActionName] = identity(_)
-  given actionNameDecoder(using Tactic[InvalidRefError]): Decoder[ActionName] = ActionName(_)
+  given ActionName is Encodable in Text as actionNameEncoder = identity(_)
+  given (using Tactic[InvalidRefError]) => Decoder[ActionName] as actionNameDecoder = ActionName(_)
 
-  given ActionName is Digestible =
-    (acc, actionName) => acc.append(actionName.bytes)
+  given ActionName is Digestible = (acc, actionName) => acc.append(actionName.bytes)
 
   given Keyword is Showable = identity(_)
-  given keywordEncoder: Encoder[Keyword] = identity(_)
-  given keywordDecoder(using Tactic[InvalidRefError]): Decoder[Keyword] = Keyword(_)
+  given Keyword is Encodable in Text as keywordEncoder = identity(_)
+  given (using Tactic[InvalidRefError]) => Decoder[Keyword] as keywordDecoder = Keyword(_)
   given Keyword is Digestible = (acc, keyword) => acc.append(keyword.bytes)
 
   given GoalId is Showable = identity(_)
-  given goalIdEncoder: Encoder[GoalId] = identity(_)
+  given GoalId is Encodable in Text as goalIdEncoder = identity(_)
   given GoalId is Digestible = (acc, goalId) => acc.append(goalId.bytes)
-  given goalIdDecoder(using Tactic[InvalidRefError]): Decoder[GoalId] = GoalId(_)
+  given (using Tactic[InvalidRefError]) => Decoder[GoalId] as goalIdDecoder = GoalId(_)

@@ -204,7 +204,7 @@ extends Error(m"The project is not ready for release because $reason")
 case class Assist(target: Target, module: GoalId)
 
 object Basis extends RefType(t"basis"):
-  given encoder: Encoder[Basis] = _.toString.tt.lower
+  given Basis is Encodable in Text as encoder = _.toString.tt.lower
   given decoder(using Tactic[InvalidRefError]): Decoder[Basis] =
     case t"minimum" => Basis.Minimum
     case t"runtime" => Basis.Runtime
@@ -296,7 +296,7 @@ object Content:
 case class Content(path: WorkPath, replacements: List[Replacement])
 
 object Target extends RefType(t"target"):
-  given moduleRefEncoder: Encoder[Target] = _.show
+  given Target is Encodable in Text as encodable = _.show
   given Target is Inspectable as moduleRefInspect = _.show
   given Target is Communicable as moduleRefCommunicable = target => Message(target.show)
   given moduleRefDecoder(using Tactic[InvalidRefError]): Decoder[Target] = Target(_)
@@ -331,7 +331,7 @@ case class Stream(id: StreamId, lifetime: Int, guarantees: List[Guarantee]):
     Suggestion(id.show, t"lifetime: $lifetime days; guarantees: $guaranteesText")
 
 object Guarantee:
-  given encoder: Encoder[Guarantee] = _.toString.tt.lower
+  given Guarantee is Encodable in Text as encodable = _.toString.tt.lower
 
   given decoder(using Tactic[RefError]): Decoder[Guarantee] =
     case t"bytecode"      => Guarantee.Bytecode
@@ -359,7 +359,7 @@ object WorkPath:
     (unit, descent) => WorkPath(descent)
 
   given WorkPath is Showable = _.render
-  given encoder: Encoder[WorkPath] = _.render
+  given WorkPath is Encodable in Text as encodable = _.render
   //given WorkPath is Inspectable = _.render
   given WorkPath is Digestible = (acc, path) => acc.append(path.show.bytes)
 
