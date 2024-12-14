@@ -16,14 +16,14 @@
 
 package fury
 
-import anticipation.*
-import anthology.*
 import ambience.*
+import anthology.*
+import anticipation.*
 import aviation.*, calendars.gregorian
-import escapade.*
-import eucalyptus.*
-import ethereal.*
 import digression.*
+import escapade.*
+import ethereal.*
+import eucalyptus.*
 import fulminate.*
 import gastronomy.*
 

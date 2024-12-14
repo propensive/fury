@@ -16,11 +16,11 @@
 
 package fury
 
+import acyclicity.*
 import anticipation.*
 import parasite.*
-import vacuous.*
 import rudiments.*
-import acyclicity.*
+import vacuous.*
 
 import scala.collection.concurrent as scc
 import scala.collection.mutable as scm

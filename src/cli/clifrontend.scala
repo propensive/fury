@@ -16,23 +16,23 @@
 
 package fury
 
-import profanity.*, terminalOptions.terminalSizeDetection
-import turbulence.*
-import exoskeleton.*
 import acyclicity.*
-import contingency.*
-import parasite.*, orphanDisposal.cancel
-import dendrology.*, dagStyles.default
-import vacuous.*
-import hieroglyph.*, textMetrics.uniform
-import escapade.*
 import anticipation.*
-import iridescence.*
+import contingency.*
+import dendrology.*, dagStyles.default
+import escapade.*
+import eucalyptus.*
+import exoskeleton.*
 import gossamer.*
+import hieroglyph.*, textMetrics.uniform
+import iridescence.*
+import parasite.*, orphanDisposal.cancel
+import profanity.*, terminalOptions.terminalSizeDetection
+import quantitative.*
 import rudiments.*
 import spectacular.*
-import quantitative.*
-import eucalyptus.*
+import turbulence.*
+import vacuous.*
 
 import scala.collection.concurrent as scc
 

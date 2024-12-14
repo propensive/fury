@@ -17,35 +17,35 @@
 package fury
 
 import ambience.*
-import aviation.*, calendars.gregorian
-import anticipation.*, filesystemInterfaces.galileiApi
-import contingency.*
 import anthology.*
+import anticipation.*, filesystemInterfaces.galileiApi
+import aviation.*, calendars.gregorian
+import cellulose.*, codlPrinters.standard
+import contingency.*
 import escapade.*
 import escritoire.*, insufficientSpaceHandling.ignore, tableStyles.default
 import ethereal.*
 import eucalyptus.*
 import exoskeleton.*
 import fulminate.*
-import gastronomy.*, alphabets.base32.zBase32Unpadded
 import galilei.*, filesystemOptions.dereferenceSymlinks
+import gastronomy.*, alphabets.base32.zBase32Unpadded
 import gossamer.*
 import guillotine.*
 import hieroglyph.*, textMetrics.eastAsianScripts, charEncoders.utf8
 import iridescence.*, colors.*
 import nettlesome.*
-import zeppelin.*
 import octogenarian.*
-import surveillance.*
 import parasite.*
 import profanity.*
 import quantitative.*
-import cellulose.*, codlPrinters.standard
 import rudiments.*
 import serpentine.*, pathHierarchies.unixOrWindows
 import spectacular.*
+import surveillance.*
 import turbulence.*
 import vacuous.*
+import zeppelin.*
 
 def accede(error: Error): UserError = UserError(error.message)
 
@@ -82,9 +82,9 @@ object actions:
 
         Exit.Ok
 
-      .remedy:
-        case InstallError(message) => abort(UserError(message.communicate))
-        case DismissError()        => Exit.Fail(1)
+      . remedy:
+          case InstallError(message) => abort(UserError(message.communicate))
+          case DismissError()        => Exit.Fail(1)
 
     def batch(force: Boolean, noTabCompletions: Boolean)
        (using DaemonService[?],
@@ -101,8 +101,9 @@ object actions:
         log(Installer.install(force).communicate)
         if !noTabCompletions then info(TabCompletions.install(force = true).communicate)
         Exit.Ok
-      .remedy:
-        case InstallError(message) => abort(UserError(message.communicate))
+
+      . remedy:
+          case InstallError(message) => abort(UserError(message.communicate))
 
   def clean(all: Boolean)(using FrontEnd, Installation): Exit raises UserError =
     import filesystemOptions.

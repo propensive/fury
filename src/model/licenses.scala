@@ -17,8 +17,8 @@
 package fury
 
 import anticipation.*
-import punctuation.*
 import gossamer.*
+import punctuation.*
 
 enum LicenseGroup:
   case Afl, Apache, Artistic, Bsl, Bsd, Cc, Wtfpl, Ecl, Epl, Eupl, Agpl, Gpl, Lgpl, Isc, Lppl, Ms,

@@ -19,27 +19,27 @@ package fury
 import anticipation.*
 import aviation.*, calendars.gregorian
 import cellulose.*
+import contingency.*
+import digression.*
 import escapade.*
 import exoskeleton.*
+import filesystemApi.galileiPath
+import filesystemOptions.createNonexistent.disabled
+import filesystemOptions.dereferenceSymlinks.enabled
 import fulminate.*
 import galilei.*
-import filesystemOptions.dereferenceSymlinks.enabled
-import filesystemOptions.createNonexistent.disabled
-import filesystemApi.galileiPath
 import gastronomy.*
 import gossamer.*
 import hieroglyph.*, charEncoders.utf8, charDecoders.utf8, textSanitizers.strict
-import digression.*
 import kaleidoscope.*
 import monotonous.*
 import nettlesome.*
 import octogenarian.*
-import contingency.*
+import prepositional.*
 import punctuation.*
 import rudiments.*
 import serpentine.*, pathHierarchies.unixOrWindows
 import spectacular.*
-import prepositional.*
 import symbolism.*
 import turbulence.*
 import vacuous.*

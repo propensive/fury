@@ -67,7 +67,7 @@ object Installation:
 
       val buildId: Int =
         safely((Classpath / p"build.id")().read[Text].trim.decode[Int]).or:
-          throw Panic(m"The build.id file was missing or corrupt")
+          panic(m"The build.id file was missing or corrupt")
 
       Installation(buildId, config, cache, vault, tmp, snapshots)
 

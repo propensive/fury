@@ -52,7 +52,7 @@ given Timezone = tz"Etc/UTC"
 case class CachedFile(lastModified: Instant, text: Task[Text], hash: Task[Hash])
 
 case class CacheInfo
-   (ecosystems: Int, snapshots: Int, workspaces: Int, files: Int, dataSize: ByteSize)
+   (ecosystems: Int, snapshots: Int, workspaces: Int, files: Int, dataSize: Memory)
 
 object Cache:
   private val ecosystems: scc.TrieMap[Ecosystem, Task[Vault]] = scc.TrieMap()
@@ -85,7 +85,7 @@ object Cache:
     files.clear()
 
   def about: CacheInfo =
-    val dataSize = ByteSize(files.values.map { file => safely(file.text.await().length).or(0) }.sum)
+    val dataSize = Memory(files.values.map { file => safely(file.text.await().length).or(0) }.sum)
     CacheInfo(ecosystems.size, snapshots.size, workspaces.size, files.size, dataSize)
 
   def gitProgress(stream: LazyList[Progress]): LazyList[Double] = stream.collect:

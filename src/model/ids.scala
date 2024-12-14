@@ -16,18 +16,18 @@
 
 package fury
 
-import rudiments.*
-import vacuous.*
-import fulminate.*
-import prepositional.*
-import gossamer.*
 import anticipation.*
-import gastronomy.*
-import galilei.*
 import contingency.*
-import spectacular.*
-import kaleidoscope.*
+import fulminate.*
+import galilei.*
+import gastronomy.*
+import gossamer.*
 import hieroglyph.*, charEncoders.utf8
+import kaleidoscope.*
+import prepositional.*
+import rudiments.*
+import spectacular.*
+import vacuous.*
 
 import errorDiagnostics.stackTraces
 

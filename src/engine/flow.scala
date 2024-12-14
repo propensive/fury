@@ -16,11 +16,10 @@
 
 package fury
 
+import anticipation.*
 import feudalism.*
 import galilei.*
-import anticipation.*
 import rudiments.*
-
 
 class Workflow():
   val classes: Mutex[List[Directory]] = Mutex(Nil)

@@ -16,15 +16,15 @@
 
 package fury
 
-import probably.*
-import gossamer.*
-import spectacular.*
-import rudiments.*
 import anticipation.*
-import galilei.*
-import serpentine.*
-import contingency.*, strategies.throwUnsafely
 import cellulose.*
+import contingency.*, strategies.throwUnsafely
+import galilei.*
+import gossamer.*
+import probably.*
+import rudiments.*
+import serpentine.*
+import spectacular.*
 
 import unsafeExceptions.canThrowAny
 
