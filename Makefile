@@ -1,0 +1,92 @@
+# Publish the library to the local ~/.ivy2 (the launcher resolves `fury-core` from there; burdock
+# will NOT externalize a locally-published copy unless its bytes match a release asset).
+publishLocal:
+	./mill fury.__.publishLocal
+
+# Build the invocation-point `launcher` module as a plain (clean, no shell-preamble) assembly JAR.
+# `launcher` depends on fury-core as a PUBLISHED coordinate resolved from ~/.ivy2/local, so the
+# library is published there FIRST, and `clean fury.launcher` for the same reason: the coordinate
+# is fixed, so Mill's cached resolution would not notice the fresh publish.
+assembly: publishLocal
+	./mill clean fury.launcher
+	./mill fury.launcher.assembly
+
+# Releases are cut by tagging, not by make. Bump `furyVersion`, merge it, and then `git tag -s
+# X.Y.Z && git push --tags`: the tag fires .github/workflows/release.yml, which runs the shared
+# release.sh in propensive/.github. What this repository needs beyond the common path is declared
+# in etc/release. This target survives only to say so.
+release:
+	@echo "Releases are triggered by tags, not by make. Bump furyVersion, merge it, then:" >&2
+	@echo "" >&2
+	@echo "    git tag -s X.Y.Z && git push --tags" >&2
+	@echo "" >&2
+	@echo "See propensive/.github." >&2
+	@exit 1
+
+# Repackage the launcher assembly into a self-fetching launcher with Burdock: published
+# dependencies become on-demand `Burdock-Require` URLs, matched by SHA-256 against Maven Central
+# and, via the `--github` hints, the release assets of these repositories; unpublished ones are
+# inlined. fury-core externalizes only once released. Set GITHUB_TOKEN to lift the API rate limit.
+fury.jar: assembly
+	cp out/fury/launcher/assembly.dest/out.jar fury.jar
+	java -cp fury.jar soundness.repackage --github propensive/fury,propensive/lira,propensive/pyrocosm,propensive/soundness,propensive/proscala
+
+# Package the repackaged JAR as a native executable for this machine with the pinned `xek` builder
+# (fetched into dist/xek and verified against etc/xek.tsv).
+fury: fury.jar xek-fetch
+	dist/xek fury.jar fury
+
+# Fetch the pinned `xek` builder into dist/xek.
+xek-fetch:
+	./etc/shared xek-fetch.sh
+
+# Remove-then-copy, NOT a bare `cp`: overwriting the existing file reuses its inode, and macOS
+# caches code-signing state per vnode, so every exec of an overwritten launcher is killed until
+# the file is replaced. The daemon is stopped first, so the next run starts the new build.
+install: fury
+	-./fury quit 2>/dev/null || true
+	rm -f ${HOME}/.local/bin/fury
+	cp fury ${HOME}/.local/bin/
+
+# Compile and run the test suite with fume (the release pinned in etc/tools), which discovers
+# the suite from the assembly named in .pyrocosm/fume/config.tel. Extra selection terms go in
+# TESTS. `make test-plain` drives `Tests.invoke` in-process without fume.
+test:
+	./mill fury.test.assembly
+	fume run -c out/fury/test/assembly.dest/out.jar $(TESTS)
+
+test-plain:
+	./mill fury.test.assembly
+	java -cp out/fury/test/assembly.dest/out.jar fury.runTests
+
+# Install every library pinned in etc/refs — releases and snapshots alike, transitively — into the
+# local ivy repository, as CI does, so the build resolves exactly the pinned jars rather than
+# whatever a sibling checkout's `publishLocal` last installed under the same version.
+sync-deps:
+	./etc/shared sync-deps.sh
+
+# Check every source against Consequent Style and the project's own rules with flair (the release
+# pinned in etc/tools; `make tools` installs it), as configured in .pyrocosm/flair/config.tel.
+# Findings are warnings, so CI does not run this; PATHS restricts the check to files beneath them.
+check:
+	flair check $(PATHS)
+
+# Install the commands pinned in etc/tools (fume, flair) through their releases' installers.
+tools:
+	./etc/shared tools.sh
+
+# Publish HEAD's library as a snapshot — a `snapshot-<hex>` pre-release named by the filtered tree
+# of the commit, at version `<furyVersion>-<hex>` — for a dependent repository to pin in its
+# etc/refs before the next release. `LOCAL=1` stages and installs without publishing. The last line
+# printed is the pin. See snapshot.sh in propensive/.github.
+snapshot:
+	./etc/shared snapshot.sh fury "$$(sed -n 's/.*val furyVersion = "\(.*\)".*/\1/p' build.mill)"
+
+# Delete snapshot pre-releases older than DAYS (default 60) days.
+snapshot-prune:
+	./etc/shared snapshot-prune.sh fury $(DAYS)
+
+dev:
+	./mill -w fury.core.compile
+
+.PHONY: test test-plain publishLocal assembly release xek-fetch install sync-deps check tools snapshot snapshot-prune dev
