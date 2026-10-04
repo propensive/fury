@@ -127,7 +127,7 @@ object Journal:
 
     case Sent(message: Wire, peer: Party)                      extends Event, Log.Protocol
     case Received(message: Wire, peer: Party)                  extends Event, Log.Protocol
-    case Failed(machine: Machine, reason: Peer.Error.Reason)   extends Event, Log.Network
+    case Failed(machine: Machine, reason: Swarm.Error.Reason)  extends Event, Log.Network
 
     // How much each event matters: a failure is a warning, or worse if it stops this instance
     // doing what its configuration asked; the routine opening and closing of a connection is

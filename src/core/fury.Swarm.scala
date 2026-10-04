@@ -36,6 +36,7 @@ import soundness.*
 
 import Journal.{Event, Fingerprint, Obstacle, Party}
 import environments.javaBaseEnvironment
+import errorDiagnostics.emptyDiagnostics
 import pyrocosm.{Channel, Machine, Peer, Tool}
 
 // One Fury talking to another (fury.md §8), at its first rung: this daemon LISTENS for other
@@ -49,6 +50,21 @@ import pyrocosm.{Channel, Machine, Peer, Tool}
 // the caller pins by fingerprint, with a shared token proving the caller, and BinTEL messages in
 // a length-prefixed framing. Each exchange is one short connection.
 object Swarm:
+  object Error:
+    object Reason:
+      given communicable: Reason is Communicable =
+        case Connection(reason) => m"$reason"
+        case Unanswered         => m"the connection closed before a pong arrived"
+
+    // Why a machine could not be pinged: the connection to it could not be made, for the
+    // reason Pyrocosm gives, or it was made and then closed without the `pong`.
+    enum Reason:
+      case Connection(reason: Peer.Error.Reason)
+      case Unanswered
+
+  case class Error(machine: Machine, reason: Error.Reason)(using Diagnostics)
+  extends fulminate.Error(m"the ping to ${machine.name} failed because $reason")
+
   // What a `pong` told the caller: who answered, with which Fury, and how long the round trip
   // took.
   case class Reply(hostname: Hostname, version: Optional[Semver], elapsed: Duration)
@@ -144,38 +160,33 @@ object Swarm:
 
   private def identifier(): Text = Uuid().show.keep(8)
 
-  // Says `ping` to `machine` and waits for its `pong`.
-  def ping(machine: Machine, note: Text): scala.Either[Peer.Error.Reason, Reply] logs Event =
+  // Says `ping` to `machine` and waits for its `pong`. A failure is logged as it is raised.
+  def ping(machine: Machine, note: Text): Reply raises Error logs Event =
     val peer: Party = Party.Callee(machine)
     Journal.log(Event.Connecting(machine, Port.unsafe[Tcp](machine.portOr(Wire.port.number))))
 
-    val outcome: scala.Either[Peer.Error.Reason, Optional[Reply]] =
-      Peer.exchange[Wire, Optional[Reply]]
-        ( machine, t"fury", Fury.version, Wire.codec, Wire.port.number ):
-        session =>
-          val theirs: Optional[Semver] = version(session.peer.version)
-          Journal.log(Event.Welcomed(peer, hostname(session.peer.identity.hostname), theirs))
+    def logged(reason: Error.Reason): Error.Reason =
+      Journal.log(Event.Failed(machine, reason))
+      reason
 
-          val sent: Instant over Unix = now()
-          val ping: Wire = Wire.Ping(identifier(), sent, note)
-          Journal.log(Event.Sent(ping, peer))
-          session.send(ping)
+    mitigate:
+      case Peer.Error(reason) => Error(machine, logged(Error.Reason.Connection(reason)))
 
-          session.receive() match
-            case Channel.Frame.Message(pong: Wire.Pong) =>
-              Journal.log(Event.Received(pong, peer))
-              Reply(pong.hostname, theirs, now() - sent)
+    . protect:
+        Peer.connect[Wire, Reply](machine, t"fury", Fury.version, Wire.codec, Wire.port.number):
+          session =>
+            val theirs: Optional[Semver] = version(session.peer.version)
+            Journal.log(Event.Welcomed(peer, hostname(session.peer.identity.hostname), theirs))
 
-            case _ =>
-              Unset
+            val sent: Instant over Unix = now()
+            val ping: Wire = Wire.Ping(identifier(), sent, note)
+            Journal.log(Event.Sent(ping, peer))
+            session.send(ping)
 
-    val result: scala.Either[Peer.Error.Reason, Reply] = outcome match
-      case scala.Right(reply: Reply) => scala.Right(reply)
-      case scala.Right(_)            => scala.Left(Peer.Error.Reason.Disconnected)
-      case scala.Left(reason)        => scala.Left(reason)
+            session.receive() match
+              case Channel.Frame.Message(pong: Wire.Pong) =>
+                Journal.log(Event.Received(pong, peer))
+                Reply(pong.hostname, theirs, now() - sent)
 
-    result match
-      case scala.Left(reason) => Journal.log(Event.Failed(machine, reason))
-      case _                  => ()
-
-    result
+              case _ =>
+                abort(Error(machine, logged(Error.Reason.Unanswered)))

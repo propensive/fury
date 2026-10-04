@@ -37,6 +37,7 @@ import soundness.*
 import Journal.{Event, Obstacle, Party}
 import alphabets.hexLowerCase
 import environments.javaBaseEnvironment
+import errorDiagnostics.emptyDiagnostics
 import probates.cancelProbate
 import proscenium.List
 import pyrocosm.{Machine, Peer}
@@ -75,10 +76,10 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
 
   // What the one conversation with the listener showed.
   private case class Observed
-    ( answer:         scala.Either[Peer.Error.Reason, Hostname],
+    ( answer:         Optional[Hostname],
       exchange:       scala.List[Text],
-      badToken:       scala.Option[Peer.Error.Reason],
-      badFingerprint: scala.Option[Peer.Error.Reason],
+      badToken:       Optional[Swarm.Error.Reason],
+      badFingerprint: Optional[Swarm.Error.Reason],
       warnings:       Int,
       listening:      Boolean,
       last:           Text )
@@ -87,17 +88,19 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
     if keyword == t"listenToken" then secret else Unset
 
   // The listener binds a moment after `serve` is called, so the first attempts may be refused.
-  private def patiently(attempts: Int)(action: => scala.Either[Peer.Error.Reason, Swarm.Reply])
-    ( using Monitor )
-  :   scala.Either[Peer.Error.Reason, Swarm.Reply] =
+  private def patiently(attempts: Int)(action: => Optional[Swarm.Reply])(using Monitor)
+  :   Optional[Swarm.Reply] =
 
-    action match
-      case scala.Left(_) if attempts > 1 =>
+    action.or:
+      if attempts <= 1 then Unset else
         snooze(0.2*Second)
         patiently(attempts - 1)(action)
 
-      case result =>
-        result
+  // Why a ping failed, if it did.
+  private def failure(machine: Machine): Optional[Swarm.Error.Reason] logs Event =
+    attempt[Swarm.Error](Swarm.ping(machine, t"")) match
+      case Attempt.Failure(failed) => failed.reason
+      case Attempt.Success(_)      => Unset
 
   // Waits, for a few seconds at most, for `condition` to hold.
   private def await(attempts: Int)(condition: => Boolean)(using Monitor): Unit =
@@ -209,7 +212,8 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
       test(m"a listener which cannot start is a failure, and a refused call a warning"):
         val unbound: Event = Event.ListenFailed(port, Obstacle.Unbound)
         val self: Machine = machine(t"self", Data(), secret)
-        val refused: Event = Event.Failed(self, Peer.Error.Reason.Refused(t"bad-token"))
+        val reason = Swarm.Error.Reason.Connection(Peer.Error.Reason.Refused(t"bad-token"))
+        val refused: Event = Event.Failed(self, reason)
         (unbound.level, refused.level, Event.Stopped(port).level, Event.Closed(laptop).level)
 
       . assert(_ == (Level.Fail, Level.Warn, Level.Info, Level.Fine))
@@ -246,29 +250,29 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
           async(Swarm.service.serve(port.number, settings))
 
           val self: Machine = machine(t"self", fingerprint, secret)
-          val answer = patiently(25)(Swarm.ping(self, t"hello"))
+          val answer = patiently(25)(safely(Swarm.ping(self, t"hello")))
 
           // The listener's `closed` is logged once the caller has hung up, a moment later.
           await(25)(logged.contains(t"closed"))
           val exchange = logged.drop(logged.lastIndexOf(t"connecting"))
           val mark: Long = Journal.daemon.latest
 
-          val badToken = Swarm.ping(machine(t"self", fingerprint, t"not-the-token"), t"")
+          val badToken = failure(machine(t"self", fingerprint, t"not-the-token"))
           val wrong: Data = Peer.parseFingerprint(t"00"*32).or(fingerprint)
-          val badFingerprint = Swarm.ping(machine(t"self", wrong, secret), t"")
+          val badFingerprint = failure(machine(t"self", wrong, secret))
           val warnings: Int = Journal.daemon.since(mark, Level.Warn).stdlib.length
 
           Swarm.service.stop()
           await(25)(!Swarm.listening)
 
           Observed
-            ( answer.map(_.hostname), exchange, badToken.swap.toOption,
-              badFingerprint.swap.toOption, warnings, Swarm.listening, logged.last )
+            ( answer.let(_.hostname), exchange, badToken, badFingerprint, warnings,
+              Swarm.listening, logged.last )
 
       test(m"a ping is answered with a pong"):
         observed.answer
 
-      . assert(_ == scala.Right(Swarm.local))
+      . assert(_ == Swarm.local)
 
       // The two ends run on different threads, so what each logs interleaves freely with the
       // other's, except where a message crossing the wire orders them.
@@ -293,12 +297,12 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
       test(m"a caller with the wrong token is refused, and told so"):
         observed.badToken
 
-      . assert(_ == scala.Some(Peer.Error.Reason.Refused(t"bad-token")))
+      . assert(_ == Swarm.Error.Reason.Connection(Peer.Error.Reason.Refused(t"bad-token")))
 
       test(m"a caller pinning the wrong fingerprint does not connect"):
         observed.badFingerprint
 
-      . assert(_ == scala.Some(Peer.Error.Reason.Unreachable(t"self")))
+      . assert(_ == Swarm.Error.Reason.Connection(Peer.Error.Reason.Unreachable(t"self")))
 
       test(m"each failure is logged as a warning"):
         observed.warnings

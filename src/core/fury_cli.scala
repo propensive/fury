@@ -96,6 +96,30 @@ private def machines()(using cli: Cli, environment: Environment): List[Machine] 
   val directory: Text = cli.workingDirectory.directory()
   Machine.resolve(List(Fury.repoConfig(directory), Fury.userConfig, Machine.shared))
 
+// How `fury ping` can end, once the machine is known.
+private type Pinged = Exit | RemoteFailed.type
+
+// `fury ping`, once the machine is known: says what answered, or why nothing did. Both the
+// handler and the block are given the one type, since a recovery's result is typed by its
+// block's alone.
+private def ping(machine: Machine, note: Text)(using Stdio): Pinged logs Journal.Event =
+  def failed(error: Swarm.Error): Pinged =
+    Out.println(error.message.text)
+    RemoteFailed
+
+  def answered(reply: Swarm.Reply): Pinged =
+    val release: Text = reply.version.lay(t"an unknown version"): version => t"fury $version"
+    val elapsed: Int = (reply.elapsed.value*1000.0).toInt
+    Out.println(t"pong from ${reply.hostname} ($release) in ${elapsed}ms")
+    Exit.Ok
+
+  recover:
+    case error: Swarm.Error => failed(error)
+
+  . protect:
+      val reply: Swarm.Reply = Swarm.ping(machine, note)
+      answered(reply)
+
 // Set when `fury quit` is invoked. A daemon asked to stop serves no new invocation and waits for
 // those in flight, so one that runs until interrupted — `log --follow`, `listen` — must end of
 // its own accord, or it would hold the daemon in that state until its drain limit.
@@ -245,18 +269,7 @@ def run(): Unit =
               case name :: note =>
                 known.seek(_.name == name) match
                   case machine: Machine =>
-                    Swarm.ping(machine, note.join(t" ")) match
-                      case scala.Right(reply) =>
-                        val release: Text = reply.version.lay(t"an unknown version"): version =>
-                          t"fury $version"
-
-                        val elapsed: Int = (reply.elapsed.value*1000.0).toInt
-                        Out.println(t"pong from ${reply.hostname} ($release) in ${elapsed}ms")
-                        Exit.Ok
-
-                      case scala.Left(reason) =>
-                        Out.println(Peer.explain(reason))
-                        RemoteFailed
+                    ping(machine, note.join(t" "))
 
                   case _ =>
                     Out.println(t"no machine named $name is configured")
