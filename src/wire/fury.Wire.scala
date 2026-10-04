@@ -32,43 +32,37 @@
                                                                                                   */
 package fury
 
-import java.lang as jl
-import java.util.concurrent.atomic as juca
-
 import soundness.*
-import probably.TestEvent
 
-// fury's suite, run WITHOUT fume: a `Suite` has no `main` of its own (the host — normally fume —
-// drives it through `invoke`), so this is the plain-`java` entry point `make test-plain` uses,
-// printing one line per completed test and exiting with the suite's status (0 = passed,
-// 1 = failures, 2 = the suite threw). `fume run -c <test jar>` (`make test`, and CI) remains the
-// full experience, discovering the suite from the assembly's `META-INF/services/probably.Suite`
-// index, which the beneficence plugin writes.
-@main
-def runTests(): Unit =
-  val passes = juca.AtomicInteger(0)
-  val failures = juca.AtomicInteger(0)
-  val out = jl.System.out.nn
+import pyrocosm.Channel
 
-  def handle(event: TestEvent): Unit = event match
-    case TestEvent.TestCompleted(test, _, _, outcome, _, _) =>
-      if outcome.outcome == t"pass" || outcome.outcome == t"aspire-pass" then passes.incrementAndGet()
-      else failures.incrementAndGet()
-      out.println(t"[${outcome.outcome}] ${test.path.join(t" / ")}".s)
+// What one Fury says to another over a Pyrocosm `Channel`, once Pyrocosm's handshake has
+// welcomed the connection: the Fury protocol (fury.md §8), of which this is the first rung. The
+// messages are a proof of the link and nothing more — a `ping` carrying a note, and the `pong`
+// that answers it — so that both ends can be seen to have spoken.
+//
+//   caller → listener   ping   an id, when it was sent, and a note to show at the other end
+//   listener → caller   pong   the same id, when it arrived, and who answered
+//
+// Only this enum's layout must agree between two Furies: its schema's fingerprint is the
+// protocol the handshake names, and a peer with a different one is refused before any message is
+// decoded.
+object Wire:
+  // Derived once: the schema, its fingerprint (the protocol the handshake names) and the codec.
+  // The derivation is why this enum is ALONE in a module compiled without capture checking, as
+  // fume keeps its `Relay`: stratiform's derived codecs expand to instances the capture checker
+  // sees as fresh where a pure instance is required.
+  lazy val codec: Channel.Codec[Wire] =
+    import Channel.derivation.throwing
+    val schema: Tels = Tels.tels[Wire](t"fury-wire")
 
-    case TestEvent.DetailMessage(_, message) =>
-      out.println(t"    $message".s)
+    Channel.Codec
+      ( t"fury-wire", schema, message => Channel.encode(message, schema),
+        data => Channel.decode[Wire](data) )
 
-    case TestEvent.DetailCompare(_, expected, found, _) =>
-      out.println(t"    expected: $expected".s)
-      out.println(t"    found:    $found".s)
+  // The port a Fury listens on by default.
+  val port: Int = 8092
 
-    case TestEvent.RunTerminated(error, _, _) =>
-      out.println(t"suite threw: ${error.components.map(_.message).join(t"; ")}".s)
-
-    case _ => ()
-
-  val status = scala.List(Tests, SwarmTests).map(_.invoke(t"", handle)).max
-
-  out.println(t"${passes.get} passed, ${failures.get} failed".s)
-  jl.System.exit(status)
+enum Wire:
+  case Ping(id: Text, sent: Long, note: Text)
+  case Pong(id: Text, received: Long, hostname: Text)

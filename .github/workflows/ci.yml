@@ -14,9 +14,9 @@ jobs:
   build:
     uses: propensive/.github/.github/workflows/scala-ci.yml@main
     with:
-      compile:       fury.core.compile
-      # The launcher resolves `fury-core` as a published coordinate, so it must be in the local
-      # ivy repository before assembly.
+      compile:       fury.wire.compile fury.core.compile
+      # The launcher resolves `fury-core` as a published coordinate, and its POM names
+      # `fury-wire`, so both must be in the local ivy repository before assembly.
       publish_local: fury.__
       assembly:      fury.launcher.assembly
       test_assembly: fury.test.assembly
