@@ -41,7 +41,8 @@ import pyrocosm.{Channel, Machine, Peer, Tool}
 // instances when its configuration says `listen` (or for as long as `fury listen` runs), and
 // `fury ping` connects to a configured machine, says `ping`, and waits for its `pong`. Both ends
 // record what they do in the `Journal`, so `fury log` on each machine shows the message arrive
-// and its answer return.
+// and its answer return. A message is recorded as sent BEFORE it is written, and as received
+// after it is read, so that no log can show a message arriving before it left.
 //
 // The transport is Pyrocosm's, as fume's is: TLS to the machine's self-signed certificate, which
 // the caller pins by fingerprint, with a shared token proving the caller, and BinTEL messages in
@@ -120,8 +121,8 @@ object Swarm:
       case Channel.Frame.Message(ping: Wire.Ping) =>
         Journal.record(Journal.Event.Received(describe(ping), peer))
         val pong: Wire = Wire.Pong(ping.id, Journal.clock(), Machine.Identity.local.hostname)
-        session.send(pong)
         Journal.record(Journal.Event.Sent(describe(pong), peer))
+        session.send(pong)
         recur()
 
       case Channel.Frame.Closed =>
@@ -147,8 +148,8 @@ object Swarm:
 
           val sent: Long = Journal.clock()
           val ping: Wire = Wire.Ping(identifier(), sent, note)
-          session.send(ping)
           Journal.record(Journal.Event.Sent(describe(ping), machine.name))
+          session.send(ping)
 
           session.receive() match
             case Channel.Frame.Message(pong: Wire.Pong) =>

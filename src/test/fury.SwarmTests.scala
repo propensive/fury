@@ -79,11 +79,11 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
       case result =>
         result
 
-  // Waits, for a few seconds at most, for the stopped listener to say so.
-  private def settle(attempts: Int)(using Monitor): Unit =
-    if attempts > 0 && Swarm.listening then
+  // Waits, for a few seconds at most, for `condition` to hold.
+  private def await(attempts: Int)(condition: => Boolean)(using Monitor): Unit =
+    if attempts > 0 && !condition then
       snooze(0.2*Second)
-      settle(attempts - 1)
+      await(attempts - 1)(condition)
 
   private def kinds(entries: List[Journal.Entry]): scala.List[Text] =
     entries.stdlib.map(_.event).map:
@@ -160,7 +160,7 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
           val answer = patiently(25)(Swarm.ping(self, t"hello"))
 
           // The listener's `closed` is recorded once the caller has hung up, a moment later.
-          snooze(0.5*Second)
+          await(25)(kinds(Journal.since(start)).contains(t"closed"))
           val all = kinds(Journal.since(start))
           val exchange = all.drop(all.lastIndexOf(t"connecting"))
           val mark: Long = Journal.latest
@@ -174,7 +174,7 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
               case Journal.Event.Failed(name, _) => name
 
           Swarm.service.stop()
-          settle(25)
+          await(25)(!Swarm.listening)
 
           Observed
             ( answer.map(_.hostname), exchange, badToken.swap.toOption,
