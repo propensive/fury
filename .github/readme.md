@@ -21,7 +21,8 @@ reach another on a different machine; it cannot yet build.
 ```sh
 fury check         # parse and validate build.tel, and report what this milestone cannot build
 fury ping linux-box hello   # say `ping` to a configured machine and wait for its `pong`
-fury log           # what this instance has been doing; --follow keeps showing it until Ctrl+C
+fury log           # what this instance has been doing; --follow keeps showing it until Ctrl+C,
+                   # and --log-level warn shows only warnings and failures
 fury listen        # accept other instances until Ctrl+C
 fury identity      # this machine's certificate fingerprint, for another machine's configuration
 fury install       # install tab-completions and the manpage
@@ -73,8 +74,17 @@ pong from linux-box (fury 0.1.0) in 8ms
 ```
 
 The caller's log shows the connection, `→ ping … to linux-box` and `← pong … from linux-box`;
-the listener's shows `← ping … from <caller>` and `→ pong … to <caller>`. Times are in UTC. The
-log is the daemon's, kept in memory (its newest thousand events), and is lost when it stops.
+the listener's shows `← ping … from <caller>` and `→ pong … to <caller>`:
+
+```
+19:22:04.046  INFO  → ping 49ddb6ca ‘hello’ to linux-box
+19:22:04.056  INFO  ← pong 49ddb6ca from linux-box
+```
+
+Each line has the time of day on that machine, the level the event was logged at (`FINE`,
+`INFO`, `WARN` or `FAIL`) and what happened; `--log-level` (or `log-level` in `config.tel`)
+leaves out everything below a level. The log is the daemon's, kept in memory (its newest
+thousand events), and is lost when it stops.
 
 The connection is TLS to the listener's self-signed certificate, which the caller pins by the
 fingerprint it declares (the SSH known-hosts model), and the caller proves itself with the

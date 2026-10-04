@@ -74,11 +74,20 @@ object ui:
   val Follow =
     Flag[Unit]("follow", false, proscenium.List('f'), "keep showing events until Ctrl+C")
 
+  // The least a logged event must matter for `fury log` to show it: `--level`, `log-level` in
+  // either config file, and so on. Everything is shown by default.
+  val Threshold =
+    Setting[Text](t"logLevel", t"show only events at this level or above: fine, info, warn or fail")
+
   // The port `fury listen` accepts other instances on, and the port the daemon listens on when
   // a config says `listen`: `--listen-port`, the `fury.listenPort` property, `FURY_LISTEN_PORT`
   // and `listen-port` in either config file all reach it.
   val ListenPort =
     Setting[Text](t"listenPort", t"the port on which Fury accepts connections from other instances")
+
+// The levels an event may be logged at, by the names `--log-level` takes.
+private val levels: Map[Text, Level] =
+  Map(t"fine" -> Level.Fine, t"info" -> Level.Info, t"warn" -> Level.Warn, t"fail" -> Level.Fail)
 
 // The machines declared to this invocation: the repository's configuration, then the user's,
 // then the shared `~/.config/pyrocosm/machines.tel`, a name's first declaration winning. Read
@@ -157,7 +166,7 @@ def run(): Unit =
                 Out.println(t"")
                 Out.println(t"  machine $hostname")
                 Out.println(t"    host      $hostname")
-                Out.println(t"    port      ${Wire.port}")
+                Out.println(t"    port      ${Wire.port.number}")
                 Out.println(t"    identity  ${Peer.render(identity.fingerprint)}")
                 Out.println(t"    token     <a file there, holding the token file's contents>")
                 Exit.Ok
@@ -170,8 +179,8 @@ def run(): Unit =
         // for as long as it lives when a config says `listen`.
         case ui.Listen() :: _ =>
           val port: Int = ui.ListenPort() match
-            case text: Text => safely(text.as[Int]).or(Wire.port)
-            case _          => Wire.port
+            case text: Text => safely(text.as[Int]).or(Wire.port.number)
+            case _          => Wire.port.number
 
           execute:
             given Stdio = summon[Invocation].stdio
@@ -192,17 +201,15 @@ def run(): Unit =
                 async:
                   try Fury.run(Swarm.service, port) finally stopped() = true
 
-                val seen: Atomic[Long] = Atomic(Journal.latest)
+                val seen: Atomic[Long] = Atomic(Journal.daemon.latest)
                 val failed: Atomic[Boolean] = Atomic(false)
 
+                // The one failure a listener logs is that it could not start.
                 def show(): Unit =
-                  Journal.since(seen()).each: entry =>
+                  Journal.daemon.since(seen()).each: entry =>
                     Out.println(Journal.render(entry))
                     seen() = entry.sequence
-
-                    entry.event match
-                      case _: Journal.Event.ListenFailed => failed() = true
-                      case _                             => ()
+                    if entry.level == Level.Fail then failed() = true
 
                 until(stopped())(show())
                 Swarm.service.stop()
@@ -232,6 +239,7 @@ def run(): Unit =
 
           execute:
             given Stdio = summon[Invocation].stdio
+            given (LogSink[Any, Message]^{}) = Journal.sink
 
             words match
               case name :: note =>
@@ -239,12 +247,15 @@ def run(): Unit =
                   case machine: Machine =>
                     Swarm.ping(machine, note.join(t" ")) match
                       case scala.Right(reply) =>
-                        val peer: Text = t"${reply.hostname} (fury ${reply.version})"
-                        Out.println(t"pong from $peer in ${reply.milliseconds}ms")
+                        val release: Text = reply.version.lay(t"an unknown version"): version =>
+                          t"fury $version"
+
+                        val elapsed: Int = (reply.elapsed.value*1000.0).toInt
+                        Out.println(t"pong from ${reply.hostname} ($release) in ${elapsed}ms")
                         Exit.Ok
 
                       case scala.Left(reason) =>
-                        Out.println(reason)
+                        Out.println(Peer.explain(reason))
                         RemoteFailed
 
                   case _ =>
@@ -255,16 +266,18 @@ def run(): Unit =
                 Out.println(t"Usage: fury ping <machine> [note]")
                 UsageError
 
-        // `fury log [--follow]` — what this instance has been doing, oldest first.
+        // `fury log [--follow] [--level]` — what this instance has been doing, oldest first:
+        // everything, or only what was logged at the given level or above.
         case ui.Log() :: _ =>
           val follow: Boolean = ui.Follow().present
+          val level: Level = ui.Threshold().let(levels.at(_)).or(Level.Fine)
 
           execute:
             given Stdio = summon[Invocation].stdio
             val seen: Atomic[Long] = Atomic(0L)
 
             def show(): Unit =
-              Journal.since(seen()).each: entry =>
+              Journal.daemon.since(seen(), level).each: entry =>
                 Out.println(Journal.render(entry))
                 seen() = entry.sequence
 

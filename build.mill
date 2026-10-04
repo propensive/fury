@@ -131,7 +131,8 @@ object settings:
     mvn"dev.propensive:escapade-io:$soundness",              // Teletype <-> Stdio writables
     mvn"dev.propensive:escritoire-core:$soundness",          // the listing tables
     mvn"dev.propensive:ethereal-core:$soundness",            // the resident daemon
-    mvn"dev.propensive:eucalyptus-core:$soundness",          // logging.silentLogging
+    mvn"dev.propensive:aviation-core:$soundness",            // instants and durations
+    mvn"dev.propensive:eucalyptus-core:$soundness",          // typed logging, and its sinks
     mvn"dev.propensive:exoskeleton-completions:$soundness",  // cli + tab-completion
     mvn"dev.propensive:exoskeleton-manpage:$soundness",      // `fury install`'s manpage
     mvn"dev.propensive:galilei-jvm:$soundness",              // the filesystem
@@ -139,6 +140,7 @@ object settings:
     mvn"dev.propensive:iridescence-core:$soundness",         // the palette
     mvn"dev.propensive:monotonous-core:$soundness",          // alphabets.hexLowerCase
     mvn"dev.propensive:parasite-core:$soundness",            // threading.platformThreading
+    mvn"dev.propensive:revolution-semver:$soundness",        // the versions instances declare
     mvn"dev.propensive:stratiform-core:$soundness")          // TEL rendering and BinTEL
 
   // The Pyrocosm family's standard command line (`Tool.standard`: about, install, quit, config

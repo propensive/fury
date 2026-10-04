@@ -35,19 +35,26 @@ package fury
 import soundness.*
 
 import pyrocosm.Channel
+import stratiform.TelSchematic
 
-// What one Fury says to another over a Pyrocosm `Channel`, once Pyrocosm's handshake has
-// welcomed the connection: the Fury protocol (fury.md §8), of which this is the first rung. The
-// messages are a proof of the link and nothing more — a `ping` carrying a note, and the `pong`
-// that answers it — so that both ends can be seen to have spoken.
-//
-//   caller → listener   ping   an id, when it was sent, and a note to show at the other end
-//   listener → caller   pong   the same id, when it arrived, and who answered
-//
-// Only this enum's layout must agree between two Furies: its schema's fingerprint is the
-// protocol the handshake names, and a peer with a different one is refused before any message is
-// decoded.
 object Wire:
+  // An instant and a hostname are written as the scalars they always were — the milliseconds
+  // since the Unix epoch as a whole number, the name as text — so that typing these fields
+  // properly changes neither the schema, nor its fingerprint, nor a byte on the wire.
+  given instantSchematic: (Instant over Unix) is TelSchematic over Tels.Type =
+    () => Tels.Scalar(Array.empty)
+
+  given hostnameSchematic: Hostname is TelSchematic over Tels.Type =
+    () => Tels.Scalar(Array.empty)
+
+  given instantEncodable: (Instant over Unix) is Tel.Encodable =
+    Tel.Encodable(() => Morphology.Whole, Tel.Nature.Scalar): instant =>
+      Tel.scalar(instant.long.show)
+
+  given instantDecodable: Tactic[Tel.Error] => (Instant over Unix) is Tel.Decodable =
+    Tel.Decodable(() => Morphology.Whole, Tel.Nature.Scalar): tel =>
+      Instant.of[Unix](summon[Long is Tel.Decodable].decoded(tel))
+
   // Derived once: the schema, its fingerprint (the protocol the handshake names) and the codec.
   // The derivation is why this enum is ALONE in a module compiled without capture checking, as
   // fume keeps its `Relay`: stratiform's derived codecs expand to instances the capture checker
@@ -61,8 +68,19 @@ object Wire:
         data => Channel.decode[Wire](data) )
 
   // The port a Fury listens on by default.
-  val port: Int = 8092
+  val port: Tcp.Port = Port.unsafe[Tcp](8092)
 
+// What one Fury says to another over a Pyrocosm `Channel`, once Pyrocosm's handshake has
+// welcomed the connection: the Fury protocol (fury.md §8), of which this is the first rung. The
+// messages are a proof of the link and nothing more — a `ping` carrying a note, and the `pong`
+// that answers it — so that both ends can be seen to have spoken.
+//
+//   caller → listener   ping   an id, when it was sent, and a note to show at the other end
+//   listener → caller   pong   the same id, when it arrived, and who answered
+//
+// Only this enum's layout must agree between two Furies: its schema's fingerprint is the
+// protocol the handshake names, and a peer with a different one is refused before any message is
+// decoded.
 enum Wire:
-  case Ping(id: Text, sent: Long, note: Text)
-  case Pong(id: Text, received: Long, hostname: Text)
+  case Ping(id: Text, sent: Instant over Unix, note: Text)
+  case Pong(id: Text, received: Instant over Unix, hostname: Hostname)
