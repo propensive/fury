@@ -263,11 +263,11 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
           val warnings: Int = Journal.daemon.since(mark, Level.Warn).stdlib.length
 
           Swarm.service.stop()
-          await(25)(!Swarm.listening)
+          await(25)(Swarm.listening.absent)
 
           Observed
             ( answer.let(_.hostname), exchange, badToken, badFingerprint, warnings,
-              Swarm.listening, logged.last )
+              Swarm.listening.present, logged.last )
 
       test(m"a ping is answered with a pong"):
         observed.answer

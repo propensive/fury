@@ -23,7 +23,8 @@ fury check         # parse and validate build.tel, and report what this mileston
 fury ping linux-box hello   # say `ping` to a configured machine and wait for its `pong`
 fury log           # what this instance has been doing; --follow keeps showing it until Ctrl+C,
                    # and --log-level warn shows only warnings and failures
-fury listen        # accept other instances until Ctrl+C
+fury listen        # start accepting other instances, in the background; --port, or -p, says where
+fury listen stop   # stop accepting them
 fury identity      # this machine's certificate fingerprint, for another machine's configuration
 fury install       # install tab-completions and the manpage
 fury about         # fury's version, and the daemon serving it
@@ -43,9 +44,10 @@ One instance of Fury can talk to another. For now all they say is `ping` and `po
 enough to show the link working: `fury log` on each machine shows the message arrive and its
 answer return.
 
-On the machine that is to accept connections, say so in `~/.config/fury/config.tel`, and its
-daemon listens for as long as it lives (`fury listen` does the same in the foreground, until
-Ctrl+C):
+On the machine that is to accept connections, run `fury listen`: its daemon then listens in
+the background, on port 8092 unless `--port` (or `-p`) says otherwise, until `fury listen stop`
+or the daemon's end. To have the daemon listen whenever it runs, say so in
+`~/.config/fury/config.tel` instead:
 
 ```
 tel 1.0

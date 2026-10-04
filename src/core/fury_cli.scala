@@ -67,7 +67,8 @@ object RemoteFailed extends Status(12, t"the connection to another machine could
 object ui:
   val Check = Subcommand("check", "parse and validate the build file")
   val Identity = Subcommand("identity", "show this machine's identity, for another to declare")
-  val Listen = Subcommand("listen", "accept connections from other instances until Ctrl+C")
+  val Listen = Subcommand("listen", "accept connections from other instances, in the background")
+  val Stop = Subcommand("stop", "stop accepting connections from other instances")
   val Ping = Subcommand("ping", "send a message to a configured machine and await its answer")
   val Log = Subcommand("log", "show what this instance of Fury has been doing")
 
@@ -80,10 +81,14 @@ object ui:
     Setting[Text](t"logLevel", t"show only events at this level or above: fine, info, warn or fail")
 
   // The port `fury listen` accepts other instances on, and the port the daemon listens on when
-  // a config says `listen`: `--listen-port`, the `fury.listenPort` property, `FURY_LISTEN_PORT`
-  // and `listen-port` in either config file all reach it.
-  val ListenPort =
-    Setting[Text](t"listenPort", t"the port on which Fury accepts connections from other instances")
+  // a config says `listen`. On the command line it is `--port`, or `-p`; everywhere else it
+  // is the listener's own — the `fury.listenPort` property, `FURY_LISTEN_PORT`, and
+  // `listen-port` in either config file — since plain `port` there is the web front-end's.
+  val ListenPort: Setting of Text =
+    val description: Text = t"the port on which to accept connections from other instances"
+
+    new Setting(t"listenPort", Flag[Text](t"port", false, List('p'), description), Unset):
+      type Topic = Text
 
 // The levels an event may be logged at, by the names `--log-level` takes.
 private val levels: Map[Text, Level] =
@@ -95,6 +100,47 @@ private val levels: Map[Text, Level] =
 private def machines()(using cli: Cli, environment: Environment): List[Machine] =
   val directory: Text = cli.workingDirectory.directory()
   Machine.resolve(List(Fury.repoConfig(directory), Fury.userConfig, Machine.shared))
+
+// How `fury listen` can end.
+private type Listened = Exit | RemoteFailed.type
+
+// `fury listen`: starts the listener in the background, waits long enough to see whether it
+// could start, and says which. A listener which cannot bind its port gives up at once, saying
+// why in the log, so one still listening after a moment has started.
+private def listen(port: Tcp.Port, token: Optional[Text])
+  ( using Stdio, Monitor, Probate, Environment )
+:   Listened =
+
+  val settings: Text -> Optional[Text] =
+    keyword => if keyword == t"listenToken" then token else Unset
+
+  val mark: Long = Journal.daemon.latest
+
+  def already(port: Tcp.Port): Listened =
+    Out.println(t"this daemon is already accepting other instances on port ${port.number}")
+    Exit.Ok
+
+  def accepting(port: Tcp.Port, identity: Peer.Identity): Listened =
+    Out.println(t"accepting other instances of Fury on port ${port.number}, in the background")
+    Out.println(t"this machine's identity is ${Peer.render(identity.fingerprint)}")
+    Out.println(t"`fury listen stop` stops it; `fury log` shows what it does")
+    Exit.Ok
+
+  def failed(): Listened =
+    Journal.daemon.since(mark, Level.Fail).each: entry => Out.println(entry.message.text)
+    RemoteFailed
+
+  def start(): Listened = safely(Peer.identity) match
+    case identity: Peer.Identity =>
+      Swarm.start(port, settings)
+      snooze(0.5*Second)
+      Swarm.listening.lay(failed())(accepting(_, identity))
+
+    case _ =>
+      Out.println(t"this machine's identity could not be created; is `keytool` there?")
+      RemoteFailed
+
+  Swarm.listening.lay(start())(already(_))
 
 // How `fury ping` can end, once the machine is known.
 private type Pinged = Exit | RemoteFailed.type
@@ -160,7 +206,10 @@ def run(): Unit =
     summon[Cli] match
       case _: Invocation =>
         arguments match
-          case Argument(head) :: _ if head == t"quit" => retiring() = true
+          case Argument(head) :: _ if head == t"quit" =>
+            retiring() = true
+            Swarm.service.stop()
+
           case _                                      => ()
 
       case _ =>
@@ -199,56 +248,37 @@ def run(): Unit =
                 Out.println(t"this machine's identity could not be created; is `keytool` there?")
                 RemoteFailed
 
-        // `fury listen [--listen-port]` — accept other instances until Ctrl+C, as the daemon does
-        // for as long as it lives when a config says `listen`.
+        // `fury listen stop` — stop accepting other instances, however the listener was started.
+        // A listener the configuration asked for stays stopped for the rest of this daemon's
+        // life, or until `fury listen`.
+        case ui.Listen() :: ui.Stop() :: _ =>
+          execute:
+            given Stdio = summon[Invocation].stdio
+
+            val listening: Optional[Tcp.Port] = Swarm.listening
+            Swarm.service.stop()
+
+            Out.println:
+              listening.lay(t"this daemon is not listening"): port =>
+                t"no longer accepting other instances of Fury on port ${port.number}"
+
+            Exit.Ok
+
+        // `fury listen [--port]` — start accepting other instances, in the background: the
+        // daemon listens until `fury listen stop`, or for as long as it lives, as it does of its
+        // own accord when a config says `listen`.
         case ui.Listen() :: _ =>
-          val port: Int = ui.ListenPort() match
-            case text: Text => safely(text.as[Int]).or(Wire.port.number)
-            case _          => Wire.port.number
+          val number: Optional[Int] = ui.ListenPort().let: text => safely(text.as[Int])
+          val port: Tcp.Port = Port.unsafe[Tcp](number.or(Wire.port.number))
+
+          // Read now, since the listener outlives this invocation and its configuration.
+          val token: Optional[Text] = summon[Configurator].read(t"listenToken")
 
           execute:
             given Stdio = summon[Invocation].stdio
             import probates.cancelProbate
 
-            // The daemon's own listener is the configuration's to stop, not this command's.
-            safely(Peer.identity) match
-              case _ if Swarm.listening =>
-                Out.println(t"this daemon is already listening, as its configuration says")
-                Exit.Ok
-
-              case identity: Peer.Identity =>
-                Out.println(t"this machine's identity is ${Peer.render(identity.fingerprint)}")
-                Out.println(t"accepting other instances of Fury on port $port until Ctrl+C")
-
-                val stopped: Atomic[Boolean] = Atomic(false)
-
-                async:
-                  try Fury.run(Swarm.service, port) finally stopped() = true
-
-                val seen: Atomic[Long] = Atomic(Journal.daemon.latest)
-                val failed: Atomic[Boolean] = Atomic(false)
-
-                // The one failure a listener logs is that it could not start.
-                def show(): Unit =
-                  Journal.daemon.since(seen()).each: entry =>
-                    Out.println(Journal.render(entry))
-                    seen() = entry.sequence
-                    if entry.level == Level.Fail then failed() = true
-
-                until(stopped())(show())
-                Swarm.service.stop()
-
-                // The listener records that it stopped, or why it never started, as it ends.
-                snooze(0.25*Second)
-                show()
-
-                if failed() then RemoteFailed else
-                  Out.println(t"the listener has stopped")
-                  Exit.Ok
-
-              case _ =>
-                Out.println(t"this machine's identity could not be created; is `keytool` there?")
-                RemoteFailed
+            listen(port, token)
 
         // `fury ping <machine> [note …]` — say `ping` to a configured machine and wait for its
         // `pong`; the note is shown in that machine's log.
@@ -305,7 +335,7 @@ def run(): Unit =
             Out.println(t"  check      parse and validate the build file")
             Out.println(t"  ping       send a message to a configured machine and await its answer")
             Out.println(t"  log        show what this instance of Fury has been doing")
-            Out.println(t"  listen     accept connections from other instances until Ctrl+C")
+            Out.println(t"  listen     accept connections from other instances, in the background")
             Out.println(t"  identity   show this machine's identity, for another to declare")
             Out.println(t"  about      show this tool's name, version and daemon")
             Out.println(t"  install    install shell tab-completions and the manpage")

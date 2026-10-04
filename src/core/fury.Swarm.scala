@@ -40,7 +40,8 @@ import errorDiagnostics.emptyDiagnostics
 import pyrocosm.{Channel, Machine, Peer, Tool}
 
 // One Fury talking to another (fury.md §8), at its first rung: this daemon LISTENS for other
-// instances when its configuration says `listen` (or for as long as `fury listen` runs), and
+// instances when its configuration says `listen`, or from `fury listen` until `fury listen
+// stop`, and
 // `fury ping` connects to a configured machine, says `ping`, and waits for its `pong`. Both ends
 // log what they do, so `fury log` on each machine shows the message arrive and its answer
 // return. A message is logged as sent BEFORE it is written, and as received after it is read,
@@ -78,10 +79,19 @@ object Swarm:
   // This machine's name, as it tells it to a caller.
   def local: Hostname = hostname(Machine.Identity.local.hostname).or(host"localhost")
 
-  private val active: Atomic[Boolean] = Atomic(false)
+  // The port this daemon is listening on, while it is; zero while it is not.
+  private val bound: Atomic[Int] = Atomic(0)
 
-  // Whether this daemon is listening now, by configuration or by `fury listen`.
-  def listening: Boolean = active()
+  // The port this daemon is listening on now, by configuration or by `fury listen`, if it is.
+  def listening: Optional[Tcp.Port] = bound() match
+    case 0      => Unset
+    case number => Port.unsafe[Tcp](number)
+
+  // Starts listening on `port` in the background, under the daemon's monitor, so that the
+  // listener outlives the invocation which asked for it; `fury listen stop`, or the daemon's
+  // end, stops it. Nothing is started if the daemon is listening already.
+  def start(port: Tcp.Port, settings: Text -> Optional[Text])(using Monitor, Probate): Unit =
+    if listening.absent then async(service.serve(port.number, settings))
 
   val service: Tool.Service = new Tool.Service:
     def keyword: Text = t"listen"
@@ -116,7 +126,7 @@ object Swarm:
 
               listener = made
               stopping() = false
-              active() = true
+              bound() = number
               Journal.log(Event.Listening(port, Fingerprint(identity.fingerprint)))
 
               // `serve` blocks until `stop`, and returns at once, saying nothing, if the port
@@ -125,7 +135,7 @@ object Swarm:
                 if stopping() then Journal.log(Event.Stopped(port))
                 else Journal.log(Event.ListenFailed(port, Obstacle.Unbound))
 
-                active() = false
+                bound() = 0
 
             case _ =>
               Journal.log(Event.ListenFailed(port, Obstacle.NoToken))
