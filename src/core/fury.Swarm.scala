@@ -85,9 +85,19 @@ object Swarm:
   // took.
   case class Reply(hostname: Hostname, version: Optional[Semver], elapsed: Duration)
 
-  // A lasting connection this daemon is asked to keep, and when it last heard from the other
-  // end, if it is connected now.
-  case class Connection(machine: Machine, heard: Optional[Instant over Unix])
+  // What is known of the other end of a connection: when it was last heard from, what it
+  // advertised itself to be, and how loaded it last said it was. All are absent of a machine
+  // this daemon is asked to stay connected to but is not connected to now.
+  case class Standing
+    ( heard:  Optional[Instant over Unix] = Unset,
+      advert: Optional[Wire.Advert]       = Unset,
+      load:   Optional[Double]            = Unset )
+
+  // A lasting connection this daemon is asked to keep, and how it stands.
+  case class Connection(machine: Machine, standing: Standing)
+
+  // A caller which has made a lasting connection to this daemon, and how it stands.
+  case class Caller(peer: Party, standing: Standing)
 
   // How often each end of a lasting connection says it is still there, and how long an end
   // waits, hearing nothing, before it takes the connection for lost.
@@ -111,6 +121,21 @@ object Swarm:
   // This machine's name, as it tells it to a caller.
   def local: Hostname = hostname(Machine.Identity.local.hostname).or(host"localhost")
 
+  // What this machine is, as it advertises itself over a lasting connection (fury.md §8): what a
+  // build would be placed by. It says nothing yet of the universes and tools it can serve, its
+  // store or the work it would take on, there being none of those to speak of.
+  def advert: Wire.Advert =
+    val machine: Machine.Identity = Machine.Identity.local
+    Wire.Advert(local, machine.os, machine.arch, machine.cores)
+
+  // This machine's one-minute load average, where its platform keeps one: the JVM answers a
+  // negative number where it does not, as it always does on Windows.
+  def load: Optional[Double] =
+    val average: Double =
+      java.lang.management.ManagementFactory.getOperatingSystemMXBean.nn.getSystemLoadAverage
+
+    if average < 0.0 then Unset else average
+
   // One connection, at either end of it. Both ends do the same things with it: answer a `ping`,
   // deliver a `pong` to whoever asked for it, and — once the connection is a lasting one — send
   // a `beat` each second and listen for the other end's.
@@ -132,8 +157,22 @@ object Swarm:
     @scala.caps.unsafe.untrackedCaptures
     private var asked: List[(Uuid, Promise[Wire.Pong])] = Nil
 
-    // When the other end was last heard from.
-    def heard: Instant over Unix = last
+    @scala.caps.unsafe.untrackedCaptures
+    @volatile
+    private var told: Optional[Wire.Advert] = Unset
+
+    @scala.caps.unsafe.untrackedCaptures
+    @volatile
+    private var burden: Optional[Double] = Unset
+
+    // When the other end was last heard from, what it advertised, and its load at its last beat.
+    def standing: Standing = Standing(last, told, burden)
+
+    // Whether this is a lasting connection, on which beats have begun.
+    def lasting: Boolean = beating()
+
+    // Says what this machine is.
+    def advertise(): Unit = send(advert)
 
     // Whether the connection was given up for lost, having gone silent.
     def lost: Boolean = silent()
@@ -159,7 +198,7 @@ object Swarm:
           silent() = true
           close()
         else
-          send(Wire.Beat(now()))
+          send(Wire.Beat(now(), load))
           snooze(interval)
           beat()
 
@@ -174,8 +213,14 @@ object Swarm:
           Wire.read(document) match
             case beat: Wire.Beat =>
               last = now()
+              burden = beat.load
               Journal.log(Event.Received(beat, peer))
               if !beating.swap(true) then lasting
+
+            case advert: Wire.Advert =>
+              last = now()
+              told = advert
+              Journal.log(Event.Received(advert, peer))
 
             case ping: Wire.Ping =>
               last = now()
@@ -230,7 +275,9 @@ object Swarm:
       case _                               => Unset
 
     theirs.lay(mismatch(peer, Mismatch.NoAcceptance)): theirs =>
-      if Wire.write(Wire.Beat(now()), theirs).absent then mismatch(peer, Mismatch.Unservable) else
+      val probe: Wire = Wire.Beat(now(), Unset)
+
+      if Wire.write(probe, theirs).absent then mismatch(peer, Mismatch.Unservable) else
         Journal.log(Event.Negotiated(peer))
         theirs
 
@@ -327,6 +374,7 @@ object Swarm:
 
       def lasting(): Unit =
         Journal.log(Event.Linked(peer))
+        link.advertise()
         async(link.beat())
 
       link.read(lasting())
@@ -348,7 +396,15 @@ object Swarm:
 
   // What this daemon is asked to stay connected to, and how each connection stands.
   def connections: List[Connection] =
-    mutex(wanted).reverse.map: machine => Connection(machine, link(machine.name).let(_.heard))
+    def standing(machine: Machine): Standing = link(machine.name) match
+      case link: Tether => link.standing
+      case _            => Standing()
+
+    mutex(wanted).reverse.map: machine => Connection(machine, standing(machine))
+
+  // The callers which have made a lasting connection to this daemon, and how each stands.
+  def visitors: List[Caller] =
+    mutex(callers).reverse.filter(_.lasting).map: link => Caller(link.peer, link.standing)
 
   // Whether a lasting connection to the machine of this name is open now.
   def connected(name: Text): Boolean = link(name).present
@@ -394,6 +450,7 @@ object Swarm:
               val link: Tether = Tether(peer, release, session, theirs)
               mutex { links = (machine.name, link) :: links }
               Journal.log(Event.Linked(peer))
+              link.advertise()
               async(link.beat())
               link.read(())
               link.close()
