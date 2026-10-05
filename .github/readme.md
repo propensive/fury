@@ -110,16 +110,27 @@ of a second which doubles with each failure in a row, to half a minute at most.
 07:22:19.403  INFO  trying linux-box again in 1s
 ```
 
-`fury connect` with no machine lists the connections the daemon is keeping and when each was
-last heard from; `fury disconnect linux-box` lets one go. The beats themselves are logged at
+When a connection becomes a lasting one, each end tells the other what it is — its name,
+operating system, architecture and cores — and each beat carries the sender's load. `fury
+connect` with no machine lists the connections the daemon is keeping, the callers keeping one
+to it, and what is known of each:
+
+```
+linux-box  connected; Linux amd64, 16 cores; load 0.42; last heard from at 15:31:10.545
+
+connected to this daemon:
+  laptop  Mac OS X aarch64, 12 cores; load 2.95; last heard from at 15:31:10.545
+```
+
+`fury disconnect linux-box` lets a connection go. The beats themselves are logged at
 `FINE`. A machine named by a `connect` line must be declared in the user's own configuration
 (or the shared `machines.tel`), since the daemon has no project of its own.
 
 ### The protocol
 
 What two instances say to each other is the Fury protocol, and its schema is
-[`wire.schema.tel`](../wire.schema.tel): one TEL schema, in which the messages — `ping`, `pong`
-and `beat`, so far — are the cases of a single coproduct. Each message is sent as a BinTEL
+[`wire.schema.tel`](../wire.schema.tel): one TEL schema, in which the messages — `ping`, `pong`,
+`beat` and `advert`, so far — are the cases of a single coproduct. Each message is sent as a BinTEL
 document under that schema.
 
 Neither end assumes what the other can read. When a connection is made, each end first sends

@@ -25,14 +25,25 @@ record Pong
   field hostname String
 
 # Sent by each end of a lasting connection once a second. An end which hears none for three
-# seconds takes the connection for lost.
+# seconds takes the connection for lost. `load` is the sender's one-minute load average, where
+# its platform keeps one.
 record Beat
   field sent String
+  field load String optional
+
+# What the sender is, said once by each end when a connection becomes a lasting one: the
+# capabilities a build would be placed by (fury.md §8). `cores` is a whole number.
+record Advert
+  field hostname String
+  field os String
+  field arch String
+  field cores String
 
 select Wire
   variant ping Ping
   variant pong Pong
   variant beat Beat
+  variant advert Advert
 
 document
   select Wire

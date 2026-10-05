@@ -163,19 +163,45 @@ private def disconnect(name: Text)(using Stdio): Connected =
 
   Exit.Ok
 
-// `fury connect`, with no machine: the connections this daemon is keeping, and how each stands.
+// What is known of the other end of a connection, in a few words: what it advertised itself to
+// be, how loaded it last said it was, and when it was last heard from.
+private def described(standing: Swarm.Standing): Text =
+  def machine(advert: Wire.Advert): Text = t"${advert.os} ${advert.arch}, ${advert.cores} cores; "
+
+  def burden(load: Double): Text =
+    val hundredths: Long = (load*100.0).toLong
+    t"load ${hundredths/100}.${hundredths%100/10}${hundredths%10}; "
+
+  def heard(instant: Instant over Unix): Text = t"last heard from at ${Journal.time(instant)}"
+
+  val advert: Text = standing.advert.let(machine(_)).or(t"")
+  val load: Text = standing.load.let(burden(_)).or(t"")
+  val last: Text = standing.heard.let(heard(_)).or(t"")
+  t"$advert$load$last"
+
+// `fury connect`, with no machine: the connections this daemon is keeping, the callers which are
+// keeping one to it, and how each stands.
 private def connections()(using Stdio): Connected =
   val kept: List[Swarm.Connection] = Swarm.connections
+  val visitors: List[Swarm.Caller] = Swarm.visitors
 
-  if kept.nil then Out.println(t"this daemon is keeping no connections; see `fury connect`")
-
-  def state(connection: Swarm.Connection): Text =
+  def kept0(connection: Swarm.Connection): Text =
     val name: Text = connection.machine.name
 
-    connection.heard.lay(t"$name  not connected; trying again"): instant =>
-      t"$name  connected; last heard from at ${Journal.time(instant)}"
+    if connection.standing.heard.absent then t"$name  not connected; trying again"
+    else t"$name  connected; ${described(connection.standing)}"
 
-  kept.each: connection => Out.println(state(connection))
+  def visitor(caller: Swarm.Caller): Text =
+    t"  ${caller.peer.show}  ${described(caller.standing)}"
+
+  if kept.nil then Out.println(t"this daemon is keeping no connections; see `fury connect`")
+  kept.each: connection => Out.println(kept0(connection))
+
+  if !visitors.nil then
+    Out.println(t"")
+    Out.println(t"connected to this daemon:")
+    visitors.each: caller => Out.println(visitor(caller))
+
   Exit.Ok
 
 // `fury connect <machine>`: asks the daemon to keep the connection, waits a moment to see whether

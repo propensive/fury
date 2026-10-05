@@ -60,7 +60,7 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
   // known. A change to the messages changes it, as it must; it is pinned here so that no
   // change to them goes unnoticed.
   private val signature: Text =
-    t"6e3cf4569a94fecce0f88bab89ff9d710f86cf8f375b1dd38473e1f6dfde2efb"
+    t"ddfa9d041cc2a5ffebe0df6bad8bb882b234987af5efb7289cac8cbd5ef44dd1"
 
   private val id: Uuid = Uuid(0x3f2a91c000000000L, 0L)
 
@@ -102,7 +102,10 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
       negotiated:     Int,
       strangers:      Int,
       unannounced:    Int,
-      mismatched:     Optional[Swarm.Error.Reason] )
+      mismatched:     Optional[Swarm.Error.Reason],
+      calleeAdvert:   Optional[Wire.Advert],
+      callerAdvert:   Optional[Wire.Advert],
+      calleeLoad:     Optional[Double] )
 
   private def settings(keyword: Text): Optional[Text] =
     if keyword == t"listenToken" then secret else Unset
@@ -145,6 +148,8 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
       else if text.starts(t"← ping") then t"received-ping"
       else if text.starts(t"→ pong") then t"sent-pong"
       else if text.starts(t"← pong") then t"received-pong"
+      else if text.starts(t"→ advert") then t"sent-advert"
+      else if text.starts(t"← advert") then t"received-advert"
       else if text.starts(t"→ beat") then t"sent-beat"
       else if text.starts(t"← beat") then t"received-beat"
       else if text.starts(t"keeping the connection") then t"linked"
@@ -174,9 +179,20 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
       . assert(_ == Wire.Pong(id, moment, host"linux-box.example.org"))
 
       test(m"a beat survives being written and read"):
-        Wire.write(Wire.Beat(moment), Wire.acceptance).let(Wire.read(_))
+        Wire.write(Wire.Beat(moment, Unset), Wire.acceptance).let(Wire.read(_))
 
-      . assert(_ == Wire.Beat(moment))
+      . assert(_ == Wire.Beat(moment, Unset))
+
+      test(m"a beat carries the sender's load"):
+        Wire.write(Wire.Beat(moment, 1.25), Wire.acceptance).let(Wire.read(_))
+
+      . assert(_ == Wire.Beat(moment, 1.25))
+
+      test(m"an advert survives being written and read"):
+        val advert: Wire = Wire.Advert(host"linux-box", t"Linux", t"amd64", 16)
+        Wire.write(advert, Wire.acceptance).let(Wire.read(_))
+
+      . assert(_ == Wire.Advert(host"linux-box", t"Linux", t"amd64", 16))
 
       test(m"the schema is the one this build was written for"):
         Wire.signature.serialize[Hex]
@@ -204,12 +220,12 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
       . assert(_ == true)
 
       test(m"a message is not an acceptance, and is not taken for one"):
-        Wire.write(Wire.Beat(moment), Wire.acceptance).let(Wire.offered(_)).absent
+        Wire.write(Wire.Beat(moment, Unset), Wire.acceptance).let(Wire.offered(_)).absent
 
       . assert(_ == true)
 
       test(m"a message is not written to an acceptance of another protocol"):
-        Wire.offered(Stranger.offer).let(Wire.write(Wire.Beat(moment), _)).absent
+        Wire.offered(Stranger.offer).let(Wire.write(Wire.Beat(moment, Unset), _)).absent
 
       . assert(_ == true)
 
@@ -282,14 +298,14 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
       . assert(_ == (Level.Fail, Level.Warn, Level.Info))
 
       test(m"a beat is fine detail, and a lost connection a warning"):
-        val beat: Event = Event.Sent(Wire.Beat(moment), laptop)
+        val beat: Event = Event.Sent(Wire.Beat(moment, Unset), laptop)
         val ping: Event = Event.Sent(Wire.Ping(id, moment, t""), laptop)
         (beat.level, ping.level, Event.Lost(laptop, 3.0*Second).level)
 
       . assert(_ == (Level.Fine, Level.Info, Level.Warn))
 
       test(m"a message the other end does not accept is told, as a warning"):
-        val event: Event = Event.Unaccepted(Wire.Beat(moment), laptop)
+        val event: Event = Event.Unaccepted(Wire.Beat(moment, Unset), laptop)
         (event.level, told(event))
 
       . assert(_ == (Level.Warn, t"laptop does not accept beat, which was not sent"))
@@ -298,6 +314,17 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
         told(Event.Unnegotiated(laptop, Journal.Mismatch.Unservable))
 
       . assert(_ == unservable)
+
+      test(m"an advert is told with what it says"):
+        told(Event.Received(Wire.Advert(host"linux-box", t"Linux", t"amd64", 16), laptop))
+
+      . assert(_ == t"← advert (Linux amd64, 16 cores) from laptop")
+
+      test(m"this machine advertises what it is"):
+        val advert: Wire.Advert = Swarm.advert
+        (advert.hostname, advert.cores >= 1, advert.os != t"", advert.arch != t"")
+
+      . assert(_ == (Swarm.local, true, true, true))
 
       test(m"a lost connection is told with how long it was silent"):
         told(Event.Lost(laptop, 3.25*Second))
@@ -440,6 +467,17 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
           val connected: Boolean = Swarm.connected(t"steady")
           snooze(2.5*Second)
           val beats: (Int, Int) = (count(t"sent-beat"), count(t"received-beat"))
+
+          // What each end has learnt of the other: the callee from the caller's side, and the
+          // caller from the listener's.
+          val kept: scala.List[Swarm.Connection] = Swarm.connections.stdlib
+
+          val callee: Optional[Swarm.Standing] =
+            kept.find(_.machine.name == t"steady").map(_.standing).getOrElse(Unset)
+
+          val caller: Optional[Swarm.Standing] =
+            Swarm.visitors.stdlib.headOption.map(_.standing).getOrElse(Unset)
+
           val before: Int = about(t"steady", t"connecting")
           val answer: Optional[Swarm.Reply] = safely(Swarm.ping(steady, t"over the link"))
           val reply: Optional[Hostname] = answer.let(_.hostname)
@@ -452,7 +490,7 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
                 session =>
                   session.send(Wire.offer)
                   session.receive()
-                  Wire.write(Wire.Beat(now()), Wire.acceptance).let(session.send(_))
+                  Wire.write(Wire.Beat(now(), Unset), Wire.acceptance).let(session.send(_))
                   snooze(5.0*Second)
 
           await(30)(count(t"lost") >= 1)
@@ -536,7 +574,7 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
           Lasting
             ( connected, beats, reply, after - before, lostByListener, still, lostByCaller,
               retried, attempts, released, count(t"negotiated"), strangers, unannounced,
-              mismatched )
+              mismatched, callee.let(_.advert), caller.let(_.advert), callee.let(_.load) )
 
       test(m"a connection asked for is made and kept"):
         lasting.connected
@@ -592,3 +630,20 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
         lasting.mismatched
 
       . assert(_ == Swarm.Error.Reason.Mismatched)
+
+      // Both ends of the one connection are this machine, so each learns of the other what this
+      // machine advertises.
+      test(m"the end which connected learns what the other is"):
+        lasting.calleeAdvert
+
+      . assert(_ == Swarm.advert)
+
+      test(m"the end which was connected to learns what its caller is"):
+        lasting.callerAdvert
+
+      . assert(_ == Swarm.advert)
+
+      test(m"each beat brings the sender's load, where its platform keeps one"):
+        lasting.calleeLoad.present == Swarm.load.present
+
+      . assert(_ == true)
