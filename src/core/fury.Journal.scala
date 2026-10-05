@@ -195,8 +195,11 @@ object Journal:
     case Wire.Pong(id, _, _) =>
       t"pong ${brief(id)}"
 
-    case Wire.Beat(_) =>
+    case Wire.Beat(_, _) =>
       t"beat"
+
+    case Wire.Advert(_, os, arch, cores) =>
+      t"advert ($os $arch, $cores cores)"
 
   // A logged event as the journal keeps it: numbered in the order it arrived, with its level,
   // the instant it was logged and the message it was transcribed to.

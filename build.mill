@@ -44,7 +44,7 @@ object settings:
   // Bump (and commit) per release; release.sh (in propensive/.github) refuses to release
   // when this pin disagrees with the tag being released. Snapshots override it through
   // `publishVersion` (below), never here.
-  val furyVersion = "0.1.0"
+  val furyVersion = "0.2.0"
 
   // The version a Pyrocosm tool reports (`fury --version`), written by its build into the
   // `META-INF/pyrocosm/<name>/version` resource `pyrocosm.Tool` reads: the release version when
