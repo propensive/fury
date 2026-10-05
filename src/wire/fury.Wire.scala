@@ -32,43 +32,58 @@
                                                                                                   */
 package fury
 
-import java.lang as jl
-import java.util.concurrent.atomic as juca
-
 import soundness.*
-import probably.TestEvent
 
-// fury's suite, run WITHOUT fume: a `Suite` has no `main` of its own (the host — normally fume —
-// drives it through `invoke`), so this is the plain-`java` entry point `make test-plain` uses,
-// printing one line per completed test and exiting with the suite's status (0 = passed,
-// 1 = failures, 2 = the suite threw). `fume run -c <test jar>` (`make test`, and CI) remains the
-// full experience, discovering the suite from the assembly's `META-INF/services/probably.Suite`
-// index, which the beneficence plugin writes.
-@main
-def runTests(): Unit =
-  val passes = juca.AtomicInteger(0)
-  val failures = juca.AtomicInteger(0)
-  val out = jl.System.out.nn
+import pyrocosm.Channel
+import stratiform.TelSchematic
 
-  def handle(event: TestEvent): Unit = event match
-    case TestEvent.TestCompleted(test, _, _, outcome, _, _) =>
-      if outcome.outcome == t"pass" || outcome.outcome == t"aspire-pass" then passes.incrementAndGet()
-      else failures.incrementAndGet()
-      out.println(t"[${outcome.outcome}] ${test.path.join(t" / ")}".s)
+object Wire:
+  // An instant and a hostname are written as the scalars they always were — the milliseconds
+  // since the Unix epoch as a whole number, the name as text — so that typing these fields
+  // properly changes neither the schema, nor its fingerprint, nor a byte on the wire.
+  given instantSchematic: (Instant over Unix) is TelSchematic over Tels.Type =
+    () => Tels.Scalar(Array.empty)
 
-    case TestEvent.DetailMessage(_, message) =>
-      out.println(t"    $message".s)
+  given hostnameSchematic: Hostname is TelSchematic over Tels.Type =
+    () => Tels.Scalar(Array.empty)
 
-    case TestEvent.DetailCompare(_, expected, found, _) =>
-      out.println(t"    expected: $expected".s)
-      out.println(t"    found:    $found".s)
+  given instantEncodable: (Instant over Unix) is Tel.Encodable =
+    Tel.Encodable(() => Morphology.Whole, Tel.Nature.Scalar): instant =>
+      Tel.scalar(instant.long.show)
 
-    case TestEvent.RunTerminated(error, _, _) =>
-      out.println(t"suite threw: ${error.components.map(_.message).join(t"; ")}".s)
+  given instantDecodable: Tactic[Tel.Error] => (Instant over Unix) is Tel.Decodable =
+    Tel.Decodable(() => Morphology.Whole, Tel.Nature.Scalar): tel =>
+      Instant.of[Unix](summon[Long is Tel.Decodable].decoded(tel))
 
-    case _ => ()
+  // Derived once: the schema, its fingerprint (the protocol the handshake names) and the codec.
+  // The derivation is why this enum is ALONE in a module compiled without capture checking, as
+  // fume keeps its `Relay`: stratiform's derived codecs expand to instances the capture checker
+  // sees as fresh where a pure instance is required.
+  lazy val codec: Channel.Codec[Wire] =
+    import Channel.derivation.throwing
+    val schema: Tels = Tels.tels[Wire](t"fury-wire")
 
-  val status = scala.List(Tests, SwarmTests).map(_.invoke(t"", handle)).max
+    Channel.Codec
+      ( t"fury-wire", schema, message => Channel.encode(message, schema),
+        data => Channel.decode[Wire](data) )
 
-  out.println(t"${passes.get} passed, ${failures.get} failed".s)
-  jl.System.exit(status)
+  // The port a Fury listens on by default.
+  val port: Tcp.Port = Port.unsafe[Tcp](8092)
+
+// What one Fury says to another over a Pyrocosm `Channel`, once Pyrocosm's handshake has
+// welcomed the connection: the Fury protocol (fury.md §8), of which this is the first rung. The
+// messages are a proof of the link and little more — a `ping` carrying a note, the `pong` that
+// answers it, and the `beat` by which each end of a lasting connection tells the other, once a
+// second, that it is still there.
+//
+//   either → other   ping   an id, when it was sent, and a note to show at the other end
+//   other → either   pong   the same id, when it arrived, and who answered
+//   each → other     beat   when it was sent; silence in its place is how a loss is noticed
+//
+// Only this enum's layout must agree between two Furies: its schema's fingerprint is the
+// protocol the handshake names, and a peer with a different one is refused before any message is
+// decoded.
+enum Wire:
+  case Ping(id: Text, sent: Instant over Unix, note: Text)
+  case Pong(id: Text, received: Instant over Unix, hostname: Hostname)
+  case Beat(sent: Instant over Unix)

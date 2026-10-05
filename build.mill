@@ -131,7 +131,8 @@ object settings:
     mvn"dev.propensive:escapade-io:$soundness",              // Teletype <-> Stdio writables
     mvn"dev.propensive:escritoire-core:$soundness",          // the listing tables
     mvn"dev.propensive:ethereal-core:$soundness",            // the resident daemon
-    mvn"dev.propensive:eucalyptus-core:$soundness",          // logging.silentLogging
+    mvn"dev.propensive:aviation-core:$soundness",            // instants and durations
+    mvn"dev.propensive:eucalyptus-core:$soundness",          // typed logging, and its sinks
     mvn"dev.propensive:exoskeleton-completions:$soundness",  // cli + tab-completion
     mvn"dev.propensive:exoskeleton-manpage:$soundness",      // `fury install`'s manpage
     mvn"dev.propensive:galilei-jvm:$soundness",              // the filesystem
@@ -139,6 +140,7 @@ object settings:
     mvn"dev.propensive:iridescence-core:$soundness",         // the palette
     mvn"dev.propensive:monotonous-core:$soundness",          // alphabets.hexLowerCase
     mvn"dev.propensive:parasite-core:$soundness",            // threading.platformThreading
+    mvn"dev.propensive:revolution-semver:$soundness",        // the versions instances declare
     mvn"dev.propensive:stratiform-core:$soundness")          // TEL rendering and BinTEL
 
   // The Pyrocosm family's standard command line (`Tool.standard`: about, install, quit, config
@@ -146,6 +148,7 @@ object settings:
   def pyrocosmDeps(pyrocosm: String) = Seq(
     mvn"dev.propensive:pyrocosm-cli:$pyrocosm",
     mvn"dev.propensive:pyrocosm-model:$pyrocosm",
+    mvn"dev.propensive:pyrocosm-remote:$pyrocosm",   // machines, the TLS peer, the channel
     mvn"dev.propensive:pyrocosm-web:$pyrocosm")
 
   // The test module's extra surface: a `Suite` and the BinTEL event stream a host reads.
@@ -382,8 +385,20 @@ object fury extends Project:
       mvn"dev.propensive:lira:$lira",
       mvn"dev.propensive:lira-tool:$lira")
 
+  // The messages one Fury sends another (`fury.Wire`) and their derived BinTEL codec, ALONE in a
+  // module compiled without capture checking, as fume keeps its `Relay`: stratiform's derived
+  // codecs expand to instances the capture checker sees as fresh where a pure instance is
+  // required, so their derivation site cannot be a checked module. Released as
+  // `dev.propensive:fury-wire`.
+  object wire extends Component(), Publishing:
+    def mvnDeps = Task(libraries(deps.soundness(), deps.pyrocosm(), deps.lira()))
+
+    override def scalacOptions =
+      (settings.scalaOptions ++ settings.predef).filterNot: option =>
+        option == "-Ycc-new" || option.contains("captureChecking") || option.contains("separationChecking")
+
   // Released as `dev.propensive:fury-core`: the engine, the model, the daemon's commands.
-  object core extends Component(), Pyrocosmic("fury"), Publishing:
+  object core extends Component(wire), Pyrocosmic("fury"), Publishing:
     def mvnDeps = Task(libraries(deps.soundness(), deps.pyrocosm(), deps.lira()))
 
     // The schemas fury validates against are the repository's own, copied into a `schemas/`
@@ -446,7 +461,7 @@ object fury extends Project:
 // snapshot` publishes an unreleased build for a dependent repository to pin.
 object release extends Module:
   def modules: Seq[PublishModule] =
-    Seq(fury.core)
+    Seq(fury.wire, fury.core)
 
   private def withDescriptors(source: os.Path, target: os.Path, entries: Seq[(String, os.Path)])
   :   Unit =
