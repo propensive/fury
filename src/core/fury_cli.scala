@@ -56,7 +56,7 @@ val Fury: Tool =
       prose = t"Fury is the LIRA build tool: it reads a build file, plans a static DAG of steps " +
         t"and runs them through tools, memoized in the content-addressed store, on this " +
         t"machine or across a swarm of them.",
-      services = List(Swarm.service) )
+      services = List(Swarm.service, Swarm.connector) )
 
 // Exit statuses are declared as objects (soundness#1811), so that an `execute` block's result
 // type documents the precise union in the manpage's EXIT STATUS section.
@@ -70,13 +70,15 @@ object ui:
   val Listen = Subcommand("listen", "accept connections from other instances, in the background")
   val Stop = Subcommand("stop", "stop accepting connections from other instances")
   val Ping = Subcommand("ping", "send a message to a configured machine and await its answer")
+  val Connect = Subcommand("connect", "keep a connection to a configured machine open")
+  val Disconnect = Subcommand("disconnect", "stop keeping a connection to a machine open")
   val Log = Subcommand("log", "show what this instance of Fury has been doing")
 
   val Follow =
     Flag[Unit]("follow", false, proscenium.List('f'), "keep showing events until Ctrl+C")
 
-  // The least a logged event must matter for `fury log` to show it: `--level`, `log-level` in
-  // either config file, and so on. Everything is shown by default.
+  // The least a logged event must matter for `fury log` to show it: `--log-level`, `log-level`
+  // in either config file, and so on. `info` by default, which leaves out the beats.
   val Threshold =
     Setting[Text](t"logLevel", t"show only events at this level or above: fine, info, warn or fail")
 
@@ -142,13 +144,70 @@ private def listen(port: Tcp.Port, token: Optional[Text])
 
   Swarm.listening.lay(start())(already(_))
 
+// How a command which names a machine can end.
+private type Connected = Exit | NoMachine.type | UsageError.type
+
+private def unknown(name: Text)(using Stdio): Connected =
+  Out.println(t"no machine named $name is configured")
+  NoMachine
+
+private def usage(form: Text)(using Stdio): Connected =
+  Out.println(t"Usage: $form")
+  UsageError
+
+// `fury disconnect <machine>`.
+private def disconnect(name: Text)(using Stdio): Connected =
+  if Swarm.disconnect(name)
+  then Out.println(t"no longer keeping a connection to $name")
+  else Out.println(t"this daemon is not keeping a connection to $name")
+
+  Exit.Ok
+
+// `fury connect`, with no machine: the connections this daemon is keeping, and how each stands.
+private def connections()(using Stdio): Connected =
+  val kept: List[Swarm.Connection] = Swarm.connections
+
+  if kept.nil then Out.println(t"this daemon is keeping no connections; see `fury connect`")
+
+  def state(connection: Swarm.Connection): Text =
+    val name: Text = connection.machine.name
+
+    connection.heard.lay(t"$name  not connected; trying again"): instant =>
+      t"$name  connected; last heard from at ${Journal.time(instant)}"
+
+  kept.each: connection => Out.println(state(connection))
+  Exit.Ok
+
+// `fury connect <machine>`: asks the daemon to keep the connection, waits a moment to see whether
+// it could be made, and says which. Either way the daemon goes on trying.
+private def connect(machine: Machine)(using Stdio, Monitor, Probate): Connected =
+  val name: Text = machine.name
+  val mark: Long = Journal.daemon.latest
+
+  def wait(attempts: Int): Unit =
+    if attempts > 0 && !Swarm.connected(name) then
+      snooze(0.1*Second)
+      wait(attempts - 1)
+
+  if Swarm.connected(name) then Out.println(t"this daemon is already connected to $name") else
+    Swarm.connect(machine)
+    wait(20)
+
+    if Swarm.connected(name)
+    then Out.println(t"connected to $name; `fury disconnect $name` closes the connection")
+    else
+      Journal.daemon.since(mark, Level.Warn).each: entry => Out.println(entry.message.text)
+      Out.println(t"not connected to $name yet; this daemon will keep trying")
+
+  Exit.Ok
+
 // How `fury ping` can end, once the machine is known.
 private type Pinged = Exit | RemoteFailed.type
 
 // `fury ping`, once the machine is known: says what answered, or why nothing did. Both the
 // handler and the block are given the one type, since a recovery's result is typed by its
 // block's alone.
-private def ping(machine: Machine, note: Text)(using Stdio): Pinged logs Journal.Event =
+private def ping(machine: Machine, note: Text)(using Stdio, Monitor): Pinged =
   def failed(error: Swarm.Error): Pinged =
     Out.println(error.message.text)
     RemoteFailed
@@ -209,6 +268,7 @@ def run(): Unit =
           case Argument(head) :: _ if head == t"quit" =>
             retiring() = true
             Swarm.service.stop()
+            Swarm.disconnect()
 
           case _                                      => ()
 
@@ -280,6 +340,49 @@ def run(): Unit =
 
             listen(port, token)
 
+        // `fury connect [machine]` — keep a lasting connection to a configured machine, in the
+        // background: the daemon makes it, sends a beat over it each second, and makes it again
+        // whenever it cannot be made or is lost, until `fury disconnect`. Without a machine, the
+        // connections the daemon is keeping are listed.
+        case ui.Connect() :: rest =>
+          val known: List[Machine] = machines()
+
+          rest.prim.let: argument =>
+            val names: List[Suggestion] = known.map: machine => Suggestion(machine.name)
+            summon[Cli].suggest(argument, names, t"", t"")
+
+          val words: List[Text] = rest.map: (argument: Argument) => argument()
+
+          execute:
+            given Stdio = summon[Invocation].stdio
+            import probates.cancelProbate
+
+            words match
+              case name :: _ =>
+                known.seek(_.name == name) match
+                  case machine: Machine => connect(machine)
+                  case _                => unknown(name)
+
+              case _ =>
+                connections()
+
+        // `fury disconnect <machine>` — stop keeping the connection to a machine.
+        case ui.Disconnect() :: rest =>
+          val known: List[Machine] = machines()
+
+          rest.prim.let: argument =>
+            val names: List[Suggestion] = known.map: machine => Suggestion(machine.name)
+            summon[Cli].suggest(argument, names, t"", t"")
+
+          val words: List[Text] = rest.map: (argument: Argument) => argument()
+
+          execute:
+            given Stdio = summon[Invocation].stdio
+
+            words match
+              case name :: _ => disconnect(name)
+              case _         => usage(t"fury disconnect <machine>")
+
         // `fury ping <machine> [note …]` — say `ping` to a configured machine and wait for its
         // `pong`; the note is shown in that machine's log.
         case ui.Ping() :: rest =>
@@ -293,7 +396,6 @@ def run(): Unit =
 
           execute:
             given Stdio = summon[Invocation].stdio
-            given (LogSink[Any, Message]^{}) = Journal.sink
 
             words match
               case name :: note =>
@@ -309,11 +411,12 @@ def run(): Unit =
                 Out.println(t"Usage: fury ping <machine> [note]")
                 UsageError
 
-        // `fury log [--follow] [--level]` — what this instance has been doing, oldest first:
-        // everything, or only what was logged at the given level or above.
+        // `fury log [--follow] [--log-level]` — what this instance has been doing, oldest first:
+        // everything logged at `info` or above, or at the given level or above. The beats of a
+        // lasting connection are `fine`.
         case ui.Log() :: _ =>
           val follow: Boolean = ui.Follow().present
-          val level: Level = ui.Threshold().let(levels.at(_)).or(Level.Fine)
+          val level: Level = ui.Threshold().let(levels.at(_)).or(Level.Info)
 
           execute:
             given Stdio = summon[Invocation].stdio
@@ -335,6 +438,8 @@ def run(): Unit =
             Out.println(t"  check      parse and validate the build file")
             Out.println(t"  ping       send a message to a configured machine and await its answer")
             Out.println(t"  log        show what this instance of Fury has been doing")
+            Out.println(t"  connect    keep a connection to a configured machine open")
+            Out.println(t"  disconnect stop keeping a connection to a machine open")
             Out.println(t"  listen     accept connections from other instances, in the background")
             Out.println(t"  identity   show this machine's identity, for another to declare")
             Out.println(t"  about      show this tool's name, version and daemon")

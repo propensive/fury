@@ -68,6 +68,10 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
 
     . join
 
+  // The fingerprint of the messages' schema.
+  private val protocol: Text =
+    t"7e5e105996c7999c65a754aa57896f43d21b802c09239eed92f91198e3b24fff"
+
   private val moment: Instant over Unix = Instant.of[Unix](1791108000000L)
   private val laptop: Party = Party.Caller(host"laptop")
 
@@ -84,20 +88,33 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
       listening:      Boolean,
       last:           Text )
 
+  // What the lasting connections showed.
+  private case class Lasting
+    ( connected:      Boolean,
+      beats:          (Int, Int),
+      reply:          Optional[Hostname],
+      reconnections:  Int,
+      lostByListener: Int,
+      still:          Boolean,
+      lostByCaller:   Int,
+      retried:        Int,
+      attempts:       Int,
+      released:       Boolean )
+
   private def settings(keyword: Text): Optional[Text] =
     if keyword == t"listenToken" then secret else Unset
 
-  // The listener binds a moment after `serve` is called, so the first attempts may be refused.
-  private def patiently(attempts: Int)(action: => Optional[Swarm.Reply])(using Monitor)
+  // The listener binds a moment after `serve` is called, so the first pings may be refused.
+  private def patiently(attempts: Int, machine: Machine, note: Text)(using Monitor)
   :   Optional[Swarm.Reply] =
 
-    action.or:
+    safely(Swarm.ping(machine, note)).or:
       if attempts <= 1 then Unset else
         snooze(0.2*Second)
-        patiently(attempts - 1)(action)
+        patiently(attempts - 1, machine, note)
 
   // Why a ping failed, if it did.
-  private def failure(machine: Machine): Optional[Swarm.Error.Reason] logs Event =
+  private def failure(machine: Machine)(using Monitor): Optional[Swarm.Error.Reason] =
     attempt[Swarm.Error](Swarm.ping(machine, t"")) match
       case Attempt.Failure(failed) => failed.reason
       case Attempt.Success(_)      => Unset
@@ -125,6 +142,12 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
       else if text.starts(t"← ping") then t"received-ping"
       else if text.starts(t"→ pong") then t"sent-pong"
       else if text.starts(t"← pong") then t"received-pong"
+      else if text.starts(t"→ beat") then t"sent-beat"
+      else if text.starts(t"← beat") then t"received-beat"
+      else if text.starts(t"keeping the connection") then t"linked"
+      else if text.starts(t"lost the connection") then t"lost"
+      else if text.starts(t"no longer keeping") then t"unlinked"
+      else if text.starts(t"trying") then t"retrying"
       else t"failed"
 
   def run(): Unit =
@@ -141,12 +164,18 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
 
       . assert(_ == Wire.Pong(t"3f2a91c0", moment, host"linux-box.example.org"))
 
-      // What the protocol was while an instant was a `Long` and a hostname a `Text`: typing
-      // those fields must change neither the schema's fingerprint nor a byte of a message.
-      test(m"the protocol is the one it was before its fields were typed"):
+      test(m"a beat survives its codec"):
+        Wire.codec.decode(Wire.codec.encode(Wire.Beat(moment)))
+
+      . assert(_ == Wire.Beat(moment))
+
+      // The protocol is named by a fingerprint of the messages' schema, so that two builds which
+      // disagree about them refuse each other. Adding `beat` changed it, as any change to the
+      // messages must; it is pinned here so that no change to them goes unnoticed.
+      test(m"the protocol is the one this build was written for"):
         Wire.codec.protocol
 
-      . assert(_ == t"9f6e4ca0393d67bc4fd949cd15273f2de738e6b21a985fea638b9c045bcba647")
+      . assert(_ == protocol)
 
       test(m"a ping is the bytes it was before its fields were typed"):
         Wire.codec.encode(Wire.Ping(t"3f2a91c0", moment, t"hello there")).serialize[Hex]
@@ -214,9 +243,26 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
         val self: Machine = machine(t"self", Data(), secret)
         val reason = Swarm.Error.Reason.Connection(Peer.Error.Reason.Refused(t"bad-token"))
         val refused: Event = Event.Failed(self, reason)
-        (unbound.level, refused.level, Event.Stopped(port).level, Event.Closed(laptop).level)
+        (unbound.level, refused.level, Event.Stopped(port).level)
 
-      . assert(_ == (Level.Fail, Level.Warn, Level.Info, Level.Fine))
+      . assert(_ == (Level.Fail, Level.Warn, Level.Info))
+
+      test(m"a beat is fine detail, and a lost connection a warning"):
+        val beat: Event = Event.Sent(Wire.Beat(moment), laptop)
+        val ping: Event = Event.Sent(Wire.Ping(t"3f2a", moment, t""), laptop)
+        (beat.level, ping.level, Event.Lost(laptop, 3.0*Second).level)
+
+      . assert(_ == (Level.Fine, Level.Info, Level.Warn))
+
+      test(m"a lost connection is told with how long it was silent"):
+        told(Event.Lost(laptop, 3.25*Second))
+
+      . assert(_ == t"lost the connection with laptop: nothing heard for 3250ms")
+
+      test(m"the pause before a connection is made again doubles, to half a minute at most"):
+        scala.List(0, 1, 2, 3, 4, 5, 9).map(Swarm.delay(_).value.toInt)
+
+      . assert(_ == scala.List(1, 2, 4, 8, 16, 30, 30))
 
       test(m"events belong to the categories that describe them"):
         val sent: Event = Event.Sent(Wire.Ping(t"3f2a", moment, t""), laptop)
@@ -243,14 +289,13 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
       // judge what was observed.
       val observed: Observed =
         supervise:
-          given (LogSink[Any, Message]^{}) = Journal.sink
           val fingerprint: Data = Peer.identity.fingerprint
           val start: Long = Journal.daemon.latest
           def logged: scala.List[Text] = kinds(Journal.daemon.since(start))
           async(Swarm.service.serve(port.number, settings))
 
           val self: Machine = machine(t"self", fingerprint, secret)
-          val answer = patiently(25)(safely(Swarm.ping(self, t"hello")))
+          val answer = patiently(25, self, t"hello")
 
           // The listener's `closed` is logged once the caller has hung up, a moment later.
           await(25)(logged.contains(t"closed"))
@@ -313,3 +358,120 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
         (observed.listening, observed.last)
 
       . assert(_ == (false, t"stopped"))
+
+    suite(m"A lasting connection"):
+      // As above: everything is done here, once and in order, and judged afterwards. Three
+      // connections are made. The first is a real one, from this daemon to its own listener,
+      // kept for a few seconds. The second is from a caller which sends one beat and then says
+      // nothing, which the listener must give up for lost. The third is to a listener which
+      // never sends a beat, which this daemon must give up for lost and then make again.
+      val lasting: Lasting =
+        supervise:
+          val identity: Peer.Identity = Peer.identity
+          val fingerprint: Data = identity.fingerprint
+          val start: Long = Journal.daemon.latest
+          def all: List[Journal.Entry] = Journal.daemon.since(start)
+          def logged: scala.List[Text] = kinds(all)
+          def count(kind: Text): Int = logged.count(_ == kind)
+
+          def about(name: Text, kind: Text): Int =
+            all.stdlib.count: entry =>
+              entry.message.text.contains(name) && kinds(List(entry)).head == kind
+
+          val here: Tcp.Port = Port[Tcp]()
+          val there: Tcp.Port = Port[Tcp]()
+
+          val steady: Machine =
+            Machine(t"steady", t"127.0.0.1", here.number, fingerprint, secret, Nil)
+
+          val silent: Machine =
+            Machine(t"silent", t"127.0.0.1", there.number, fingerprint, secret, Nil)
+
+          // A real connection, kept for long enough to see beats pass each way.
+          async(Swarm.service.serve(here.number, settings))
+          await(25)(Swarm.listening.present)
+          Swarm.connect(steady)
+          await(50)(Swarm.connected(t"steady"))
+          val connected: Boolean = Swarm.connected(t"steady")
+          snooze(2.5*Second)
+          val beats: (Int, Int) = (count(t"sent-beat"), count(t"received-beat"))
+          val before: Int = about(t"steady", t"connecting")
+          val answer: Optional[Swarm.Reply] = safely(Swarm.ping(steady, t"over the link"))
+          val reply: Optional[Hostname] = answer.let(_.hostname)
+          val after: Int = about(t"steady", t"connecting")
+
+          // A caller which sends one beat and then says nothing, holding the connection open.
+          async:
+            safely:
+              Peer.connect[Wire, Unit](steady, t"fury", t"0.0.0", Wire.codec, here.number):
+                session =>
+                  session.send(Wire.Beat(now()))
+                  snooze(5.0*Second)
+
+          await(30)(count(t"lost") >= 1)
+          val lostByListener: Int = count(t"lost")
+          val still: Boolean = Swarm.connected(t"steady")
+
+          // A listener which welcomes a caller and then never sends a beat.
+          val gate: () => Optional[Text] = () => Unset
+
+          val deaf: Peer.Listener[Wire] =
+            Peer.Listener[Wire](t"fury", t"0.0.0", Wire.codec, secret, identity, Nil, gate):
+              session => snooze(8.0*Second)
+
+          async(deaf.serve(there.number))
+          snooze(0.5*Second)
+          Swarm.connect(silent)
+          await(40)(about(t"silent", t"lost") >= 1)
+          await(25)(about(t"silent", t"connecting") >= 2)
+          val lostByCaller: Int = about(t"silent", t"lost")
+          val retried: Int = about(t"silent", t"retrying")
+          val attempts: Int = about(t"silent", t"connecting")
+
+          // Tidying up: both connections are let go of, and both listeners stopped.
+          Swarm.disconnect(t"silent")
+          deaf.stop()
+          Swarm.disconnect(t"steady")
+          await(25)(!Swarm.connected(t"steady"))
+          val released: Boolean = !Swarm.connected(t"steady") && Swarm.connections.nil
+          Swarm.service.stop()
+          await(25)(Swarm.listening.absent)
+
+          Lasting
+            ( connected, beats, reply, after - before, lostByListener, still, lostByCaller,
+              retried, attempts, released )
+
+      test(m"a connection asked for is made and kept"):
+        lasting.connected
+
+      . assert(_ == true)
+
+      test(m"beats pass each way, about one a second from each end"):
+        lasting.beats
+
+      . assert: (sent, received) => sent >= 4 && received >= 4
+
+      test(m"a ping goes over the connection that is already open"):
+        (lasting.reply, lasting.reconnections)
+
+      . assert(_ == (Swarm.local, 0))
+
+      test(m"a listener gives up a caller which goes silent"):
+        lasting.lostByListener
+
+      . assert(_ >= 1)
+
+      test(m"another caller's silence does not disturb a healthy connection"):
+        lasting.still
+
+      . assert(_ == true)
+
+      test(m"a caller gives up a listener which goes silent, and connects again"):
+        (lasting.lostByCaller >= 1, lasting.retried >= 1, lasting.attempts >= 2)
+
+      . assert(_ == (true, true, true))
+
+      test(m"a connection let go of is closed, and no longer kept"):
+        lasting.released
+
+      . assert(_ == true)

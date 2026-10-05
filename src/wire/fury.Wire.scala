@@ -72,11 +72,13 @@ object Wire:
 
 // What one Fury says to another over a Pyrocosm `Channel`, once Pyrocosm's handshake has
 // welcomed the connection: the Fury protocol (fury.md §8), of which this is the first rung. The
-// messages are a proof of the link and nothing more — a `ping` carrying a note, and the `pong`
-// that answers it — so that both ends can be seen to have spoken.
+// messages are a proof of the link and little more — a `ping` carrying a note, the `pong` that
+// answers it, and the `beat` by which each end of a lasting connection tells the other, once a
+// second, that it is still there.
 //
-//   caller → listener   ping   an id, when it was sent, and a note to show at the other end
-//   listener → caller   pong   the same id, when it arrived, and who answered
+//   either → other   ping   an id, when it was sent, and a note to show at the other end
+//   other → either   pong   the same id, when it arrived, and who answered
+//   each → other     beat   when it was sent; silence in its place is how a loss is noticed
 //
 // Only this enum's layout must agree between two Furies: its schema's fingerprint is the
 // protocol the handshake names, and a peer with a different one is refused before any message is
@@ -84,3 +86,4 @@ object Wire:
 enum Wire:
   case Ping(id: Text, sent: Instant over Unix, note: Text)
   case Pong(id: Text, received: Instant over Unix, hostname: Hostname)
+  case Beat(sent: Instant over Unix)

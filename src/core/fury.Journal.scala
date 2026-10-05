@@ -75,6 +75,8 @@ object Journal:
     case Caller(hostname: Optional[Hostname])
 
   object Event:
+    private def milliseconds(duration: Duration): Int = (duration.value*1000.0).toInt
+
     private def release(version: Optional[Semver]): Text =
       version.lay(t"an unknown version of fury"): version => t"fury $version"
 
@@ -112,6 +114,18 @@ object Journal:
       case Failed(machine, reason) =>
         m"${machine.name}: $reason"
 
+      case Linked(peer) =>
+        m"keeping the connection with ${peer.show} open, with a beat each second"
+
+      case Lost(peer, silence) =>
+        m"lost the connection with ${peer.show}: nothing heard for ${milliseconds(silence)}ms"
+
+      case Unlinked(peer) =>
+        m"no longer keeping the connection with ${peer.show} open"
+
+      case Retrying(machine, delay) =>
+        m"trying ${machine.name} again in ${milliseconds(delay)/1000}s"
+
   // Each event belongs to the categories of `Log` that describe its nature, by which a sink may
   // choose what to record.
   enum Event:
@@ -128,19 +142,26 @@ object Journal:
     case Sent(message: Wire, peer: Party)                      extends Event, Log.Protocol
     case Received(message: Wire, peer: Party)                  extends Event, Log.Protocol
     case Failed(machine: Machine, reason: Swarm.Error.Reason)  extends Event, Log.Network
+    case Linked(peer: Party)                                   extends Event, Log.Network
+    case Lost(peer: Party, silence: Duration)                  extends Event, Log.Network
+    case Unlinked(peer: Party)                                 extends Event, Log.Network
+    case Retrying(machine: Machine, delay: Duration)           extends Event, Log.Network
 
-    // How much each event matters: a failure is a warning, or worse if it stops this instance
-    // doing what its configuration asked; the routine opening and closing of a connection is
-    // fine detail.
+    // How much each event matters: a failure or a lost connection is a warning, or worse if it
+    // stops this instance doing what its configuration asked; the beats of a lasting
+    // connection, one a second each way, are fine detail, as is the routine welcome.
     def level: Level = this match
-      case _: ListenFailed          => Level.Fail
-      case _: Failed                => Level.Warn
-      case _: Closed | _: Welcomed  => Level.Fine
-      case _                        => Level.Info
+      case _: ListenFailed                   => Level.Fail
+      case _: Failed | _: Lost               => Level.Warn
+      case _: Welcomed                       => Level.Fine
+      case Sent(_: Wire.Beat, _)             => Level.Fine
+      case Received(_: Wire.Beat, _)         => Level.Fine
+      case _                                 => Level.Info
 
   given wireShowable: Wire is Showable =
     case Wire.Ping(id, _, note) => if note == t"" then t"ping $id" else t"ping $id ‘$note’"
     case Wire.Pong(id, _, _)    => t"pong $id"
+    case Wire.Beat(_)           => t"beat"
 
   // A logged event as the journal keeps it: numbered in the order it arrived, with its level,
   // the instant it was logged and the message it was transcribed to.
