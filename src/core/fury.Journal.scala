@@ -68,6 +68,15 @@ object Journal:
       case Callee(machine)  => machine.name
       case Caller(hostname) => hostname.lay(t"an unnamed caller")(_.show)
 
+  object Mismatch:
+    given communicable: Mismatch is Communicable =
+      case NoAcceptance => m"it did not begin by saying what it accepts"
+      case Unservable   => m"it accepts no form of the protocol this instance can write"
+
+  // Why two instances could not agree what to say to each other.
+  enum Mismatch:
+    case NoAcceptance, Unservable
+
   // The other end of a connection: a machine this one called, which its configuration names,
   // or a caller, known only by the hostname it gave — if that was a hostname at all.
   enum Party:
@@ -126,6 +135,18 @@ object Journal:
       case Retrying(machine, delay) =>
         m"trying ${machine.name} again in ${milliseconds(delay)/1000}s"
 
+      case Negotiated(peer) =>
+        m"exchanged acceptances with ${peer.show}: each can read what the other sends"
+
+      case Unnegotiated(peer, mismatch) =>
+        m"could not agree a protocol with ${peer.show}: $mismatch"
+
+      case Unaccepted(message, peer) =>
+        m"${peer.show} does not accept ${message.show}, which was not sent"
+
+      case Unread(peer) =>
+        m"${peer.show} sent a document of no form this instance accepts"
+
   // Each event belongs to the categories of `Log` that describe its nature, by which a sink may
   // choose what to record.
   enum Event:
@@ -146,6 +167,10 @@ object Journal:
     case Lost(peer: Party, silence: Duration)                  extends Event, Log.Network
     case Unlinked(peer: Party)                                 extends Event, Log.Network
     case Retrying(machine: Machine, delay: Duration)           extends Event, Log.Network
+    case Negotiated(peer: Party)                               extends Event, Log.Protocol
+    case Unnegotiated(peer: Party, mismatch: Mismatch)         extends Event, Log.Protocol
+    case Unaccepted(message: Wire, peer: Party)                extends Event, Log.Protocol
+    case Unread(peer: Party)                                   extends Event, Log.Protocol
 
     // How much each event matters: a failure or a lost connection is a warning, or worse if it
     // stops this instance doing what its configuration asked; the beats of a lasting
@@ -153,15 +178,25 @@ object Journal:
     def level: Level = this match
       case _: ListenFailed                   => Level.Fail
       case _: Failed | _: Lost               => Level.Warn
+      case _: Unnegotiated | _: Unaccepted   => Level.Warn
+      case _: Unread                         => Level.Warn
       case _: Welcomed                       => Level.Fine
       case Sent(_: Wire.Beat, _)             => Level.Fine
       case Received(_: Wire.Beat, _)         => Level.Fine
       case _                                 => Level.Info
 
+  // An identifier, as the first eight characters by which it is told apart in a log.
+  def brief(id: Uuid): Text = id.show.keep(8)
+
   given wireShowable: Wire is Showable =
-    case Wire.Ping(id, _, note) => if note == t"" then t"ping $id" else t"ping $id ‘$note’"
-    case Wire.Pong(id, _, _)    => t"pong $id"
-    case Wire.Beat(_)           => t"beat"
+    case Wire.Ping(id, _, note) =>
+      if note == t"" then t"ping ${brief(id)}" else t"ping ${brief(id)} ‘$note’"
+
+    case Wire.Pong(id, _, _) =>
+      t"pong ${brief(id)}"
+
+    case Wire.Beat(_) =>
+      t"beat"
 
   // A logged event as the journal keeps it: numbered in the order it arrived, with its level,
   // the instant it was logged and the message it was transcribed to.

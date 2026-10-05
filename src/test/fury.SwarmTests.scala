@@ -56,21 +56,20 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
   // A port nothing is listening on.
   private val port: Tcp.Port = Port[Tcp]()
 
-  // A ping and a pong as they were encoded while an instant was a `Long` and a hostname a
-  // `Text`, in hexadecimal.
-  private val pingBytes: Text =
-    t"01000300083366326139316330010d31373931313038303030303030020b68656c6c6f207468657265"
+  // The signature of the protocol's schema, in hexadecimal: the hash by which its base is
+  // known. A change to the messages changes it, as it must; it is pinned here so that no
+  // change to them goes unnoticed.
+  private val signature: Text =
+    t"6e3cf4569a94fecce0f88bab89ff9d710f86cf8f375b1dd38473e1f6dfde2efb"
 
-  private val pongBytes: Text =
+  private val id: Uuid = Uuid(0x3f2a91c000000000L, 0L)
+
+  private val unservable: Text =
     List
-      ( t"01010300083366326139316330010d3137393131303830303030343202156c696e75782d626f782e",
-        t"6578616d706c652e6f7267" )
+      ( t"could not agree a protocol with laptop: it accepts no form of the protocol this",
+        t"instance can write" )
 
-    . join
-
-  // The fingerprint of the messages' schema.
-  private val protocol: Text =
-    t"7e5e105996c7999c65a754aa57896f43d21b802c09239eed92f91198e3b24fff"
+    . join(t" ")
 
   private val moment: Instant over Unix = Instant.of[Unix](1791108000000L)
   private val laptop: Party = Party.Caller(host"laptop")
@@ -99,7 +98,11 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
       lostByCaller:   Int,
       retried:        Int,
       attempts:       Int,
-      released:       Boolean )
+      released:       Boolean,
+      negotiated:     Int,
+      strangers:      Int,
+      unannounced:    Int,
+      mismatched:     Optional[Swarm.Error.Reason] )
 
   private def settings(keyword: Text): Optional[Text] =
     if keyword == t"listenToken" then secret else Unset
@@ -148,46 +151,77 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
       else if text.starts(t"lost the connection") then t"lost"
       else if text.starts(t"no longer keeping") then t"unlinked"
       else if text.starts(t"trying") then t"retrying"
+      else if text.starts(t"exchanged acceptances") then t"negotiated"
+      else if text.starts(t"could not agree") then t"unnegotiated"
+      else if text.contains(t"does not accept") then t"unaccepted"
+      else if text.contains(t"of no form") then t"unread"
       else t"failed"
 
   def run(): Unit =
     suite(m"The wire"):
-      test(m"a ping survives its codec"):
-        val ping: Wire = Wire.Ping(t"3f2a91c0", moment, t"hello there")
-        Wire.codec.decode(Wire.codec.encode(ping))
+      // A message is written to an acceptance — here this build's own, as it is when two of the
+      // same build talk — and read back from the document that makes.
+      test(m"a ping survives being written and read"):
+        val ping: Wire = Wire.Ping(id, moment, t"hello there")
+        Wire.write(ping, Wire.acceptance).let(Wire.read(_))
 
-      . assert(_ == Wire.Ping(t"3f2a91c0", moment, t"hello there"))
+      . assert(_ == Wire.Ping(id, moment, t"hello there"))
 
-      test(m"a pong survives its codec"):
-        val pong: Wire = Wire.Pong(t"3f2a91c0", moment, host"linux-box.example.org")
-        Wire.codec.decode(Wire.codec.encode(pong))
+      test(m"a pong survives being written and read"):
+        val pong: Wire = Wire.Pong(id, moment, host"linux-box.example.org")
+        Wire.write(pong, Wire.acceptance).let(Wire.read(_))
 
-      . assert(_ == Wire.Pong(t"3f2a91c0", moment, host"linux-box.example.org"))
+      . assert(_ == Wire.Pong(id, moment, host"linux-box.example.org"))
 
-      test(m"a beat survives its codec"):
-        Wire.codec.decode(Wire.codec.encode(Wire.Beat(moment)))
+      test(m"a beat survives being written and read"):
+        Wire.write(Wire.Beat(moment), Wire.acceptance).let(Wire.read(_))
 
       . assert(_ == Wire.Beat(moment))
 
-      // The protocol is named by a fingerprint of the messages' schema, so that two builds which
-      // disagree about them refuse each other. Adding `beat` changed it, as any change to the
-      // messages must; it is pinned here so that no change to them goes unnoticed.
-      test(m"the protocol is the one this build was written for"):
-        Wire.codec.protocol
+      test(m"the schema is the one this build was written for"):
+        Wire.signature.serialize[Hex]
 
-      . assert(_ == protocol)
+      . assert(_ == signature)
 
-      test(m"a ping is the bytes it was before its fields were typed"):
-        Wire.codec.encode(Wire.Ping(t"3f2a91c0", moment, t"hello there")).serialize[Hex]
+      test(m"the schema as it is written is the schema as it is derived"):
+        Schemas.source(t"wire.schema.tel").let(Wire.signature(_)).let(_.serialize[Hex])
 
-      . assert(_ == pingBytes)
+      . assert(_ == signature)
 
-      test(m"a pong is the bytes it was before its fields were typed"):
-        val received: Instant over Unix = Instant.of[Unix](1791108000042L)
-        val pong: Wire = Wire.Pong(t"3f2a91c0", received, host"linux-box.example.org")
-        Wire.codec.encode(pong).serialize[Hex]
+      test(m"the written schema passes the validity battery"):
+        Schemas.load(t"wire.schema.tel").name
 
-      . assert(_ == pongBytes)
+      . assert(_ == t"wire")
+
+      test(m"an acceptance names the protocol's one form"):
+        Wire.acceptance.alternatives.stdlib.length
+
+      . assert(_ == 1)
+
+      test(m"an acceptance survives being sent"):
+        Wire.offered(Wire.offer).let(_ == Wire.acceptance)
+
+      . assert(_ == true)
+
+      test(m"a message is not an acceptance, and is not taken for one"):
+        Wire.write(Wire.Beat(moment), Wire.acceptance).let(Wire.offered(_)).absent
+
+      . assert(_ == true)
+
+      test(m"a message is not written to an acceptance of another protocol"):
+        Wire.offered(Stranger.offer).let(Wire.write(Wire.Beat(moment), _)).absent
+
+      . assert(_ == true)
+
+      test(m"an acceptance of another protocol is still an acceptance"):
+        Wire.offered(Stranger.offer).present
+
+      . assert(_ == true)
+
+      test(m"a document of another protocol is not read"):
+        Wire.read(Stranger.document).absent
+
+      . assert(_ == true)
 
     suite(m"The journal"):
       test(m"entries are returned oldest first, after the one asked for"):
@@ -223,9 +257,9 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
 
     suite(m"Events"):
       test(m"a message is told with its direction"):
-        told(Event.Received(Wire.Ping(t"3f2a", moment, t"hello"), laptop))
+        told(Event.Received(Wire.Ping(id, moment, t"hello"), laptop))
 
-      . assert(_ == t"← ping 3f2a ‘hello’ from laptop")
+      . assert(_ == t"← ping 3f2a91c0 ‘hello’ from laptop")
 
       test(m"a caller which gave no hostname is still told of"):
         told(Event.Accepted(Party.Caller(Unset), Unset))
@@ -249,10 +283,21 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
 
       test(m"a beat is fine detail, and a lost connection a warning"):
         val beat: Event = Event.Sent(Wire.Beat(moment), laptop)
-        val ping: Event = Event.Sent(Wire.Ping(t"3f2a", moment, t""), laptop)
+        val ping: Event = Event.Sent(Wire.Ping(id, moment, t""), laptop)
         (beat.level, ping.level, Event.Lost(laptop, 3.0*Second).level)
 
       . assert(_ == (Level.Fine, Level.Info, Level.Warn))
+
+      test(m"a message the other end does not accept is told, as a warning"):
+        val event: Event = Event.Unaccepted(Wire.Beat(moment), laptop)
+        (event.level, told(event))
+
+      . assert(_ == (Level.Warn, t"laptop does not accept beat, which was not sent"))
+
+      test(m"a failure to agree a protocol is told with why"):
+        told(Event.Unnegotiated(laptop, Journal.Mismatch.Unservable))
+
+      . assert(_ == unservable)
 
       test(m"a lost connection is told with how long it was silent"):
         told(Event.Lost(laptop, 3.25*Second))
@@ -265,7 +310,7 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
       . assert(_ == scala.List(1, 2, 4, 8, 16, 30, 30))
 
       test(m"events belong to the categories that describe them"):
-        val sent: Event = Event.Sent(Wire.Ping(t"3f2a", moment, t""), laptop)
+        val sent: Event = Event.Sent(Wire.Ping(id, moment, t""), laptop)
         val stopped: Event = Event.Stopped(port)
 
         ( Log.Protocol.reference.isInstance(sent), Log.Network.reference.isInstance(sent),
@@ -403,9 +448,11 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
           // A caller which sends one beat and then says nothing, holding the connection open.
           async:
             safely:
-              Peer.connect[Wire, Unit](steady, t"fury", t"0.0.0", Wire.codec, here.number):
+              Peer.connect[Data, Unit](steady, t"fury", t"0.0.0", Wire.codec, here.number):
                 session =>
-                  session.send(Wire.Beat(now()))
+                  session.send(Wire.offer)
+                  session.receive()
+                  Wire.write(Wire.Beat(now()), Wire.acceptance).let(session.send(_))
                   snooze(5.0*Second)
 
           await(30)(count(t"lost") >= 1)
@@ -415,9 +462,12 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
           // A listener which welcomes a caller and then never sends a beat.
           val gate: () => Optional[Text] = () => Unset
 
-          val deaf: Peer.Listener[Wire] =
-            Peer.Listener[Wire](t"fury", t"0.0.0", Wire.codec, secret, identity, Nil, gate):
-              session => snooze(8.0*Second)
+          val deaf: Peer.Listener[Data] =
+            Peer.Listener[Data](t"fury", t"0.0.0", Wire.codec, secret, identity, Nil, gate):
+              session =>
+                session.send(Wire.offer)
+                session.receive()
+                snooze(8.0*Second)
 
           async(deaf.serve(there.number))
           snooze(0.5*Second)
@@ -427,6 +477,52 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
           val lostByCaller: Int = about(t"silent", t"lost")
           val retried: Int = about(t"silent", t"retrying")
           val attempts: Int = about(t"silent", t"connecting")
+
+          // A caller which speaks another protocol: it says what it accepts, which is nothing
+          // this instance can write.
+          val before2: Int = count(t"unnegotiated")
+
+          async:
+            safely:
+              Peer.connect[Data, Unit](steady, t"fury", t"0.0.0", Wire.codec, here.number):
+                session =>
+                  session.send(Stranger.offer)
+                  session.receive()
+                  snooze(1.0*Second)
+
+          await(25)(count(t"unnegotiated") > before2)
+          val strangers: Int = count(t"unnegotiated") - before2
+
+          // A caller which begins with something other than an acceptance.
+          async:
+            safely:
+              Peer.connect[Data, Unit](steady, t"fury", t"0.0.0", Wire.codec, here.number):
+                session =>
+                  session.send(Stranger.document)
+                  session.receive()
+                  snooze(1.0*Second)
+
+          await(25)(count(t"unnegotiated") > before2 + strangers)
+          val unannounced: Int = count(t"unnegotiated") - before2 - strangers
+
+          // A listener which speaks another protocol, pinged by this instance.
+          val elsewhere: Tcp.Port = Port[Tcp]()
+
+          val foreign: Peer.Listener[Data] =
+            Peer.Listener[Data](t"fury", t"0.0.0", Wire.codec, secret, identity, Nil, gate):
+              session =>
+                session.send(Stranger.offer)
+                session.receive()
+                snooze(1.0*Second)
+
+          async(foreign.serve(elsewhere.number))
+          snooze(0.5*Second)
+
+          val stranger: Machine =
+            Machine(t"stranger", t"127.0.0.1", elsewhere.number, fingerprint, secret, Nil)
+
+          val mismatched: Optional[Swarm.Error.Reason] = failure(stranger)
+          foreign.stop()
 
           // Tidying up: both connections are let go of, and both listeners stopped.
           Swarm.disconnect(t"silent")
@@ -439,7 +535,8 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
 
           Lasting
             ( connected, beats, reply, after - before, lostByListener, still, lostByCaller,
-              retried, attempts, released )
+              retried, attempts, released, count(t"negotiated"), strangers, unannounced,
+              mismatched )
 
       test(m"a connection asked for is made and kept"):
         lasting.connected
@@ -475,3 +572,23 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
         lasting.released
 
       . assert(_ == true)
+
+      test(m"each end says what it accepts before anything else is said"):
+        lasting.negotiated >= 2
+
+      . assert(_ == true)
+
+      test(m"a caller which accepts another protocol is told apart, and not spoken to"):
+        lasting.strangers
+
+      . assert(_ == 1)
+
+      test(m"a caller which does not begin with an acceptance is not spoken to"):
+        lasting.unannounced
+
+      . assert(_ == 1)
+
+      test(m"a ping to an instance of another protocol fails for that reason"):
+        lasting.mismatched
+
+      . assert(_ == Swarm.Error.Reason.Mismatched)
