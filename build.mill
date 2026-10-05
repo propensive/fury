@@ -405,7 +405,7 @@ object fury extends Project:
     // resource directory so that `fury check` reads build.schema.tel from its jar.
     def schemaFiles = Task.Sources(
       Seq("build.schema.tel", "tool.schema.tel", "guarantees.schema.tel", "local.schema.tel",
-          "lock.schema.tel", "registry.schema.tel", "scalac.tool.tel")
+          "lock.schema.tel", "registry.schema.tel", "wire.schema.tel", "scalac.tool.tel")
         .map(mill.api.BuildCtx.workspaceRoot / _)*)
 
     // Mill gives an overriding task its own dest (the parent's is `resources.super/…`), so the
@@ -436,7 +436,21 @@ object fury extends Project:
   // `META-INF/services/probably.Suite` index a host reads to discover suites, so the plugin must
   // run on this module or `fume run -c` finds nothing. `fury.runTests` is a plain-`java` entry
   // point that drives `Tests.invoke` in-process, for `make test-plain`.
+  // A protocol which is not Fury's, for the suites to confront Fury with. Its derivations, like
+  // those of `wire`, cannot be in a capture-checked module, which `test` is.
+  object `test-wire` extends Component(wire):
+    def mvnDeps = Task(libraries(deps.soundness(), deps.pyrocosm(), deps.lira()))
+
+    override def scalacOptions =
+      (settings.scalaOptions ++ settings.predef).filterNot: option =>
+        option == "-Ycc-new" || option.contains("captureChecking") || option.contains("separationChecking")
+
   object test extends Component(core):
+    // `test-wire` is not a `PublishModule`, so it cannot be a `Component` dependency; it joins
+    // the assembly through these instead.
+    override def compileModuleDeps = Seq(`test-wire`)
+    override def runModuleDeps = Seq(`test-wire`)
+
     def mvnDeps = Task(settings.testDeps(deps.soundness()) ++ settings.pyrocosmDeps(deps.pyrocosm()))
     def scalacPluginMvnDeps = Task(Seq(mvn"dev.propensive:beneficence-plugin:${deps.soundness()}"))
     def finalMainClass = "fury.runTests"

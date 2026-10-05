@@ -34,7 +34,7 @@ package fury
 
 import soundness.*
 
-import Journal.{Event, Fingerprint, Obstacle, Party}
+import Journal.{Event, Fingerprint, Mismatch, Obstacle, Party}
 import environments.javaBaseEnvironment
 import errorDiagnostics.emptyDiagnostics
 import pyrocosm.{Channel, Machine, Peer, Tool}
@@ -55,8 +55,10 @@ import pyrocosm.{Channel, Machine, Peer, Tool}
 // read, so that no log can show a message arriving before it left.
 //
 // The transport is Pyrocosm's, as fume's is: TLS to the machine's self-signed certificate, which
-// the caller pins by fingerprint, with a shared token proving the caller, and BinTEL messages in
-// a length-prefixed framing.
+// the caller pins by fingerprint, with a shared token proving the caller, and a length-prefixed
+// framing. What is framed is Fury's own: BinTEL documents under the protocol's schema
+// (`wire.schema.tel`), each written to the acceptance the other end sent when the connection
+// was made.
 object Swarm:
   object Error:
     object Reason:
@@ -64,14 +66,17 @@ object Swarm:
         case Connection(reason) => m"$reason"
         case Unanswered         => m"the connection closed before a pong arrived"
         case Silent             => m"no pong arrived in time"
+        case Mismatched         => m"the two instances could not agree a protocol"
 
     // Why a machine could not be pinged: the connection to it could not be made, for the
-    // reason Pyrocosm gives; it was made and then closed without the `pong`; or it stayed open
-    // and the `pong` did not come.
+    // reason Pyrocosm gives; it was made and then closed without the `pong`; it stayed open
+    // and the `pong` did not come; or the two ends, having exchanged acceptances, found that
+    // one could not read what the other writes.
     enum Reason:
       case Connection(reason: Peer.Error.Reason)
       case Unanswered
       case Silent
+      case Mismatched
 
   case class Error(machine: Machine, reason: Error.Reason)(using Diagnostics)
   extends fulminate.Error(m"the ping to ${machine.name} failed because $reason")
@@ -106,12 +111,15 @@ object Swarm:
   // This machine's name, as it tells it to a caller.
   def local: Hostname = hostname(Machine.Identity.local.hostname).or(host"localhost")
 
-  private def identifier(): Text = Uuid().show.keep(8)
-
   // One connection, at either end of it. Both ends do the same things with it: answer a `ping`,
   // deliver a `pong` to whoever asked for it, and — once the connection is a lasting one — send
   // a `beat` each second and listen for the other end's.
-  private class Tether(val peer: Party, val release: Optional[Semver], session: Peer.Session[Wire]):
+  private class Tether
+    ( val peer:    Party,
+      val release: Optional[Semver],
+      session:     Peer.Session[Data],
+      theirs:      Tel.Acceptance ):
+
     private val mutex: Mutex = Mutex()
     private val open: Atomic[Boolean] = Atomic(true)
     private val beating: Atomic[Boolean] = Atomic(false)
@@ -122,7 +130,7 @@ object Swarm:
     private var last: Instant over Unix = now()
 
     @scala.caps.unsafe.untrackedCaptures
-    private var asked: List[(Text, Promise[Wire.Pong])] = Nil
+    private var asked: List[(Uuid, Promise[Wire.Pong])] = Nil
 
     // When the other end was last heard from.
     def heard: Instant over Unix = last
@@ -132,10 +140,13 @@ object Swarm:
 
     def close(): Unit = if open.swap(false) then safely(session.close())
 
-    // Writes a message, having logged it; a connection which cannot be written to is closed.
-    private def send(message: Wire): Unit =
-      Journal.log(Event.Sent(message, peer))
-      try session.send(message) catch case _: Exception => close()
+    // Writes a message as the other end said it can read it, having logged it; a connection
+    // which cannot be written to is closed. A message the other end does not accept is not
+    // sent, and the log says so.
+    def send(message: Wire): Unit =
+      Wire.write(message, theirs).lay(Journal.log(Event.Unaccepted(message, peer))): document =>
+        Journal.log(Event.Sent(message, peer))
+        try session.send(document) catch case _: Exception => close()
 
     // Sends a beat each second for as long as the connection is open, and gives it up for lost
     // if the other end has not been heard from for too long. Run on a task of its own.
@@ -155,26 +166,30 @@ object Swarm:
     // Reads what the other end says until the connection closes. `lasting` is run when the
     // first beat arrives, which is how a listener learns that the caller means to stay.
     def read(lasting: => Unit): Unit =
-      val frame: Channel.Frame[Wire] =
+      val frame: Channel.Frame[Data] =
         try session.receive() catch case _: Exception => Channel.Frame.Closed
 
       frame match
-        case Channel.Frame.Message(beat: Wire.Beat) =>
-          last = now()
-          Journal.log(Event.Received(beat, peer))
-          if !beating.swap(true) then lasting
-          read(lasting)
+        case Channel.Frame.Message(document) =>
+          Wire.read(document) match
+            case beat: Wire.Beat =>
+              last = now()
+              Journal.log(Event.Received(beat, peer))
+              if !beating.swap(true) then lasting
 
-        case Channel.Frame.Message(ping: Wire.Ping) =>
-          last = now()
-          Journal.log(Event.Received(ping, peer))
-          send(Wire.Pong(ping.id, now(), local))
-          read(lasting)
+            case ping: Wire.Ping =>
+              last = now()
+              Journal.log(Event.Received(ping, peer))
+              send(Wire.Pong(ping.id, now(), local))
 
-        case Channel.Frame.Message(pong: Wire.Pong) =>
-          last = now()
-          Journal.log(Event.Received(pong, peer))
-          mutex(asked.filter(_(0) == pong.id)).each: (_, promise) => promise.offer(pong)
+            case pong: Wire.Pong =>
+              last = now()
+              Journal.log(Event.Received(pong, peer))
+              mutex(asked.filter(_(0) == pong.id)).each: (_, promise) => promise.offer(pong)
+
+            case _ =>
+              Journal.log(Event.Unread(peer))
+
           read(lasting)
 
         case Channel.Frame.Closed =>
@@ -188,7 +203,7 @@ object Swarm:
     def ask(machine: Machine, note: Text)(using monitor: Monitor)
     :   (Tactic[Error]^) ?->{monitor} Reply =
 
-      val id: Text = identifier()
+      val id: Uuid = Uuid()
       val promise: Promise[Wire.Pong] = Promise()
       mutex { asked = (id, promise) :: asked }
       val sent: Instant over Unix = now()
@@ -198,6 +213,30 @@ object Swarm:
 
       pong.lay(abort(Error(machine, Error.Reason.Silent))): pong =>
         Reply(pong.hostname, release, now() - sent)
+
+  // What each end does first, once Pyrocosm has welcomed the connection: sends its acceptance
+  // (BinTEL §8.4), which says what forms of the protocol it can read, and reads the other
+  // end's. Both send before either reads, so neither waits on the other. What comes back is
+  // the other end's acceptance, if it sent one and this instance can write to it.
+  private def negotiate(peer: Party, session: Peer.Session[Data]): Optional[Tel.Acceptance] =
+    val frame: Channel.Frame[Data] =
+      try
+        session.send(Wire.offer)
+        session.receive()
+      catch case _: Exception => Channel.Frame.Closed
+
+    val theirs: Optional[Tel.Acceptance] = frame match
+      case Channel.Frame.Message(document) => Wire.offered(document)
+      case _                               => Unset
+
+    theirs.lay(mismatch(peer, Mismatch.NoAcceptance)): theirs =>
+      if Wire.write(Wire.Beat(now()), theirs).absent then mismatch(peer, Mismatch.Unservable) else
+        Journal.log(Event.Negotiated(peer))
+        theirs
+
+  private def mismatch(peer: Party, mismatch: Mismatch): Optional[Tel.Acceptance] =
+    Journal.log(Event.Unnegotiated(peer, mismatch))
+    Unset
 
   // ── listening ─────────────────────────────────────────────────────────────────────────────
 
@@ -222,7 +261,7 @@ object Swarm:
 
     @scala.caps.unsafe.untrackedCaptures
     @volatile
-    private var listener: Optional[Peer.Listener[Wire]] = Unset
+    private var listener: Optional[Peer.Listener[Data]] = Unset
 
     private val stopping: Atomic[Boolean] = Atomic(false)
 
@@ -240,8 +279,8 @@ object Swarm:
             case token: Text =>
               val gate: () => Optional[Text] = () => Unset
 
-              val made: Peer.Listener[Wire] =
-                Peer.Listener[Wire](t"fury", Fury.version, Wire.codec, token, identity, Nil, gate):
+              val made: Peer.Listener[Data] =
+                Peer.Listener[Data](t"fury", Fury.version, Wire.codec, token, identity, Nil, gate):
                   session => Swarm.answer(session)
 
               listener = made
@@ -277,20 +316,23 @@ object Swarm:
 
   // One caller's connection, for as long as the caller keeps it. A caller which sends a beat
   // means to stay, and is sent beats in return, and watched for silence.
-  private def answer(session: Peer.Session[Wire])(using Monitor, Probate): Unit =
+  private def answer(session: Peer.Session[Data])(using Monitor, Probate): Unit =
     val peer: Party = Party.Caller(hostname(session.peer.identity.hostname))
-    val link: Tether = Tether(peer, version(session.peer.version), session)
-    Journal.log(Event.Accepted(peer, link.release))
-    mutex { callers = link :: callers }
+    val release: Optional[Semver] = version(session.peer.version)
+    Journal.log(Event.Accepted(peer, release))
 
-    def lasting(): Unit =
-      Journal.log(Event.Linked(peer))
-      async(link.beat())
+    negotiate(peer, session).let: theirs =>
+      val link: Tether = Tether(peer, release, session, theirs)
+      mutex { callers = link :: callers }
 
-    link.read(lasting())
-    link.close()
-    mutex { callers = callers.filter(_ != link) }
-    if !link.lost then Journal.log(Event.Closed(peer))
+      def lasting(): Unit =
+        Journal.log(Event.Linked(peer))
+        async(link.beat())
+
+      link.read(lasting())
+      link.close()
+      mutex { callers = callers.filter(_ != link) }
+      if !link.lost then Journal.log(Event.Closed(peer))
 
   // ── connecting ────────────────────────────────────────────────────────────────────────────
 
@@ -343,18 +385,20 @@ object Swarm:
       Journal.log(Event.Connecting(machine, Port.unsafe[Tcp](machine.portOr(Wire.port.number))))
 
       val made: Attempt[Unit, Peer.Error] = attempt[Peer.Error]:
-        Peer.connect[Wire, Unit](machine, t"fury", Fury.version, Wire.codec, Wire.port.number):
+        Peer.connect[Data, Unit](machine, t"fury", Fury.version, Wire.codec, Wire.port.number):
           session =>
-            val theirs: Optional[Semver] = version(session.peer.version)
-            val link: Tether = Tether(peer, theirs, session)
-            Journal.log(Event.Welcomed(peer, hostname(session.peer.identity.hostname), theirs))
-            mutex { links = (machine.name, link) :: links }
-            Journal.log(Event.Linked(peer))
-            async(link.beat())
-            link.read(())
-            link.close()
-            mutex { links = links.filter(_(0) != machine.name) }
-            if !link.lost && wants(machine.name) then Journal.log(Event.Closed(peer))
+            val release: Optional[Semver] = version(session.peer.version)
+            Journal.log(Event.Welcomed(peer, hostname(session.peer.identity.hostname), release))
+
+            negotiate(peer, session).let: theirs =>
+              val link: Tether = Tether(peer, release, session, theirs)
+              mutex { links = (machine.name, link) :: links }
+              Journal.log(Event.Linked(peer))
+              async(link.beat())
+              link.read(())
+              link.close()
+              mutex { links = links.filter(_(0) != machine.name) }
+              if !link.lost && wants(machine.name) then Journal.log(Event.Closed(peer))
 
       val next: Int = made match
         case Attempt.Failure(error) =>
@@ -419,20 +463,27 @@ object Swarm:
       case Peer.Error(reason) => Error(machine, failed(machine, Error.Reason.Connection(reason)))
 
     . protect:
-        Peer.connect[Wire, Reply](machine, t"fury", Fury.version, Wire.codec, Wire.port.number):
+        Peer.connect[Data, Reply](machine, t"fury", Fury.version, Wire.codec, Wire.port.number):
           session =>
-            val theirs: Optional[Semver] = version(session.peer.version)
-            Journal.log(Event.Welcomed(peer, hostname(session.peer.identity.hostname), theirs))
+            val release: Optional[Semver] = version(session.peer.version)
+            Journal.log(Event.Welcomed(peer, hostname(session.peer.identity.hostname), release))
 
+            val theirs: Tel.Acceptance = negotiate(peer, session).or:
+              abort(Error(machine, failed(machine, Error.Reason.Mismatched)))
+
+            val link: Tether = Tether(peer, release, session, theirs)
             val sent: Instant over Unix = now()
-            val ping: Wire = Wire.Ping(identifier(), sent, note)
-            Journal.log(Event.Sent(ping, peer))
-            session.send(ping)
+            link.send(Wire.Ping(Uuid(), sent, note))
 
-            session.receive() match
-              case Channel.Frame.Message(pong: Wire.Pong) =>
+            // The answer is the next document that is a `pong`; nothing else is expected here.
+            val answer: Optional[Wire] = session.receive() match
+              case Channel.Frame.Message(document) => Wire.read(document)
+              case _                               => Unset
+
+            answer match
+              case pong: Wire.Pong =>
                 Journal.log(Event.Received(pong, peer))
-                Reply(pong.hostname, theirs, now() - sent)
+                Reply(pong.hostname, release, now() - sent)
 
               case _ =>
                 abort(Error(machine, failed(machine, Error.Reason.Unanswered)))

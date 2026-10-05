@@ -34,35 +34,24 @@ package fury
 
 import soundness.*
 
-import codepages.utf8Codepage
-import errorDiagnostics.emptyDiagnostics
+import pyrocosm.Channel
 
-// A schema Fury ships could not be read: a defect of the build, never of a user's file.
-case class SchemaError(detail: Text)(using Diagnostics) extends Error(m"schema: $detail")
+// A protocol which is not Fury's, for the tests of what Fury does when it meets one: an
+// acceptance of it, and a document written to it. Like `fury.Wire`, its derivations need a
+// module compiled without capture checking, which the suites are not.
+object Stranger:
+  import Channel.derivation.throwing
 
-// The TEL schemas Fury validates against (fury.md §14): copied by the build from the repository
-// root into the `schemas/` resource directory, and reconstructed into stratiform's `Tels` — the
-// document's shape by `Reconstructor`, then the schema-validity battery by `Validation` — on
-// demand. Read through the thread-context classloader, never the system one, which under Burdock
-// sees only the slim pre-repackage jar (fume's `Suites` carries the same note).
-object Schemas:
-  private def resource(name: Text): Optional[Text] =
-    val loader = Thread.currentThread.nn.getContextClassLoader.nn
+  private lazy val accepting: Tel.Acceptance.Typed[Tuple1[Hail]] = Tel.Acceptance[Tuple1[Hail]]()
 
-    Optional(loader.getResourceAsStream(name.s)).let: stream =>
-      String(stream.readAllBytes(), "UTF-8").tt
+  // What an instance speaking this protocol sends first.
+  lazy val offer: Data = accepting.acceptance.framed
 
-  // A shipped schema as it was written.
-  def source(name: Text): Optional[Text] = resource(t"schemas/$name")
+  // A document of this protocol, written to its own acceptance.
+  lazy val document: Data =
+    val hail: Hail = Hail.Greeting(t"hello")
+    hail.fulfil(accepting.acceptance).let(_.document).or(Array.empty[Byte])
 
-  def load(name: Text): Tels raises SchemaError =
-    val text: Text =
-      resource(t"schemas/$name").or(abort(SchemaError(t"$name is not among the shipped schemas")))
-
-    mitigate:
-      case error: Tel.Error => SchemaError(t"$name is malformed: ${error.message}")
-
-    . protect:
-        Tels.Validation.validate(Tels.Reconstructor.fromTel(text.read[Tel]))
-
-  def build: Tels raises SchemaError = load(t"build.schema.tel")
+enum Hail:
+  case Greeting(text: Text)
+  case Farewell(text: Text)

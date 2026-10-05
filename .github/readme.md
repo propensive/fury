@@ -115,15 +115,35 @@ last heard from; `fury disconnect linux-box` lets one go. The beats themselves a
 `FINE`. A machine named by a `connect` line must be declared in the user's own configuration
 (or the shared `machines.tel`), since the daemon has no project of its own.
 
+### The protocol
+
+What two instances say to each other is the Fury protocol, and its schema is
+[`wire.schema.tel`](../wire.schema.tel): one TEL schema, in which the messages — `ping`, `pong`
+and `beat`, so far — are the cases of a single coproduct. Each message is sent as a BinTEL
+document under that schema.
+
+Neither end assumes what the other can read. When a connection is made, each end first sends
+its *acceptance* (BinTEL §8.4): the forms of the protocol it can read. From then on each message
+is written to the acceptance the other end sent, and a message the other end does not accept is
+not sent, with a warning in the log. Two instances which can agree nothing say so, and hang up:
+
+```
+15:24:40.085  INFO  exchanged acceptances with linux-box: each can read what the other sends
+```
+
+Today an acceptance names one form, the protocol as that build knows it, so two instances agree
+when their messages are the same, and a build which changes the messages must also go on
+accepting the form it had before, if it is to talk to builds which have not changed.
+
+### The transport
+
 The connection is TLS to the listener's self-signed certificate, which the caller pins by the
 fingerprint it declares (the SSH known-hosts model), and the caller proves itself with the
-shared token; messages are BinTEL in a length-prefixed framing. This is
+shared token; documents travel in a length-prefixed framing. This is
 [Pyrocosm](https://github.com/propensive/pyrocosm)'s transport, which fume uses too. Things to
 know:
 
 - The listener accepts connections on every network interface.
-- Two instances must be the same build of the protocol: a difference in the messages is refused
-  in the handshake.
 - A `token` that does not name an existing file is taken to be the token itself, so a mistyped
   path fails as a wrong token.
 - A machine has one daemon per user, so a machine pinging itself shows both ends in one log.
@@ -133,7 +153,7 @@ know:
 The TEL schemas a build is written against are at the root of this repository, and ship inside
 fury: `build.schema.tel`, `tool.schema.tel`, `guarantees.schema.tel`, `local.schema.tel`,
 `lock.schema.tel` and `registry.schema.tel`, with `scalac.tool.tel`, the descriptor of the
-built-in Scala tool. `build.tel` and `local.tel` are specimens: the tests validate and decode
+built-in Scala tool. `wire.schema.tel` is the schema of the protocol two instances speak. `build.tel` and `local.tel` are specimens: the tests validate and decode
 them, and `build.tel` deliberately exercises more than fury can yet build.
 
 ## Building
