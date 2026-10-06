@@ -39,7 +39,7 @@ import soundness.*
 import backstops.silentBackstop
 import executives.completionsExecutive
 import interpreters.posixInterpreter
-import pyrocosm.{Machine, Peer, Tool}
+import pyrocosm.{Invitation, Machine, Peer, Tool}
 import systems.javaBaseSystem
 import threading.platformThreading
 
@@ -66,13 +66,26 @@ object RemoteFailed extends Status(12, t"the connection to another machine could
 
 object ui:
   val Check = Subcommand("check", "parse and validate the build file")
-  val Identity = Subcommand("identity", "show this machine's identity, for another to declare")
-  val Listen = Subcommand("listen", "accept connections from other instances, in the background")
-  val Stop = Subcommand("stop", "stop accepting connections from other instances")
-  val Ping = Subcommand("ping", "send a message to a configured machine and await its answer")
-  val Connect = Subcommand("connect", "keep a connection to a configured machine open")
-  val Disconnect = Subcommand("disconnect", "stop keeping a connection to a machine open")
   val Log = Subcommand("log", "show what this instance of Fury has been doing")
+  val Swarm = Subcommand("swarm", "connect this machine to others, and see how they stand")
+
+  // The subcommands of `fury swarm`.
+  val Invite = Subcommand("invite", "invite another machine to connect to this one, in one word")
+  val Join = Subcommand("join", "accept another machine's invitation, and stay connected to it")
+  val Listen = Subcommand("listen", "accept connections from other instances, in the background")
+  val Connect = Subcommand("connect", "keep a connection to a configured machine open")
+  val Ping = Subcommand("ping", "send a message to a configured machine and await its answer")
+  val Identity = Subcommand("identity", "show this machine's identity, for another to declare")
+  val Peers = Subcommand("peers", "list the machines this one has admitted by invitation")
+  val Revoke = Subcommand("revoke", "refuse a machine this one admitted by invitation")
+
+  val Disconnect =
+    Subcommand("disconnect", "stop keeping a connection to a machine, or stop listening")
+
+  // How long an invitation may be accepted for: `--expires 30m`, `2h`, `1d`; an hour unless
+  // said otherwise.
+  val Expires =
+    Setting[Text](t"inviteExpiry", t"how long the invitation may be accepted for, as 30m, 2h or 1d")
 
   val Follow =
     Flag[Unit]("follow", false, proscenium.List('f'), "keep showing events until Ctrl+C")
@@ -82,8 +95,8 @@ object ui:
   val Threshold =
     Setting[Text](t"logLevel", t"show only events at this level or above: fine, info, warn or fail")
 
-  // The port `fury listen` accepts other instances on, and the port the daemon listens on when
-  // a config says `listen`. On the command line it is `--port`, or `-p`; everywhere else it
+  // The port `fury swarm listen` accepts other instances on, and the port the daemon listens on
+  // when a config says `listen`. On the command line it is `--port`, or `-p`; everywhere else it
   // is the listener's own — the `fury.listenPort` property, `FURY_LISTEN_PORT`, and
   // `listen-port` in either config file — since plain `port` there is the web front-end's.
   val ListenPort: Setting of Text =
@@ -103,13 +116,13 @@ private def machines()(using cli: Cli, environment: Environment): List[Machine] 
   val directory: Text = cli.workingDirectory.directory()
   Machine.resolve(List(Fury.repoConfig(directory), Fury.userConfig, Machine.shared))
 
-// How `fury listen` can end.
+// How `fury swarm listen` can end.
 private type Listened = Exit | RemoteFailed.type
 
-// `fury listen`: starts the listener in the background, waits long enough to see whether it
+// `fury swarm listen`: starts the listener in the background, waits long enough to see whether it
 // could start, and says which. A listener which cannot bind its port gives up at once, saying
 // why in the log, so one still listening after a moment has started.
-private def listen(port: Tcp.Port, token: Optional[Text])
+private def listen(port: Tcp.Port, token: Optional[Text], quiet: Boolean = false)
   ( using Stdio, Monitor, Probate, Environment )
 :   Listened =
 
@@ -119,17 +132,21 @@ private def listen(port: Tcp.Port, token: Optional[Text])
   val mark: Long = Journal.daemon.latest
 
   def already(port: Tcp.Port): Listened =
-    Out.println(t"this daemon is already accepting other instances on port ${port.number}")
+    if !quiet
+    then Out.println(t"this daemon is already accepting other instances on port ${port.number}")
+
     Exit.Ok
 
   def accepting(port: Tcp.Port, identity: Peer.Identity): Listened =
-    Out.println(t"accepting other instances of Fury on port ${port.number}, in the background")
-    Out.println(t"this machine's identity is ${Peer.render(identity.fingerprint)}")
-    Out.println(t"`fury listen stop` stops it; `fury log` shows what it does")
+    if !quiet then
+      Out.println(t"accepting other instances of Fury on port ${port.number}, in the background")
+      Out.println(t"this machine's identity is ${Peer.render(identity.fingerprint)}")
+      Out.println(t"`fury swarm disconnect` stops it; `fury log` shows what it does")
+
     Exit.Ok
 
   def failed(): Listened =
-    Journal.daemon.since(mark, Level.Fail).each: entry => Out.println(entry.message.text)
+    Journal.daemon.since(mark, Level.Fail).each: entry => Err.println(entry.message.text)
     RemoteFailed
 
   def start(): Listened = safely(Peer.identity) match
@@ -144,6 +161,94 @@ private def listen(port: Tcp.Port, token: Optional[Text])
 
   Swarm.listening.lay(start())(already(_))
 
+// A length of time as `--expires` takes it: a whole number and a unit, `s`, `m`, `h` or `d`.
+private def lifetime(text: Text): Optional[Duration] =
+  val units: Map[Text, Double] = Map(t"s" -> 1.0, t"m" -> 60.0, t"h" -> 3600.0, t"d" -> 86400.0)
+  val unit: Text = text.skip(text.length - 1)
+  val count: Optional[Int] = safely(text.keep(text.length - 1).as[Int])
+
+  units.at(unit).let: seconds =>
+    count.let: count => if count > 0 then (count*seconds)*Second else Unset
+
+// How a swarm command which may fail to reach another machine can end.
+private type Swarmed = Exit | RemoteFailed.type | UsageError.type
+
+// `fury swarm invite`: starts listening, if this daemon is not, and prints the one word another
+// machine joins with, and how to use it.
+private def invite(port: Tcp.Port, token: Optional[Text], lifetime: Duration)
+  ( using Stdio, Monitor, Probate, Environment )
+:   Swarmed =
+
+  def failed(error: Peer.Error): Swarmed =
+    Out.println(error.message.text)
+    RemoteFailed
+
+  def issued(port: Tcp.Port): Swarmed =
+    recover:
+      case error: Peer.Error => failed(error)
+
+    . protect:
+        val invitation: Invitation = Swarm.invite(port, lifetime)
+        val word: Text = Invitation.encode(invitation)
+        Out.println(word)
+        Err.println(t"")
+        Err.println(t"On the other machine, run:")
+        Err.println(t"")
+        Err.println(t"  fury swarm join $word")
+        Err.println(t"")
+        Err.println(t"It admits one machine, until ${Journal.time(invitation.expires)}.")
+        Exit.Ok
+
+  // Listening first, quietly, so that the invitation is all this prints to standard output.
+  listen(port, token, quiet = true) match
+    case RemoteFailed => RemoteFailed
+    case _            => Swarm.listening.lay(RemoteFailed)(issued(_))
+
+// `fury swarm join <invitation> [name]`: records the machine the invitation is to, under `name`
+// or the name it gives, and keeps a connection to it.
+private def join(word: Text, name: Optional[Text])(using Stdio, Monitor, Probate, Environment)
+:   Swarmed =
+
+  def refused(error: Invitation.Error): Swarmed =
+    Out.println(error.message.text)
+    RemoteFailed
+
+  def unreached(error: Peer.Error): Swarmed =
+    Out.println(error.message.text)
+    RemoteFailed
+
+  def joined(machine: Machine): Swarmed =
+    Out.println(t"joined ${machine.name}, at ${machine.hosts.join(t", ")}")
+    connect(machine)
+    Exit.Ok
+
+  recover:
+    case error: Invitation.Error => refused(error)
+    case error: Peer.Error       => unreached(error)
+
+  . protect:
+      val invitation: Invitation = Invitation.parse(word)
+      val machine: Machine = Swarm.join(invitation, name.or(invitation.name))
+      joined(machine)
+
+// `fury swarm peers`: the machines this one has admitted by invitation.
+private def peers()(using Stdio, Environment): Swarmed =
+  val admitted: List[Text] = Swarm.peers
+
+  if admitted.nil then Out.println(t"no machine has joined this one by invitation")
+  else admitted.each: name => Out.println(name)
+
+  Exit.Ok
+
+// `fury swarm revoke <name>`.
+private def revoke(name: Text)(using Stdio, Environment): Swarmed =
+  val count: Int = Swarm.revoke(name)
+
+  if count == 0 then Out.println(t"$name was not admitted by invitation") else
+    Out.println(t"$name is refused from now on")
+
+  Exit.Ok
+
 // How a command which names a machine can end.
 private type Connected = Exit | NoMachine.type | UsageError.type
 
@@ -155,7 +260,18 @@ private def usage(form: Text)(using Stdio): Connected =
   Out.println(t"Usage: $form")
   UsageError
 
-// `fury disconnect <machine>`.
+// `fury swarm disconnect`, with no machine: stops listening, and hangs up on every caller.
+private def deafen()(using Stdio): Connected =
+  val listening: Optional[Tcp.Port] = Swarm.listening
+  Swarm.service.stop()
+
+  Out.println:
+    listening.lay(t"this daemon is not listening"): port =>
+      t"no longer accepting other instances of Fury on port ${port.number}"
+
+  Exit.Ok
+
+// `fury swarm disconnect <machine>`.
 private def disconnect(name: Text)(using Stdio): Connected =
   if Swarm.disconnect(name)
   then Out.println(t"no longer keeping a connection to $name")
@@ -179,8 +295,8 @@ private def described(standing: Swarm.Standing): Text =
   val last: Text = standing.heard.let(heard(_)).or(t"")
   t"$advert$load$last"
 
-// `fury connect`, with no machine: the connections this daemon is keeping, the callers which are
-// keeping one to it, and how each stands.
+// `fury swarm`: the connections this daemon is keeping, the callers which are keeping one to it,
+// and how each stands.
 private def connections()(using Stdio): Connected =
   val kept: List[Swarm.Connection] = Swarm.connections
   val visitors: List[Swarm.Caller] = Swarm.visitors
@@ -194,7 +310,7 @@ private def connections()(using Stdio): Connected =
   def visitor(caller: Swarm.Caller): Text =
     t"  ${caller.peer.show}  ${described(caller.standing)}"
 
-  if kept.nil then Out.println(t"this daemon is keeping no connections; see `fury connect`")
+  if kept.nil then Out.println(t"this daemon is keeping no connections; see `fury swarm connect`")
   kept.each: connection => Out.println(kept0(connection))
 
   if !visitors.nil then
@@ -204,8 +320,8 @@ private def connections()(using Stdio): Connected =
 
   Exit.Ok
 
-// `fury connect <machine>`: asks the daemon to keep the connection, waits a moment to see whether
-// it could be made, and says which. Either way the daemon goes on trying.
+// `fury swarm connect <machine>`: asks the daemon to keep the connection, waits a moment to see
+// whether it could be made, and says which. Either way the daemon goes on trying.
 private def connect(machine: Machine)(using Stdio, Monitor, Probate): Connected =
   val name: Text = machine.name
   val mark: Long = Journal.daemon.latest
@@ -220,17 +336,17 @@ private def connect(machine: Machine)(using Stdio, Monitor, Probate): Connected 
     wait(20)
 
     if Swarm.connected(name)
-    then Out.println(t"connected to $name; `fury disconnect $name` closes the connection")
+    then Out.println(t"connected to $name; `fury swarm disconnect $name` closes the connection")
     else
       Journal.daemon.since(mark, Level.Warn).each: entry => Out.println(entry.message.text)
       Out.println(t"not connected to $name yet; this daemon will keep trying")
 
   Exit.Ok
 
-// How `fury ping` can end, once the machine is known.
+// How `fury swarm ping` can end, once the machine is known.
 private type Pinged = Exit | RemoteFailed.type
 
-// `fury ping`, once the machine is known: says what answered, or why nothing did. Both the
+// `fury swarm ping`, once the machine is known: says what answered, or why nothing did. Both the
 // handler and the block are given the one type, since a recovery's result is typed by its
 // block's alone.
 private def ping(machine: Machine, note: Text)(using Stdio, Monitor): Pinged =
@@ -308,52 +424,43 @@ def run(): Unit =
             given Stdio = summon[Invocation].stdio
             Check.run(summon[Invocation].workingDirectory.directory())
 
-        // `fury identity` — this machine's certificate fingerprint, for the `machine` block
-        // another machine declares it with, and where its token lives.
-        case ui.Identity() :: _ =>
+        // `fury swarm invite [--expires] [--port]` — start listening, if not already, and print
+        // an invitation for one other machine to join this one with.
+        case ui.Swarm() :: ui.Invite() :: _ =>
+          val number: Optional[Int] = ui.ListenPort().let: text => safely(text.as[Int])
+          val port: Tcp.Port = Port.unsafe[Tcp](number.or(Wire.port.number))
+          val token: Optional[Text] = summon[Configurator].read(t"listenToken")
+          val expiry: Optional[Duration] = ui.Expires().let(lifetime(_))
+          val malformed: Boolean = ui.Expires().present && expiry.absent
+
           execute:
             given Stdio = summon[Invocation].stdio
+            import probates.cancelProbate
 
-            safely(Peer.identity) match
-              case identity: Peer.Identity =>
-                val hostname: Text = Machine.Identity.local.hostname
-                Peer.token
-                Out.println(t"identity  ${Peer.render(identity.fingerprint)}")
-                Peer.tokenFile.let: file => Out.println(t"token     ${file.encode}")
-                Out.println(t"")
-                Out.println(t"Declare this machine in another's ~/.config/fury/config.tel as:")
-                Out.println(t"")
-                Out.println(t"  machine $hostname")
-                Out.println(t"    host      $hostname")
-                Out.println(t"    port      ${Wire.port.number}")
-                Out.println(t"    identity  ${Peer.render(identity.fingerprint)}")
-                Out.println(t"    token     <a file there, holding the token file's contents>")
-                Exit.Ok
+            if malformed then
+              Out.println(t"an expiry is a whole number and a unit: 30m, 2h, 1d")
+              UsageError
+            else
+              invite(port, token, expiry.or(3600.0*Second))
 
-              case _ =>
-                Out.println(t"this machine's identity could not be created; is `keytool` there?")
-                RemoteFailed
+        // `fury swarm join <invitation> [name]` — accept an invitation, record the machine it is
+        // to, and keep a connection to it.
+        case ui.Swarm() :: ui.Join() :: rest =>
+          val words: List[Text] = rest.map: (argument: Argument) => argument()
 
-        // `fury listen stop` — stop accepting other instances, however the listener was started.
-        // A listener the configuration asked for stays stopped for the rest of this daemon's
-        // life, or until `fury listen`.
-        case ui.Listen() :: ui.Stop() :: _ =>
           execute:
             given Stdio = summon[Invocation].stdio
+            import probates.cancelProbate
 
-            val listening: Optional[Tcp.Port] = Swarm.listening
-            Swarm.service.stop()
+            words match
+              case word :: name :: _ => join(word, name)
+              case word :: _         => join(word, Unset)
+              case _                 => usage(t"fury swarm join <invitation> [name]")
 
-            Out.println:
-              listening.lay(t"this daemon is not listening"): port =>
-                t"no longer accepting other instances of Fury on port ${port.number}"
-
-            Exit.Ok
-
-        // `fury listen [--port]` — start accepting other instances, in the background: the
-        // daemon listens until `fury listen stop`, or for as long as it lives, as it does of its
-        // own accord when a config says `listen`.
-        case ui.Listen() :: _ =>
+        // `fury swarm listen [--port]` — start accepting other instances, in the background: the
+        // daemon listens until `fury swarm disconnect`, or for as long as it lives, as it does of
+        // its own accord when a config says `listen`.
+        case ui.Swarm() :: ui.Listen() :: _ =>
           val number: Optional[Int] = ui.ListenPort().let: text => safely(text.as[Int])
           val port: Tcp.Port = Port.unsafe[Tcp](number.or(Wire.port.number))
 
@@ -366,11 +473,10 @@ def run(): Unit =
 
             listen(port, token)
 
-        // `fury connect [machine]` — keep a lasting connection to a configured machine, in the
-        // background: the daemon makes it, sends a beat over it each second, and makes it again
-        // whenever it cannot be made or is lost, until `fury disconnect`. Without a machine, the
-        // connections the daemon is keeping are listed.
-        case ui.Connect() :: rest =>
+        // `fury swarm connect <machine>` — keep a lasting connection to a configured machine,
+        // in the background: the daemon makes it, sends a beat over it each second, and makes it
+        // again whenever it cannot be made or is lost, until `fury swarm disconnect`.
+        case ui.Swarm() :: ui.Connect() :: rest =>
           val known: List[Machine] = machines()
 
           rest.prim.let: argument =>
@@ -390,10 +496,11 @@ def run(): Unit =
                   case _                => unknown(name)
 
               case _ =>
-                connections()
+                usage(t"fury swarm connect <machine>")
 
-        // `fury disconnect <machine>` — stop keeping the connection to a machine.
-        case ui.Disconnect() :: rest =>
+        // `fury swarm disconnect [machine]` — stop keeping the connection to a machine; or, with
+        // no machine, stop listening, and hang up on every caller.
+        case ui.Swarm() :: ui.Disconnect() :: rest =>
           val known: List[Machine] = machines()
 
           rest.prim.let: argument =>
@@ -407,11 +514,11 @@ def run(): Unit =
 
             words match
               case name :: _ => disconnect(name)
-              case _         => usage(t"fury disconnect <machine>")
+              case _         => deafen()
 
-        // `fury ping <machine> [note …]` — say `ping` to a configured machine and wait for its
-        // `pong`; the note is shown in that machine's log.
-        case ui.Ping() :: rest =>
+        // `fury swarm ping <machine> [note …]` — say `ping` to a configured machine and wait for
+        // its `pong`; the note is shown in that machine's log.
+        case ui.Swarm() :: ui.Ping() :: rest =>
           val known: List[Machine] = machines()
 
           rest.prim.let: argument =>
@@ -434,8 +541,57 @@ def run(): Unit =
                     NoMachine
 
               case _ =>
-                Out.println(t"Usage: fury ping <machine> [note]")
+                Out.println(t"Usage: fury swarm ping <machine> [note]")
                 UsageError
+
+        // `fury swarm identity` — this machine's certificate fingerprint and addresses, for the
+        // `machine` block another machine declares it with by hand.
+        case ui.Swarm() :: ui.Identity() :: _ =>
+          execute:
+            given Stdio = summon[Invocation].stdio
+
+            safely(Peer.identity) match
+              case identity: Peer.Identity =>
+                val hostname: Text = Machine.Identity.local.hostname
+                Peer.token
+                Out.println(t"identity  ${Peer.render(identity.fingerprint)}")
+                Peer.tokenFile.let: file => Out.println(t"token     ${file.encode}")
+                Out.println(t"")
+                Out.println(t"`fury swarm invite` is simpler. By hand, declare this machine in")
+                Out.println(t"another's ~/.config/fury/config.tel as:")
+                Out.println(t"")
+                Out.println(t"  machine $hostname")
+                Machine.addresses.each: address => Out.println(t"    host      $address")
+                Out.println(t"    port      ${Wire.port.number}")
+                Out.println(t"    identity  ${Peer.render(identity.fingerprint)}")
+                Out.println(t"    token     <a file there, holding the token file's contents>")
+                Exit.Ok
+
+              case _ =>
+                Out.println(t"this machine's identity could not be created; is `keytool` there?")
+                RemoteFailed
+
+        // `fury swarm peers` and `fury swarm revoke <name>`.
+        case ui.Swarm() :: ui.Peers() :: _ =>
+          execute:
+            given Stdio = summon[Invocation].stdio
+            peers()
+
+        case ui.Swarm() :: ui.Revoke() :: rest =>
+          val words: List[Text] = rest.map: (argument: Argument) => argument()
+
+          execute:
+            given Stdio = summon[Invocation].stdio
+
+            words match
+              case name :: _ => revoke(name)
+              case _         => usage(t"fury swarm revoke <name>")
+
+        // `fury swarm` — the connections this daemon keeps, and the callers keeping one to it.
+        case ui.Swarm() :: _ =>
+          execute:
+            given Stdio = summon[Invocation].stdio
+            connections()
 
         // `fury log [--follow] [--log-level]` — what this instance has been doing, oldest first:
         // everything logged at `info` or above, or at the given level or above. The beats of a
@@ -462,12 +618,9 @@ def run(): Unit =
             Out.println(t"Usage: fury <subcommand>")
             Out.println(t"")
             Out.println(t"  check      parse and validate the build file")
-            Out.println(t"  ping       send a message to a configured machine and await its answer")
+            Out.println(t"  swarm      connect this machine to others: invite, join, listen,")
+            Out.println(t"             connect, disconnect, ping, identity, peers, revoke")
             Out.println(t"  log        show what this instance of Fury has been doing")
-            Out.println(t"  connect    keep a connection to a configured machine open")
-            Out.println(t"  disconnect stop keeping a connection to a machine open")
-            Out.println(t"  listen     accept connections from other instances, in the background")
-            Out.println(t"  identity   show this machine's identity, for another to declare")
             Out.println(t"  about      show this tool's name, version and daemon")
             Out.println(t"  install    install shell tab-completions and the manpage")
             Out.println(t"  quit       stop the background daemon")

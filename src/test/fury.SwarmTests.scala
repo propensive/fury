@@ -40,7 +40,7 @@ import environments.javaBaseEnvironment
 import errorDiagnostics.emptyDiagnostics
 import probates.cancelProbate
 import proscenium.List
-import pyrocosm.{Machine, Peer}
+import pyrocosm.{Invitation, Machine, Peer}
 import strategies.throwUnsafely
 import threading.platformThreading
 
@@ -75,7 +75,7 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
   private val laptop: Party = Party.Caller(host"laptop")
 
   private def machine(name: Text, fingerprint: Data, token: Text): Machine =
-    Machine(name, t"127.0.0.1", port.number, fingerprint, token, Nil)
+    Machine(name, List(t"127.0.0.1"), port.number, fingerprint, token, Nil)
 
   // What the one conversation with the listener showed.
   private case class Observed
@@ -106,6 +106,18 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
       calleeAdvert:   Optional[Wire.Advert],
       callerAdvert:   Optional[Wire.Advert],
       calleeLoad:     Optional[Double] )
+
+  // What the invitation showed.
+  private case class Invited
+    ( words:      Int,
+      read:       Boolean,
+      joined:     Boolean,
+      again:      Boolean,
+      declared:   Boolean,
+      connected:  Boolean,
+      admitted:   Boolean,
+      revoked:    Int,
+      afterwards: Optional[Text] )
 
   private def settings(keyword: Text): Optional[Text] =
     if keyword == t"listenToken" then secret else Unset
@@ -454,10 +466,10 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
           val there: Tcp.Port = Port[Tcp]()
 
           val steady: Machine =
-            Machine(t"steady", t"127.0.0.1", here.number, fingerprint, secret, Nil)
+            Machine(t"steady", List(t"127.0.0.1"), here.number, fingerprint, secret, Nil)
 
           val silent: Machine =
-            Machine(t"silent", t"127.0.0.1", there.number, fingerprint, secret, Nil)
+            Machine(t"silent", List(t"127.0.0.1"), there.number, fingerprint, secret, Nil)
 
           // A real connection, kept for long enough to see beats pass each way.
           async(Swarm.service.serve(here.number, settings))
@@ -557,7 +569,7 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
           snooze(0.5*Second)
 
           val stranger: Machine =
-            Machine(t"stranger", t"127.0.0.1", elsewhere.number, fingerprint, secret, Nil)
+            Machine(t"stranger", List(t"127.0.0.1"), elsewhere.number, fingerprint, secret, Nil)
 
           val mismatched: Optional[Swarm.Error.Reason] = failure(stranger)
           foreign.stop()
@@ -647,3 +659,92 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
         lasting.calleeLoad.present == Swarm.load.present
 
       . assert(_ == true)
+
+    suite(m"Invitations"):
+      // A listener in this JVM invites, and this JVM joins: the invitation is accepted once,
+      // the machine is declared, a connection is kept to it, and once revoked it is refused.
+      // The declaration and the granted token are written to a configuration directory of the
+      // test's own, so that the user's `machines.tel` is untouched; the listener's records of
+      // invitations and admissions are the machine's, as they must be for it to see them.
+      val invited: Invited =
+        supervise:
+          val config: Text = java.nio.file.Files.createTempDirectory("fury-config").nn.toString.tt
+
+          given Environment = name =>
+            if name == t"XDG_CONFIG_HOME" then config
+            else Optional(java.lang.System.getenv(name.s)).let(_.tt)
+
+          val port: Tcp.Port = Port[Tcp]()
+          async(Swarm.service.serve(port.number, settings))
+          await(25)(Swarm.listening.present)
+
+          val made: Invitation = unsafely(Swarm.invite(port, 60.0*Second))
+          val word: Text = Invitation.encode(made)
+          val read: Optional[Invitation] = safely(Invitation.parse(word))
+
+          // The invitation lists every address of this machine; the test joins over loopback.
+          val local: Optional[Invitation] = read.let(_.copy(hosts = List(t"127.0.0.1")))
+
+          def join(name: Text): Optional[Machine] =
+            local.let: invitation => safely(Swarm.join(invitation, name))
+
+          val joined: Optional[Machine] = join(t"inviter")
+          val again: Optional[Machine] = join(t"again")
+
+          val declared: Boolean =
+            Machine.shared.let(Machine.parse(_).stdlib.exists(_.name == t"inviter")).or(false)
+
+          joined.let(Swarm.connect(_))
+          await(50)(Swarm.connected(t"inviter"))
+          val connected: Boolean = Swarm.connected(t"inviter")
+          val admitted: Boolean = Swarm.peers.stdlib.contains(Machine.Identity.local.hostname)
+
+          Swarm.disconnect(t"inviter")
+          await(25)(!Swarm.connected(t"inviter"))
+          val revoked: Int = Swarm.revoke(Machine.Identity.local.hostname)
+
+          val afterwards: Optional[Text] = joined.let: machine =>
+            attempt[Swarm.Error](Swarm.ping(machine, t"")) match
+              case Attempt.Failure(failed) => failed.reason match
+                case Swarm.Error.Reason.Connection(Peer.Error.Reason.Refused(reason)) => reason
+                case other                                                            => t"$other"
+
+              case Attempt.Success(_) =>
+                t"answered"
+
+          Swarm.service.stop()
+          await(25)(Swarm.listening.absent)
+
+          Invited
+            ( word.cut(t" ").stdlib.length, read.present, joined.present, again.absent, declared,
+              connected, admitted, revoked, afterwards )
+
+      test(m"an invitation is one word, and reads back"):
+        (invited.words, invited.read)
+
+      . assert(_ == (1, true))
+
+      test(m"an invitation is accepted once"):
+        (invited.joined, invited.again)
+
+      . assert(_ == (true, true))
+
+      test(m"the machine joined is declared in the shared machines.tel"):
+        invited.declared
+
+      . assert(_ == true)
+
+      test(m"a connection is kept to the machine joined"):
+        invited.connected
+
+      . assert(_ == true)
+
+      test(m"the inviting machine lists the joiner among those it admitted"):
+        invited.admitted
+
+      . assert(_ == true)
+
+      test(m"a machine revoked is refused"):
+        (invited.revoked >= 1, invited.afterwards)
+
+      . assert(_ == (true, Peer.Refusal.token))
