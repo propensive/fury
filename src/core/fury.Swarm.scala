@@ -37,14 +37,16 @@ import soundness.*
 import Journal.{Event, Fingerprint, Mismatch, Obstacle, Party}
 import environments.javaBaseEnvironment
 import errorDiagnostics.emptyDiagnostics
-import pyrocosm.{Channel, Machine, Peer, Tool}
+import pyrocosm.{Channel, Invitation, Machine, Peer, Tool}
 
 // One Fury talking to another (fury.md §8), at its first rungs. This daemon LISTENS for other
-// instances when its configuration says `listen`, or from `fury listen` until `fury listen
-// stop`; it keeps a lasting connection to each machine it is asked to CONNECT to, by
-// `fury connect` or a `connect` line of its configuration, trying again whenever the connection
-// cannot be made or is lost; and `fury ping` says `ping` to a machine and waits for its `pong`,
-// over the lasting connection if there is one, or one made for the purpose.
+// instances when its configuration says `listen`, or from `fury swarm listen` (or `invite`)
+// until `fury swarm disconnect`; it keeps a lasting connection to each machine it is asked to
+// CONNECT to, by `fury swarm connect`, `fury swarm join` or a `connect` line of its
+// configuration, trying again whenever the connection cannot be made or is lost; and
+// `fury swarm ping` says `ping` to a machine and waits for its `pong`, over the lasting
+// connection if there is one, or one made for the purpose. A machine is INVITED, and JOINS, by
+// Pyrocosm's invitations (`Peer.invite`, `Peer.join`).
 //
 // A lasting connection is kept honest by a heartbeat: each end sends a `beat` every second, and
 // an end which hears nothing for three seconds takes the connection for lost, says so, and
@@ -290,13 +292,13 @@ object Swarm:
   // The port this daemon is listening on, while it is; zero while it is not.
   private val bound: Atomic[Int] = Atomic(0)
 
-  // The port this daemon is listening on now, by configuration or by `fury listen`, if it is.
+  // The port this daemon is listening on now, by configuration or by `fury swarm listen`, if it is.
   def listening: Optional[Tcp.Port] = bound() match
     case 0      => Unset
     case number => Port.unsafe[Tcp](number)
 
   // Starts listening on `port` in the background, under the daemon's monitor, so that the
-  // listener outlives the invocation which asked for it; `fury listen stop`, or the daemon's
+  // listener outlives the invocation which asked for it; `fury swarm disconnect`, or the daemon's
   // end, stops it. Nothing is started if the daemon is listening already.
   def start(port: Tcp.Port, settings: Text -> Optional[Text])(using Monitor, Probate): Unit =
     if listening.absent then async(service.serve(port.number, settings))
@@ -444,7 +446,7 @@ object Swarm:
         Peer.connect[Data, Unit](machine, t"fury", Fury.version, Wire.codec, Wire.port.number):
           session =>
             val release: Optional[Semver] = version(session.peer.version)
-            Journal.log(Event.Welcomed(peer, hostname(session.peer.identity.hostname), release))
+            welcomed(peer, session, release)
 
             negotiate(peer, session).let: theirs =>
               val link: Tether = Tether(peer, release, session, theirs)
@@ -505,6 +507,45 @@ object Swarm:
       disconnect()
       stopped.let(_.offer(()))
 
+  // ── joining ──────────────────────────────────────────────────────────────────────────────
+
+  private def welcomed(peer: Party, session: Peer.Session[Data], release: Optional[Semver]): Unit =
+    val host: Optional[Hostname] = hostname(session.peer.identity.hostname)
+    Journal.log(Event.Welcomed(peer, host, release, session.address))
+
+  // An invitation to this machine, for one other to accept before `lifetime` has passed, on the
+  // port this daemon is listening on.
+  def invite(port: Tcp.Port, lifetime: Duration)(using Environment)
+  :   Invitation raises Peer.Error =
+
+    val invitation: Invitation = Peer.invite(t"fury", port.number, lifetime)
+    Journal.log(Event.Invited(invitation.expires))
+    invitation
+
+  // Accepts `invitation`: connects to the machine it invites to, as `name`, says what this
+  // instance accepts, and records the machine and the token it granted, for `connect`.
+  def join(invitation: Invitation, name: Text)(using Environment)
+  :   Machine raises Invitation.Error raises Peer.Error =
+
+    val peer: Party = Party.Callee(invitation.machine(name))
+
+    val (machine, _) =
+      Peer.join(invitation, name, t"fury", Fury.version, Wire.codec): session =>
+        welcomed(peer, session, version(session.peer.version))
+        negotiate(peer, session)
+
+    Journal.log(Event.Joined(machine))
+    machine
+
+  // The machines this one has admitted by invitation.
+  def peers(using Environment): List[Text] = Peer.peers.filter(_(1) == t"fury").map(_(0))
+
+  // Refuses the machine of this name from now on; how many tokens that undid.
+  def revoke(name: Text)(using Environment): Int =
+    val count: Int = Peer.revoke(name, t"fury")
+    Journal.log(Event.Revoked(name, count))
+    count
+
   // ── pinging ───────────────────────────────────────────────────────────────────────────────
 
   private def failed(machine: Machine, reason: Error.Reason): Error.Reason =
@@ -523,7 +564,7 @@ object Swarm:
         Peer.connect[Data, Reply](machine, t"fury", Fury.version, Wire.codec, Wire.port.number):
           session =>
             val release: Optional[Semver] = version(session.peer.version)
-            Journal.log(Event.Welcomed(peer, hostname(session.peer.identity.hostname), release))
+            welcomed(peer, session, release)
 
             val theirs: Tel.Acceptance = negotiate(peer, session).or:
               abort(Error(machine, failed(machine, Error.Reason.Mismatched)))

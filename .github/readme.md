@@ -19,21 +19,24 @@ reach another on a different machine; it cannot yet build.
 ## Usage
 
 ```sh
-fury check         # parse and validate build.tel, and report what this milestone cannot build
-fury ping linux-box hello   # say `ping` to a configured machine and wait for its `pong`
-fury connect linux-box      # keep a connection to a machine open, with a beat each second
-fury connect                # the connections this daemon is keeping, and how each stands
-fury disconnect linux-box   # stop keeping it
-fury log           # what this instance has been doing; --follow keeps showing it until Ctrl+C,
-                   # --log-level warn shows only warnings and failures, and --log-level fine
-                   # shows the beats as well
-fury listen        # start accepting other instances, in the background; --port, or -p, says where
-fury listen stop   # stop accepting them
-fury identity      # this machine's certificate fingerprint, for another machine's configuration
-fury install       # install tab-completions and the manpage
-fury about         # fury's version, and the daemon serving it
-fury --version     # the version alone
-fury quit          # stop the daemon
+fury check                    # parse and validate build.tel, and say what this milestone cannot build
+fury log                      # what this instance has been doing; --follow keeps showing it until
+                              # Ctrl+C, and --log-level fine or warn shows more or less
+fury swarm                    # the connections this daemon keeps, and the callers keeping one to it
+fury swarm invite             # invite another machine to connect to this one, in one word
+fury swarm join <invitation>  # accept an invitation, and stay connected to the machine it is from
+fury swarm ping linux-box hi  # say `ping` to a machine and wait for its `pong`
+fury swarm connect linux-box  # keep a connection to a declared machine open
+fury swarm disconnect linux-box   # stop keeping it
+fury swarm listen             # accept other instances, in the background; --port, or -p, says where
+fury swarm disconnect         # stop accepting them, and hang up on those connected
+fury swarm peers              # the machines this one has admitted by invitation
+fury swarm revoke linux-box   # refuse one of them from now on
+fury swarm identity           # this machine's fingerprint and addresses, to declare it by hand
+fury install                  # install tab-completions and the manpage
+fury about                    # fury's version, and the daemon serving it
+fury --version                # the version alone
+fury quit                     # stop the daemon
 ```
 
 ## Installing
@@ -48,10 +51,39 @@ One instance of Fury can talk to another. For now all they say is `ping` and `po
 enough to show the link working: `fury log` on each machine shows the message arrive and its
 answer return.
 
-On the machine that is to accept connections, run `fury listen`: its daemon then listens in
-the background, on port 8092 unless `--port` (or `-p`) says otherwise, until `fury listen stop`
-or the daemon's end. To have the daemon listen whenever it runs, say so in
-`~/.config/fury/config.tel` instead:
+On the machine that is to accept connections, make an invitation:
+
+```
+linux-box$ fury swarm invite
+ЊḀȕlinux-boxḁḍ192Į168Į1Į20…
+```
+
+It is one word, to be copied to the other machine, and it holds everything that machine needs:
+the addresses this one may be reached at, the port, the fingerprint of the certificate it will
+present, and a token which admits one machine, once, within the hour (`--expires 30m`, `2h`,
+`1d` to choose). `invite` starts the daemon listening, if it was not.
+
+On the other machine, accept it:
+
+```
+laptop$ fury swarm join ЊḀȕlinux-boxḁḍ192Į168Į1Į20…
+joined linux-box, at 192.168.1.20, linux-box.local
+connected to linux-box; `fury swarm disconnect linux-box` closes the connection
+```
+
+`join` connects, exchanges the invitation's token for one of the laptop's own, declares
+`linux-box` in `~/.config/pyrocosm/machines.tel` (so fume knows it too), and keeps a connection
+to it. A second `join` with the same invitation is refused. `fury swarm peers` on `linux-box`
+lists the machines it has admitted, and `fury swarm revoke` refuses one from then on.
+
+A machine may have several addresses — on a local network and beyond it — and a connection is
+made to the nearest which answers: private addresses and `.local` names first, then other
+names, then public addresses, each tried a quarter of a second after the one before, so that
+one which does not answer costs no more than that. A laptop which comes home moves back to the
+local network the next time it connects.
+
+Machines can still be declared by hand. `fury swarm listen` makes the daemon listen, and a
+`listen` line in `~/.config/fury/config.tel` has it listen whenever it runs:
 
 ```
 tel 1.0
@@ -60,13 +92,13 @@ listen
 listen-port 8092        # optional; 8092 is the default
 ```
 
-`fury identity` there prints the machine's certificate fingerprint and where its token is
-kept. On the machine that is to connect, copy the token into a file and declare the other
-machine in `~/.config/fury/config.tel` (or, for every Pyrocosm tool at once, in
-`~/.config/pyrocosm/machines.tel`):
+`fury swarm identity` there prints the machine's fingerprint, its addresses and where its token
+is kept. On the machine that is to connect, copy the token into a file and declare the other
+machine, with a `host` line for each address:
 
 ```
 machine linux-box
+  host      192.168.1.20
   host      build.example.org
   identity  sha256:3f9a…
   token     ~/.config/pyrocosm/tokens/linux-box
@@ -75,8 +107,8 @@ machine linux-box
 Then, with `fury log --follow` running on both:
 
 ```
-$ fury ping linux-box hello
-pong from linux-box (fury 0.1.0) in 8ms
+$ fury swarm ping linux-box hello
+pong from linux-box (fury 0.3.0) in 8ms
 ```
 
 The caller's log shows the connection, `→ ping … to linux-box` and `← pong … from linux-box`;
@@ -89,15 +121,15 @@ the listener's shows `← ping … from <caller>` and `→ pong … to <caller>`
 
 Each line has the time of day on that machine, the level the event was logged at (`FINE`,
 `INFO`, `WARN` or `FAIL`) and what happened. `fury log` shows `INFO` and above; `--log-level`
-(or `log-level` in `config.tel`) chooses another level, and `fine` shows everything. The log is the daemon's, kept in memory (its newest
-thousand events), and is lost when it stops.
+(or `log-level` in `config.tel`) chooses another level, and `fine` shows everything. The log is
+the daemon's, kept in memory (its newest thousand events), and is lost when it stops.
 
 ### Staying connected
 
-`fury ping` on its own makes a connection, uses it once and closes it. `fury connect linux-box`
-asks the daemon to keep one open instead, in the background, and a `connect linux-box` line in
-`~/.config/fury/config.tel` has it do so whenever it runs. Pings to that machine then go over
-the open connection.
+`fury swarm ping` on its own makes a connection, uses it once and closes it. `fury swarm
+connect linux-box` asks the daemon to keep one open instead, in the background, as `join`
+does; a `connect linux-box` line in `~/.config/fury/config.tel` has it do so whenever it runs.
+Pings to that machine then go over the open connection.
 
 A connection that is kept is checked: each end sends the other a `beat` every second, and an
 end which hears nothing for three seconds takes the connection for lost, says so in its log as
@@ -112,8 +144,8 @@ of a second which doubles with each failure in a row, to half a minute at most.
 
 When a connection becomes a lasting one, each end tells the other what it is — its name,
 operating system, architecture and cores — and each beat carries the sender's load. `fury
-connect` with no machine lists the connections the daemon is keeping, the callers keeping one
-to it, and what is known of each:
+swarm` lists the connections the daemon is keeping, the callers keeping one to it, and what is
+known of each:
 
 ```
 linux-box  connected; Linux amd64, 16 cores; load 0.42; last heard from at 15:31:10.545
@@ -122,7 +154,7 @@ connected to this daemon:
   laptop  Mac OS X aarch64, 12 cores; load 2.95; last heard from at 15:31:10.545
 ```
 
-`fury disconnect linux-box` lets a connection go. The beats themselves are logged at
+`fury swarm disconnect linux-box` lets a connection go. The beats themselves are logged at
 `FINE`. A machine named by a `connect` line must be declared in the user's own configuration
 (or the shared `machines.tel`), since the daemon has no project of its own.
 
@@ -149,8 +181,9 @@ accepting the form it had before, if it is to talk to builds which have not chan
 ### The transport
 
 The connection is TLS to the listener's self-signed certificate, which the caller pins by the
-fingerprint it declares (the SSH known-hosts model), and the caller proves itself with the
-shared token; documents travel in a length-prefixed framing. This is
+fingerprint it declares (the SSH known-hosts model), and the caller proves itself with a token:
+the one it was granted when it joined, or the listener's own; documents travel in a
+length-prefixed framing. This is
 [Pyrocosm](https://github.com/propensive/pyrocosm)'s transport, which fume uses too. Things to
 know:
 

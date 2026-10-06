@@ -108,11 +108,22 @@ object Journal:
         m"${peer.show} closed the connection"
 
       case Connecting(machine, port) =>
-        m"connecting to ${machine.name} at ${machine.host}:${port.number}"
+        m"connecting to ${machine.name} on port ${port.number}, at ${machine.hosts.join(t", ")}"
 
-      case Welcomed(peer, hostname, version) =>
+      case Welcomed(peer, hostname, version, address) =>
         val name: Text = hostname.lay(t"an unnamed machine")(_.show)
-        m"${peer.show} welcomed us as $name (${release(version)})"
+        val at: Text = address.lay(t""): address => t" at $address"
+        m"${peer.show} welcomed us$at as $name (${release(version)})"
+
+      case Invited(expires) =>
+        m"issued an invitation, good for one machine until ${Journal.time(expires)}"
+
+      case Joined(machine) =>
+        m"joined ${machine.name}, and declared it in the shared machines.tel"
+
+      case Revoked(name, count) =>
+        val tokens: Text = if count == 1 then t"token" else t"tokens"
+        m"revoked $name: $count $tokens it was granted"
 
       case Sent(message, peer) =>
         m"→ ${message.show} to ${peer.show}"
@@ -157,8 +168,16 @@ object Journal:
     case Closed(peer: Party)                                   extends Event, Log.Network
     case Connecting(machine: Machine, port: Tcp.Port)          extends Event, Log.Network
 
-    case Welcomed(peer: Party, host: Optional[Hostname], version: Optional[Semver])
+    case Welcomed
+      ( peer:    Party,
+        host:    Optional[Hostname],
+        version: Optional[Semver],
+        address: Optional[Text] )
     extends Event, Log.Network, Log.Auth
+
+    case Invited(expires: Instant over Unix)                   extends Event, Log.Auth
+    case Joined(machine: Machine)                              extends Event, Log.Auth
+    case Revoked(name: Text, count: Int)                       extends Event, Log.Auth
 
     case Sent(message: Wire, peer: Party)                      extends Event, Log.Protocol
     case Received(message: Wire, peer: Party)                  extends Event, Log.Protocol
