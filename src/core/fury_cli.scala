@@ -376,10 +376,10 @@ private val retiring: Atomic[Boolean] = Atomic(false)
 // byte the launcher forwards for it (or Ctrl+D) — or until `finished` says so, or the daemon is
 // asked to stop.
 private def until(finished: => Boolean)(action: => Unit)
-  ( using cli: Cli, service: DaemonService[?], stdio: Stdio, monitor: Monitor )
+  ( using cli: Cli, resident: Resident, stdio: Stdio, monitor: Monitor )
 :   Unit =
 
-  val tty: Boolean = service.cliInput == ethereal.Terminus.Terminal
+  val tty: Boolean = resident.cliInput == ethereal.Terminus.Terminal
   val aborted: Atomic[Boolean] = Atomic(false)
 
   trap:

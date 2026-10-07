@@ -63,6 +63,6 @@ object Schemas:
       case error: Tel.Error => SchemaError(t"$name is malformed: ${error.message}")
 
     . protect:
-        Tels.Validation.validate(Tels.Reconstructor.fromTel(text.read[Tel]))
+        Tels.Validation.validate(text.read[Tel].as[Tels])
 
   def build: Tels raises SchemaError = load(t"build.schema.tel")
