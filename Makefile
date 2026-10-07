@@ -34,7 +34,7 @@ fury.jar: assembly
 # Package the repackaged JAR as a native executable for this machine with the pinned `xek` builder
 # (fetched into dist/xek and verified against etc/xek.tsv).
 fury: fury.jar xek-fetch
-	dist/xek fury.jar fury
+	dist/xek build fury.jar fury
 
 # Fetch the pinned `xek` builder into dist/xek.
 xek-fetch:
