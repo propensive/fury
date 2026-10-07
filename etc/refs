@@ -9,4 +9,4 @@
 # `lira.tool` contract of the `lira-tool` jar, both of a propensive/lira release.
 propensive/soundness	0.71.0
 propensive/pyrocosm	0.6.0
-propensive/lira	0.2.0-b04dc337026b	3ad6feb44b7b1c28aca42c3d1cd70dad98ce17b2
+propensive/lira	0.2.0
