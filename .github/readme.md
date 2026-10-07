@@ -67,7 +67,8 @@ On the other machine, accept it:
 
 ```
 laptop$ fury swarm join ЊḀȕlinux-boxḁḍ192Į168Į1Į20…
-joined linux-box, at 192.168.1.20, linux-box.local
+found linux-box nearby, at linux-box.local, 192.168.1.20
+joined linux-box, at linux-box.local, 192.168.1.20
 connected to linux-box; `fury swarm disconnect linux-box` closes the connection
 ```
 
@@ -81,6 +82,13 @@ made to the nearest which answers: private addresses and `.local` names first, t
 names, then public addresses, each tried a quarter of a second after the one before, so that
 one which does not answer costs no more than that. A laptop which comes home moves back to the
 local network the next time it connects.
+
+While an invitation is open, the inviting machine also advertises itself on the local network
+(DNS-SD over mDNS, as `_fury._tcp`), and `join` looks for it there for a few seconds before
+connecting: a machine found nearby is tried first, by its `.local` name and the addresses it
+answers from, ahead of those the invitation lists. Nothing changes if it is not found. `fury
+log` on the inviter shows `advertising this machine on the local network`, and on the joiner
+`found linux-box nearby`.
 
 Machines can still be declared by hand. `fury swarm listen` makes the daemon listen, and a
 `listen` line in `~/.config/fury/config.tel` has it listen whenever it runs:

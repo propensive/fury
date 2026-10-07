@@ -121,6 +121,21 @@ object Journal:
       case Joined(machine) =>
         m"joined ${machine.name}, and declared it in the shared machines.tel"
 
+      case Advertised(instance, port) =>
+        m"advertising this machine on the local network as $instance, on port ${port.number}"
+
+      case Withdrawn(instance) =>
+        m"no longer advertising $instance on the local network"
+
+      case Unadvertised(reason) =>
+        m"could not advertise this machine on the local network: $reason"
+
+      case Discovered(name, hosts) =>
+        m"found $name nearby, at ${hosts.join(t", ")}"
+
+      case Undiscovered(name) =>
+        m"$name was not found nearby; trying the addresses the invitation lists"
+
       case Revoked(name, count) =>
         val tokens: Text = if count == 1 then t"token" else t"tokens"
         m"revoked $name: $count $tokens it was granted"
@@ -179,6 +194,12 @@ object Journal:
     case Joined(machine: Machine)                              extends Event, Log.Auth
     case Revoked(name: Text, count: Int)                       extends Event, Log.Auth
 
+    case Advertised(instance: Text, port: Tcp.Port)            extends Event, Log.Network
+    case Withdrawn(instance: Text)                             extends Event, Log.Network
+    case Unadvertised(reason: Discovery.Error.Reason)          extends Event, Log.Network
+    case Discovered(name: Text, hosts: List[Text])             extends Event, Log.Network
+    case Undiscovered(name: Text)                              extends Event, Log.Network
+
     case Sent(message: Wire, peer: Party)                      extends Event, Log.Protocol
     case Received(message: Wire, peer: Party)                  extends Event, Log.Protocol
     case Failed(machine: Machine, reason: Swarm.Error.Reason)  extends Event, Log.Network
@@ -199,6 +220,7 @@ object Journal:
       case _: Failed | _: Lost               => Level.Warn
       case _: Unnegotiated | _: Unaccepted   => Level.Warn
       case _: Unread                         => Level.Warn
+      case _: Unadvertised                   => Level.Warn
       case _: Welcomed                       => Level.Fine
       case Sent(_: Wire.Beat, _)             => Level.Fine
       case Received(_: Wire.Beat, _)         => Level.Fine

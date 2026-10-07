@@ -126,6 +126,7 @@ object settings:
   // so the rest of the surface `import soundness.*` touches arrives transitively.
   def soundnessDeps(soundness: String) = Seq(
     mvn"dev.propensive:burdock-core:$soundness",            // externalize + the repackager
+    mvn"dev.propensive:coaxial-jvm:$soundness",             // socketBackends.javaBaseSockets
     mvn"dev.propensive:dendrology-tree:$soundness",          // the `--tree` renderings
     mvn"dev.propensive:digression-ansi:$soundness",          // stack-trace diagnostics
     mvn"dev.propensive:escapade-io:$soundness",              // Teletype <-> Stdio writables
@@ -141,7 +142,8 @@ object settings:
     mvn"dev.propensive:monotonous-core:$soundness",          // alphabets.hexLowerCase
     mvn"dev.propensive:parasite-core:$soundness",            // threading.platformThreading
     mvn"dev.propensive:revolution-semver:$soundness",        // the versions instances declare
-    mvn"dev.propensive:stratiform-core:$soundness")          // TEL rendering and BinTEL
+    mvn"dev.propensive:stratiform-core:$soundness",          // TEL rendering and BinTEL
+    mvn"dev.propensive:syndesis-core:$soundness")            // mDNS discovery of an inviting machine
 
   // The Pyrocosm family's standard command line (`Tool.standard`: about, install, quit, config
   // cascade), and the web front-end fury's daemon serves.

@@ -197,6 +197,7 @@ private def invite(port: Tcp.Port, token: Optional[Text], lifetime: Duration)
         Err.println(t"  fury swarm join $word")
         Err.println(t"")
         Err.println(t"It admits one machine, until ${Journal.time(invitation.expires)}.")
+        Err.println(t"Until then, a machine on the same network finds this one by name.")
         Exit.Ok
 
   // Listening first, quietly, so that the invitation is all this prints to standard output.
@@ -204,8 +205,8 @@ private def invite(port: Tcp.Port, token: Optional[Text], lifetime: Duration)
     case RemoteFailed => RemoteFailed
     case _            => Swarm.listening.lay(RemoteFailed)(issued(_))
 
-// `fury swarm join <invitation> [name]`: records the machine the invitation is to, under `name`
-// or the name it gives, and keeps a connection to it.
+// `fury swarm join <invitation> [name]`: looks for the machine the invitation is to on the local
+// network, records it under `name` or the name it gives, and keeps a connection to it.
 private def join(word: Text, name: Optional[Text])(using Stdio, Monitor, Probate, Environment)
 :   Swarmed =
 
@@ -228,7 +229,9 @@ private def join(word: Text, name: Optional[Text])(using Stdio, Monitor, Probate
 
   . protect:
       val invitation: Invitation = Invitation.parse(word)
-      val machine: Machine = Swarm.join(invitation, name.or(invitation.name))
+      val hosts: List[Text] = Swarm.locate(invitation)
+      if !hosts.nil then Out.println(t"found ${invitation.name} nearby, at ${hosts.join(t", ")}")
+      val machine: Machine = Swarm.join(Swarm.nearer(invitation, hosts), name.or(invitation.name))
       joined(machine)
 
 // `fury swarm peers`: the machines this one has admitted by invitation.

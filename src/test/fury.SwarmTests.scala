@@ -111,11 +111,15 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
   private case class Invited
     ( words:      Int,
       read:       Boolean,
+      advertised: Boolean,
+      nearby:     List[Text],
+      stranger:   List[Text],
       joined:     Boolean,
       again:      Boolean,
       declared:   Boolean,
       connected:  Boolean,
       admitted:   Boolean,
+      withdrawn:  Boolean,
       revoked:    Int,
       afterwards: Optional[Text] )
 
@@ -169,6 +173,11 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
       else if text.starts(t"no longer keeping") then t"unlinked"
       else if text.starts(t"trying") then t"retrying"
       else if text.starts(t"exchanged acceptances") then t"negotiated"
+      else if text.starts(t"advertising this machine") then t"advertised"
+      else if text.starts(t"no longer advertising") then t"withdrawn"
+      else if text.starts(t"could not advertise") then t"unadvertised"
+      else if text.starts(t"found ") then t"discovered"
+      else if text.contains(t"not found nearby") then t"undiscovered"
       else if text.starts(t"could not agree") then t"unnegotiated"
       else if text.contains(t"does not accept") then t"unaccepted"
       else if text.contains(t"of no form") then t"unread"
@@ -326,6 +335,17 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
         told(Event.Unnegotiated(laptop, Journal.Mismatch.Unservable))
 
       . assert(_ == unservable)
+
+      test(m"a machine found nearby is told with where"):
+        told(Event.Discovered(t"linux-box", List(t"linux-box.local", t"192.168.1.20")))
+
+      . assert(_ == t"found linux-box nearby, at linux-box.local, 192.168.1.20")
+
+      test(m"an advertisement which could not be made is a warning"):
+        val unadvertised: Event = Event.Unadvertised(Discovery.Error.Reason.Unavailable)
+        (unadvertised.level, Event.Advertised(t"linux-box", port).level, Event.Withdrawn(t"x").level)
+
+      . assert(_ == (Level.Warn, Level.Info, Level.Info))
 
       test(m"an advert is told with what it says"):
         told(Event.Received(Wire.Advert(host"linux-box", t"Linux", t"amd64", 16), laptop))
@@ -666,8 +686,21 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
       // The declaration and the granted token are written to a configuration directory of the
       // test's own, so that the user's `machines.tel` is untouched; the listener's records of
       // invitations and admissions are the machine's, as they must be for it to see them.
+      // The inviter advertises itself, and the joiner looks for it, over an in-memory mDNS
+      // bus, so that nothing is multicast on the network the tests run on.
       val invited: Invited =
         supervise:
+          val start: Long = Journal.daemon.latest
+          def logged: scala.List[Text] = kinds(Journal.daemon.since(start))
+
+          val bus: Mdns.Transport.Bus = Mdns.Transport.Bus()
+
+          val inviter: Discovery.Backend =
+            Mdns.Responder(() => bus.join(dns"inviter.local", List(ip"127.0.0.1")))
+
+          val joiner: Discovery.Backend =
+            Mdns.Responder(() => bus.join(dns"joiner.local", List(ip"127.0.0.2")))
+
           val config: Text = java.nio.file.Files.createTempDirectory("fury-config").nn.toString.tt
 
           given Environment = name =>
@@ -678,9 +711,20 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
           async(Swarm.service.serve(port.number, settings))
           await(25)(Swarm.listening.present)
 
-          val made: Invitation = unsafely(Swarm.invite(port, 60.0*Second))
+          val made: Invitation = unsafely(Swarm.invite(port, 60.0*Second)(using inviter))
           val word: Text = Invitation.encode(made)
           val read: Optional[Invitation] = safely(Invitation.parse(word))
+
+          // The advertisement is live once the name has been probed for and announced.
+          await(25)(logged.contains(t"advertised"))
+          val advertised: Boolean = Swarm.advertised.present
+
+          // The joiner finds the inviter by its fingerprint, and not a machine of another.
+          val nearby: List[Text] = read.let(Swarm.locate(_)(using joiner)).or(Nil)
+          val other: Data = Peer.parseFingerprint(t"00"*32).or(Data())
+
+          val stranger: List[Text] =
+            read.let(_.copy(identity = other)).let(Swarm.locate(_)(using joiner)).or(Nil)
 
           // The invitation lists every address of this machine; the test joins over loopback.
           val local: Optional[Invitation] = read.let(_.copy(hosts = List(t"127.0.0.1")))
@@ -699,6 +743,10 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
           val connected: Boolean = Swarm.connected(t"inviter")
           val admitted: Boolean = Swarm.peers.stdlib.contains(Machine.Identity.local.hostname)
 
+          // The invitation having been used, the advertisement is withdrawn.
+          await(25)(logged.contains(t"withdrawn"))
+          val withdrawn: Boolean = Swarm.advertised.absent
+
           Swarm.disconnect(t"inviter")
           await(25)(!Swarm.connected(t"inviter"))
           val revoked: Int = Swarm.revoke(Machine.Identity.local.hostname)
@@ -716,18 +764,48 @@ object SwarmTests extends Suite(m"Fury swarm tests"):
           await(25)(Swarm.listening.absent)
 
           Invited
-            ( word.cut(t" ").stdlib.length, read.present, joined.present, again.absent, declared,
-              connected, admitted, revoked, afterwards )
+            ( word.cut(t" ").stdlib.length, read.present, advertised, nearby, stranger,
+              joined.present, again.absent, declared, connected, admitted, withdrawn, revoked,
+              afterwards )
 
       test(m"an invitation is one word, and reads back"):
         (invited.words, invited.read)
 
       . assert(_ == (1, true))
 
+      test(m"the inviting machine is advertised while the invitation is open"):
+        invited.advertised
+
+      . assert(_ == true)
+
+      test(m"the joiner finds the inviting machine nearby, by its fingerprint"):
+        invited.nearby
+
+      . assert(_ == List(t"inviter.local", t"127.0.0.1"))
+
+      test(m"a machine of another fingerprint is not found"):
+        invited.stranger
+
+      . assert(_ == Nil)
+
+      test(m"the hosts found nearby are tried before those the invitation lists"):
+        val listed: List[Text] = List(t"192.168.1.20", t"linux-box.local")
+        val invitation: Invitation =
+          Invitation(t"linux-box", listed, 8092, Data(), t"token", moment, t"fury")
+
+        Swarm.nearer(invitation, List(t"linux-box.local", t"10.0.0.5")).hosts
+
+      . assert(_ == List(t"linux-box.local", t"10.0.0.5", t"192.168.1.20"))
+
       test(m"an invitation is accepted once"):
         (invited.joined, invited.again)
 
       . assert(_ == (true, true))
+
+      test(m"the advertisement is withdrawn once the invitation is used"):
+        invited.withdrawn
+
+      . assert(_ == true)
 
       test(m"the machine joined is declared in the shared machines.tel"):
         invited.declared
