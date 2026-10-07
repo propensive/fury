@@ -353,7 +353,7 @@ project example # a project with the id "example"
   module test
     assemble core
     source src/test/*.scala
-    artifact bundle xeq-bundle    # the registry's name for the format (was `xeq`)
+    artifact bundle xek-bundle    # the registry's name for the format
 
       # an egress setting: build-tool config only — closed
       # artifacts are identified by digest, so this never

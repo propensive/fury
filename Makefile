@@ -32,9 +32,9 @@ fury.jar: assembly
 	java -cp fury.jar soundness.repackage --github propensive/fury,propensive/lira,propensive/pyrocosm,propensive/soundness,propensive/proscala
 
 # Package the repackaged JAR as a native executable for this machine with the pinned `xek` builder
-# (fetched into dist/xek and verified against etc/xek.tsv).
+# (fetched into dist/xek and verified against etc/xek.tsv), requiring Java 25 as releases do.
 fury: fury.jar xek-fetch
-	dist/xek fury.jar fury
+	dist/xek build --java-min 25 --java 25 fury.jar fury
 
 # Fetch the pinned `xek` builder into dist/xek.
 xek-fetch:
