@@ -48,7 +48,7 @@ scalar ToolchainRef
   validate     toolchain-ref
 
 scalar AppType
-  description  A registry application-type name: jvm-app, xeq-bundle, native-exe/<triple>
+  description  A registry application-type name: jvm-app, xek-bundle, native-exe/<triple>
   validate     app-type
 
 scalar Entry
