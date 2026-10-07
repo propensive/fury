@@ -46,7 +46,9 @@ import pyrocosm.{Channel, Invitation, Machine, Peer, Tool}
 // configuration, trying again whenever the connection cannot be made or is lost; and
 // `fury swarm ping` says `ping` to a machine and waits for its `pong`, over the lasting
 // connection if there is one, or one made for the purpose. A machine is INVITED, and JOINS, by
-// Pyrocosm's invitations (`Peer.invite`, `Peer.join`).
+// Pyrocosm's invitations (`Peer.invite`, `Peer.join`); while an invitation is open the inviter
+// ADVERTISES itself on the local network, by DNS-SD over mDNS, so that the joiner finds it by
+// name before it tries the addresses the invitation lists.
 //
 // A lasting connection is kept honest by a heartbeat: each end sends a `beat` every second, and
 // an end which hears nothing for three seconds takes the connection for lost, says so, and
@@ -351,11 +353,12 @@ object Swarm:
         case _ =>
           Journal.log(Event.ListenFailed(port, Obstacle.NoIdentity))
 
-    // Stops accepting callers, and hangs up on those there are.
+    // Stops accepting callers, hangs up on those there are, and withdraws any advertisement.
     def stop(): Unit =
       stopping() = true
       listener.let(_.stop())
       mutex(callers).each(_.close())
+      mutex { open = Nil }
 
   private val mutex: Mutex = Mutex()
 
@@ -514,12 +517,17 @@ object Swarm:
     Journal.log(Event.Welcomed(peer, host, release, session.address))
 
   // An invitation to this machine, for one other to accept before `lifetime` has passed, on the
-  // port this daemon is listening on.
-  def invite(port: Tcp.Port, lifetime: Duration)(using Environment)
-  :   Invitation raises Peer.Error =
+  // port this daemon is listening on. While it is open, this machine is advertised on the local
+  // network, so that the other finds it by name. The tactic is a parameter rather than
+  // `raises`, since a context-function result would hide the monitor the advertisement runs
+  // under.
+  def invite(port: Tcp.Port, lifetime: Duration)(using backend: Discovery.Backend^{} = discovery)
+    ( using Environment, Monitor, Probate, Tactic[Peer.Error] )
+  :   Invitation =
 
     val invitation: Invitation = Peer.invite(t"fury", port.number, lifetime)
     Journal.log(Event.Invited(invitation.expires))
+    announce(invitation, port)
     invitation
 
   // Accepts `invitation`: connects to the machine it invites to, as `name`, says what this
@@ -545,6 +553,179 @@ object Swarm:
     val count: Int = Peer.revoke(name, t"fury")
     Journal.log(Event.Revoked(name, count))
     count
+
+  // ── discovering ──────────────────────────────────────────────────────────────────────────
+
+  // The service by which a Fury is found on the local network (RFC 6763): `_fury._tcp`. A
+  // machine advertises an instance of it only while an invitation it issued is open, so that
+  // the machine invited finds it by name, whatever addresses the invitation lists; the
+  // invitation is still what admits it.
+  private val nearby: Discovery.Service = unsafely(Discovery.Service(t"fury", Tcp))
+
+  // The one mDNS responder of this daemon, over the JVM's multicast sockets. It opens its socket
+  // at the first advertisement or browse and closes it after the last, so a daemon which never
+  // invites or joins never joins the multicast group. Bound once: each summons of the backend
+  // would be a responder of its own, with a socket of its own.
+  lazy val discovery: Discovery.Backend =
+    import socketBackends.javaBaseSockets
+    discoveryBackends.mdnsSockets
+
+  // The TXT record's keys: the fingerprint a joiner matches against its invitation's, the
+  // version of Fury advertising, and the port it listens on.
+  private val fingerprintKey: Text = t"fp"
+  private val versionKey: Text = t"v"
+  private val portKey: Text = t"port"
+
+  // How long a joiner looks for the inviting machine nearby before it tries the invitation's
+  // addresses alone, and how long each instance it finds is given to resolve.
+  val lookout: Duration = 3.0*Second
+  val resolution: Duration = 1.5*Second
+
+  // This machine's name as the one DNS label an instance is called by.
+  private def label: Text = local.show.cut(t".").prim.or(t"fury").keep(63)
+
+  // The invitations this daemon has issued and not yet seen used or expire, newest first; the
+  // advertisement runs while there are any.
+  @scala.caps.unsafe.untrackedCaptures
+  private var open: List[Invitation] = Nil
+
+  @scala.caps.unsafe.untrackedCaptures
+  @volatile
+  private var announced: Optional[Text] = Unset
+
+  // The name this machine is advertised as now, if it is.
+  def advertised: Optional[Text] = announced
+
+  // Adds `invitation` to those open, and starts advertising, in the background under the
+  // daemon's monitor, if nothing was open before; an advertisement running already covers it.
+  private def announce(invitation: Invitation, port: Tcp.Port)
+    ( using Environment, Monitor, Probate, Discovery.Backend^{} )
+  :   Unit =
+
+    val first: Boolean = mutex:
+      val idle: Boolean = open.nil
+      open = invitation :: open
+      idle
+
+    if first then async(advertise(port, Peer.peers.stdlib.length))
+
+  // Advertises this machine for as long as an invitation is open: until the last expires or is
+  // used — which this daemon tells by one more machine among those it has admitted — or the
+  // listener stops. The advertisement ends with a goodbye on the link. `admitted` is how many
+  // machines had been admitted when the advertisement began.
+  private def advertise(port: Tcp.Port, admitted: Int)
+    ( using environment: Environment, monitor: Monitor, probate: Probate )
+    ( using backend: Discovery.Backend^{} )
+  :   Unit =
+
+    val made: Optional[Boolean] = identity.let: identity =>
+      val txt: Optional[Discovery.Txt] = safely:
+        Discovery.Txt
+          ( fingerprintKey -> Peer.render(identity.fingerprint),
+            versionKey     -> Fury.version,
+            portKey        -> port.number.show )
+
+      txt.let: txt =>
+        val description: Discovery.Description = Discovery.Description(label, port, txt)
+
+        val outcome: Attempt[Unit, Discovery.Error] = attempt[Discovery.Error]:
+          nearby.advertise(description)(using backend):
+            val instance: Text = summon[Discovery.Advertisement].instance.label
+            announced = instance
+            Journal.log(Event.Advertised(instance, port))
+            linger(admitted)(using environment, monitor)
+            announced = Unset
+            Journal.log(Event.Withdrawn(instance))
+
+        outcome match
+          case Attempt.Failure(error) =>
+            Journal.log(Event.Unadvertised(error.reason))
+            false
+
+          case _ =>
+            true
+
+    // An advertisement which was never made leaves nothing open, or an invitation issued
+    // meanwhile would be waited for by nobody. One which ran left nothing open when it ended,
+    // and anything issued since has an advertisement of its own.
+    if !made.or(false) then mutex { open = Nil }
+
+  // Waits, a second at a time, while any invitation is open: each time it looks, it drops
+  // those which have expired, and the oldest for each machine admitted since the last look.
+  private def linger(admitted: Int)(using Environment, Monitor): Unit =
+    val moment: Instant over Unix = now()
+    val count: Int = Peer.peers.stdlib.length
+    val used: Int = (count - admitted).max(0)
+
+    val remaining: List[Invitation] = mutex:
+      val live: List[Invitation] = open.filter(_.expires > moment)
+      open = List(live.reverse.stdlib.drop(used).reverse*)
+      open
+
+    if !remaining.nil && listening.present then
+      snooze(1.0*Second)
+      linger(count)
+
+  // Whether a found instance is the machine an invitation is to: its TXT fingerprint is the
+  // invitation's identity. Fingerprints are compared as bytes, through Pyrocosm's parser, so
+  // either spelling of one matches.
+  private def claims(resolution: Discovery.Resolution, identity: Data): Boolean =
+    resolution.txt(fingerprintKey).let(Peer.parseFingerprint(_)).let(Channel.same(_, identity))
+    . or(false)
+
+  // The hosts the inviting machine was found at nearby — its `.local` name, then its addresses
+  // — in the order a connection should try them; or none, if it was not found within `lookout`.
+  // Nothing here can fail a join: a network without multicast, a responder which cannot start,
+  // or an instance which does not resolve in time simply finds nothing. Link-local IPv6
+  // addresses are left out, being unusable without a scope.
+  def locate(invitation: Invitation)(using backend: Discovery.Backend^{} = discovery)
+    ( using Monitor, Probate )
+  :   List[Text] =
+
+    val found: Optional[Discovery.Resolution] = safely:
+      nearby.browse(using backend):
+        val browser: Discovery.Browser = summon[Discovery.Browser]
+        val promise: Promise[Discovery.Resolution] = Promise()
+
+        // Each instance found is resolved on a task of its own making, so that the wait for
+        // the right one is bounded by `lookout` alone; the task ends when the browse does,
+        // which ends its events.
+        def scan(events: scala.collection.immutable.LazyList[Discovery.Event])
+          ( using Monitor, Probate )
+        :   Unit =
+          if !events.isEmpty then
+            events.head match
+              case Discovery.Event.Found(instance) =>
+                safely(instance.resolve(resolution)(using backend)).let: resolved =>
+                  if claims(resolved, invitation.identity) then promise.offer(resolved)
+
+              case _ =>
+                ()
+
+            if !promise.ready then scan(events.tail)
+
+        async(scan(browser.events.stdlib))
+        safely(promise.await(lookout))
+
+    found match
+      case resolution: Discovery.Resolution =>
+        val addresses: List[Text] =
+          resolution.endpoints.map(_.remote).filter(!_.lower.starts(t"fe80"))
+
+        val hosts: List[Text] = resolution.host.show :: addresses
+        Journal.log(Event.Discovered(invitation.name, hosts))
+        hosts
+
+      case _ =>
+        Journal.log(Event.Undiscovered(invitation.name))
+        Nil
+
+  // The invitation with the hosts the machine was found at ahead of those it lists.
+  def nearer(invitation: Invitation, hosts: List[Text]): Invitation =
+    if hosts.nil then invitation
+    else
+      val listed: List[Text] = invitation.hosts.filter(!hosts.has(_))
+      invitation.copy(hosts = List((hosts.stdlib ++ listed.stdlib)*))
 
   // ── pinging ───────────────────────────────────────────────────────────────────────────────
 
