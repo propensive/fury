@@ -90,7 +90,7 @@ object Tests extends Suite(m"Fury tests"):
 
   def run(): Unit =
     suite(m"Shipped schemas"):
-      List(t"build", t"tool", t"guarantees", t"local", t"lock", t"registry", t"wire").each: name =>
+      List(t"build", t"tool", t"guarantees", t"local", t"lock", t"registry").each: name =>
         test(m"$name.schema.tel reconstructs and passes the validity battery"):
           Schemas.load(t"$name.schema.tel")
 

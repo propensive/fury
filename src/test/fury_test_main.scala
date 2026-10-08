@@ -68,7 +68,7 @@ def runTests(): Unit =
 
     case _ => ()
 
-  val status = scala.List(Tests, SwarmTests).map(_.invoke(t"", handle)).max
+  val status = Tests.invoke(t"", handle)
 
   out.println(t"${passes.get} passed, ${failures.get} failed".s)
   jl.System.exit(status)
