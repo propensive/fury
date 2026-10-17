@@ -116,7 +116,7 @@ object Model:
        modules:     List[Module] )
 
   def decode(tel: Tel): Build raises BuildError =
-    val top = tel.childCompounds.readable.toVector
+    val top = tel.childCompounds.stdlib.toVector
 
     Build
       ( registries   = named(top, t"registry").map(registry).to(List),
@@ -131,7 +131,7 @@ object Model:
     BuildError(detail)
 
   private def texts(compound: Tel.Compound): sci.Vector[Text] =
-    compound.atoms.readable.collect:
+    compound.atoms.stdlib.collect:
       case Tel.Atom.Inline(text, _)  => text
       case Tel.Atom.Source(text)     => text
       case Tel.Atom.Literal(_, text) => text
@@ -139,7 +139,7 @@ object Model:
     . toVector
 
   private def children(compound: Tel.Compound): sci.Vector[Tel.Compound] =
-    compound.children.readable.flatMap(_.compounds.readable).toVector
+    compound.children.stdlib.flatMap(_.compounds.stdlib).toVector
 
   private def named(compounds: sci.Vector[Tel.Compound], keyword: Text): sci.Vector[Tel.Compound] =
     compounds.filter(_.keyword == keyword)
