@@ -37,11 +37,10 @@ import soundness.*
 // `pyrocosm.Tool` is imported explicitly, so that it outranks the `Tool` the `soundness.*`
 // wildcard exports (anthology's); `standard` is a package-level extension on it.
 import backstops.silentBackstop
-import executives.completionsExecutive
 import interpreters.posixInterpreter
 import pyrocosm.Tool
 import systems.javaBaseSystem
-import threading.platformThreading
+import threads.platformThreads
 
 // Fury as a Pyrocosm tool (fury.md): `about`, `install`, `quit` and `--version` come from `Tool`,
 // as does its configuration — the flag, then a `fury.`-prefixed system property, a `FURY_`-
@@ -64,23 +63,35 @@ object UsageError extends Status(2, t"the command line was not understood")
 object ui:
   val Check = Subcommand("check", "parse and validate the build file")
 
-def run(): Unit =
-  cli:
-    Fury.standard:
-      arguments match
-        case ui.Check() :: _ =>
-          execute:
-            given Stdio = summon[Invocation].stdio
-            Check.run(summon[Invocation].workingDirectory.directory())
+object Client uses parasite.threads, surveillance.Watcher:
+  def run(): Unit =
+    // The completions executive supervises under the global `threads`, a capability it declares it
+    // uses; `cli` takes a pure executive, so it is vouched pure here.
+    given executive: exoskeleton.executives.CompletionsExecutive =
+      scala.caps.unsafe.unsafeAssumePure(executives.completionsExecutive)
 
-        case _ =>
-          execute:
-            given Stdio = summon[Invocation].stdio
-            Out.println(t"Usage: fury <subcommand>")
-            Out.println(t"")
-            Out.println(t"  check      parse and validate the build file")
-            Out.println(t"  swarm      see the other Pyrocosm tools running, here and elsewhere")
-            Out.println(t"  about      show this tool's name, version and daemon")
-            Out.println(t"  install    install shell tab-completions and the manpage")
-            Out.println(t"  quit       stop the background daemon")
-            UsageError
+    cli:
+      Fury.standard:
+        dispatch()
+
+// The dispatch is a method rather than the body of the `cli` block: that block runs on a
+// connection's task and may retain only what is durable, a rule the inline body's closures fail
+// under, where a method's are typed on their own.
+private def dispatch()(using Cli, Resident, Monitor, Environment, Interpreter, Configurator): Execution =
+  arguments match
+    case ui.Check() :: _ =>
+      execute:
+        given Stdio = summon[Invocation].stdio
+        Check.run(summon[Invocation].workingDirectory.directory())
+
+    case _ =>
+      execute:
+        given Stdio = summon[Invocation].stdio
+        Out.println(t"Usage: fury <subcommand>")
+        Out.println(t"")
+        Out.println(t"  check      parse and validate the build file")
+        Out.println(t"  swarm      see the other Pyrocosm tools running, here and elsewhere")
+        Out.println(t"  about      show this tool's name, version and daemon")
+        Out.println(t"  install    install shell tab-completions and the manpage")
+        Out.println(t"  quit       stop the background daemon")
+        UsageError

@@ -32,13 +32,14 @@
                                                                                                   */
 package fury
 
-import soundness.*
+import soundness.{Client as _, *}
 
 // The invocation point, alone in its own build module. `externalize` (from burdock, re-exported
 // through `soundness.*`) records the SHA-256 of every jar on THIS module's compile classpath into
 // `META-INF/burdock.deps` at compile time; because the `launcher` module depends on `fury-core`
 // as a PUBLISHED coordinate (see build.mill), the released jar bytes on the classpath match the
 // published ones, and `soundness.repackage` externalizes them into an on-demand download rather
-// than inlining. The whole command dispatch lives in `fury.run` in the published `core` module.
-@main
-def fury(): Unit = externalize(run())
+// than inlining. The whole command dispatch lives in `fury.Client` in the published `core` module. An object
+// with a plain `main`, since a top-level `@main` can carry no `uses` clause.
+object fury uses parasite.threads, surveillance.Watcher:
+  def main(args: Array[String]): Unit = externalize(Client.run())
