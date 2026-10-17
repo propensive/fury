@@ -463,8 +463,8 @@ object fury extends Project:
       super.resources() ++ Seq(PathRef(Task.dest))
 
   // The invocation point, ALONE in its own module (`src/launcher/fury_launcher.scala` — just the
-  // `object fury`, whose `main` is `externalize(Client.run())`). It depends on `core` NOT as a Mill `moduleDep` but as
-  // a PUBLISHED coordinate, so coursier puts the byte-identical released jar on the compile
+  // `object fury`, whose `main` is `externalize(Client.run())`). It depends on `core` NOT as a
+  // Mill `moduleDep` but as a PUBLISHED coordinate, so coursier puts the byte-identical released jar on the compile
   // classpath that `externalize` hashes; the repackager then externalizes it into an on-demand
   // download instead of inlining. `fury-core` resolves from `~/.ivy2/local`, so a `publishLocal`
   // must precede this module's assembly.

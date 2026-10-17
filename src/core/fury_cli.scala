@@ -77,7 +77,8 @@ object Client uses parasite.threads, surveillance.Watcher:
 // The dispatch is a method rather than the body of the `cli` block: that block runs on a
 // connection's task and may retain only what is durable, a rule the inline body's closures fail
 // under, where a method's are typed on their own.
-private def dispatch()(using Cli, Resident, Monitor, Environment, Interpreter, Configurator): Execution =
+private def dispatch()(using Cli, Resident, Monitor, Environment, Interpreter, Configurator)
+:   Execution =
   arguments match
     case ui.Check() :: _ =>
       execute:
