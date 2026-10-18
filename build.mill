@@ -186,6 +186,7 @@ object settings:
   def pyrocosmDeps(pyrocosm: String) = Seq(
     mvn"dev.propensive:pyrocosm-cli:$pyrocosm",
     mvn"dev.propensive:pyrocosm-model:$pyrocosm",
+    mvn"dev.propensive:pyrocosm-terminal:$pyrocosm", // `fury check`'s diagnostics, rendered
     mvn"dev.propensive:pyrocosm-remote:$pyrocosm",   // machines, the TLS peer, the channel
     mvn"dev.propensive:pyrocosm-bus:$pyrocosm",      // the swarm's wire types
     mvn"dev.propensive:pyrocosm-swarm:$pyrocosm",    // the swarm every daemon is a node of

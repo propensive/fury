@@ -83,6 +83,7 @@ private def dispatch()(using Cli, Resident, Monitor, Environment, Interpreter, C
     case ui.Check() :: _ =>
       execute:
         given Stdio = summon[Invocation].stdio
+        given Environment = summon[Invocation].environment
         Check.run(summon[Invocation].workingDirectory.directory())
 
     case _ =>

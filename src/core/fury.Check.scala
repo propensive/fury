@@ -38,8 +38,15 @@ import soundness.*
 
 import errorDiagnostics.emptyDiagnostics
 import filesystemBackends.javaBaseFilesystem
+import charsets.utf8Charset
+import textSanitizers.skipSanitizer
 import parsing.trackPositions
 import systems.javaBaseSystem
+import textMetrics.uniformMetric
+import tableStyles.thickTableStyle
+import palettes.solarizedDarkGaugePalette
+
+import pyrocosm.{Block, TerminalRenderer}
 
 object CheckFailed extends Status(1, t"the build file has errors")
 object NoBuildFile extends Status(3, t"no build.tel was found at or above the working directory")
@@ -74,14 +81,14 @@ object Check:
 
   type Outcome = Exit | NoBuildFile.type | CheckFailed.type
 
-  def run(directory: Text)(using Stdio): Outcome =
+  def run(directory: Text)(using Stdio, Environment): Outcome =
     locate(directory).lay[Outcome]:
       Out.println(t"fury: no build.tel at or above $directory")
       NoBuildFile
 
     . apply(check(_))
 
-  private def check(file: Path on Local)(using Stdio): Outcome =
+  private def check(file: Path on Local)(using Stdio, Environment): Outcome =
     recover:
       case error: Io.Error         => report(error.message)
       case error: Truncation.Error => report(error.message)
@@ -90,13 +97,14 @@ object Check:
 
     . protect:
         val data: Data = file.read[Data]
+        val source: Text = file.read[Text]
         val schema: Tels = Schemas.build
 
         // A parse failure is one error at one position; validation failures accrue below.
         val parsed: Optional[Tel] =
           recover:
             case error: Tel.Error =>
-              located(file, position(error.span), error)
+              located(file, source, error.span, error, Unset)
               Unset
 
           . protect(data.read[Tel])
@@ -117,12 +125,13 @@ object Check:
               // tracked document, the span of the compound it names; the path is printed too,
               // since a validator's rejection says nothing else about which field it was.
               errors.foreach: (focus, error) =>
-                val where: Text = focus.let(_.withSpan(document)).lay(position(error.span)):
-                  focus =>
-                    val path: Text = focus.pointer.components.stdlib.map(_.s).mkString("/").tt
-                    t"${position(focus.span)} ($path)"
+                val located0: Optional[Tel.Focus] = focus.let(_.withSpan(document))
+                val span: Span = located0.lay(error.span)(_.span)
 
-                located(file, where, error)
+                val path: Optional[Text] =
+                  located0.let { (focus: Tel.Focus) => focus.pointer.components.stdlib.map(_.s).mkString("/").tt }
+
+                located(file, source, span, error, path)
 
               CheckFailed
 
@@ -142,18 +151,26 @@ object Check:
   private def display(finding: Lint.Finding)(using Stdio): Unit =
     Out.println(t"${finding.severity}: ${finding.message}")
 
-  private def located(file: Path on Local, where: Text, error: Tel.Error)(using Stdio): Unit =
-    val number = error.reason.number
-    Out.println(t"${file.encode}:$where: E$number ${error.message}")
+  // A TEL error as Pyrocosm's diagnostic: the file and the position, the message, the lines of
+  // the build file around the span (a parse error's own, or that of the focus accrued with a
+  // validation error) highlighted as TEL with the span marked, and, after, the error's number
+  // and the keyword path it was found at.
+  private def located
+    ( file: Path on Local, source: Text, span: Span, error: Tel.Error, path: Optional[Text] )
+    ( using Stdio, Environment )
+  :   Unit =
+
+    val diagnostic: Block.Diagnostic = Block.Diagnostic.of(error, file.encode, source, span)
+    val number: Text = t"E${error.reason.number}"
+    val detail: List[Block] = List(Block.paragraph(path.lay(number) { (path: Text) => t"$number at $path" }))
+    TerminalRenderer().blocks(List(diagnostic.copy(detail = detail)), columns).each { (line: Teletype) => Out.println(line) }
+
+  // The width a report is laid out at: the terminal's columns, within reason, or a page's.
+  private def columns(using Environment): Int = safely(Environment.columns[Text].s.toInt).lay(100)(_.min(160))
 
   private def report(message: Message)(using Stdio): Exit =
     Out.println(t"fury: $message")
     Exit.Fail(2)
-
-  private def position(span: denominative.Span): Text =
-    val line: Text = span.startLine.let { line => t"${line.n1}" }.or(t"?")
-    val column: Text = span.startColumn.let { column => t"${column.n1}" }.or(t"?")
-    t"$line:$column"
 
   private def summarize(file: Path on Local, build: Model.Build)(using Stdio): Unit =
     Out.println(t"${file.encode}: valid")
