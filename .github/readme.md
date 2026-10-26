@@ -215,11 +215,11 @@ The libraries fury builds against (Soundness, Pyrocosm and lira) are pinned in
 
 ```sh
 make sync-deps   # install the pinned releases into ~/.ivy2/local
-make tools       # install fume and flair
+make tools       # install fume and flare
 make test        # run the suite with fume  (make test-plain uses plain java)
 make fury        # build the native executable for this machine
 make install     # copy it to ~/.local/bin
-make check       # check the sources with flair
+make check       # check the sources with flare
 ```
 
 A release is cut by a signed tag on a commit CI has passed; the tag is the only place the
