@@ -40,9 +40,9 @@ case class BuildError(detail: Text)(using Diagnostics) extends Error(m"build fil
 
 // The typed model of a build.tel (build.schema.tel), hand-decoded from the validated document in
 // the style `Lira.Manifest.decode` was written in before its derivation — ladder step 1 tests
-// whether that is tolerable at this schema's size (fury.md §15). Positional atoms are read in the schema's field order and
-// child fields by keyword. Nothing here resolves anything: forms, tools and coordinates stay
-// texts until `fury resolve`.
+// whether that is tolerable at this schema's size (fury.md §15). Positional atoms are read in the
+// schema's field order and child fields by keyword. Nothing here resolves anything: forms, tools
+// and coordinates stay texts until `fury resolve`.
 object Model:
   case class Build
     ( registries:   List[Registry],

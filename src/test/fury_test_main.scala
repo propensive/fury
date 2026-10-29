@@ -52,8 +52,10 @@ def runTests(): Unit =
 
   def handle(event: TestEvent): Unit = event match
     case TestEvent.TestCompleted(test, _, _, outcome, _, _) =>
-      if outcome.outcome == t"pass" || outcome.outcome == t"aspire-pass" then passes.incrementAndGet()
+      if outcome.outcome == t"pass" || outcome.outcome == t"aspire-pass"
+      then passes.incrementAndGet()
       else failures.incrementAndGet()
+
       out.println(t"[${outcome.outcome}] ${test.path.join(t" / ")}".s)
 
     case TestEvent.DetailMessage(_, message) =>

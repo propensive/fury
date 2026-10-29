@@ -36,17 +36,16 @@ import scala.collection.immutable as sci
 
 import soundness.*
 
+import charsets.utf8Charset
 import errorDiagnostics.emptyDiagnostics
 import filesystemBackends.javaBaseFilesystem
-import charsets.utf8Charset
-import textSanitizers.skipSanitizer
-import parsing.trackPositions
-import systems.javaBaseSystem
-import textMetrics.uniformMetric
-import tableStyles.thickTableStyle
 import palettes.solarizedDarkGaugePalette
-
+import parsing.trackPositions
 import pyrocosm.{Block, TerminalRenderer}
+import systems.javaBaseSystem
+import tableStyles.thickTableStyle
+import textMetrics.uniformMetric
+import textSanitizers.skipSanitizer
 
 object CheckFailed extends Status(1, t"the build file has errors")
 object NoBuildFile extends Status(3, t"no build.tel was found at or above the working directory")
@@ -129,7 +128,8 @@ object Check:
                 val span: Span = located0.lay(error.span)(_.span)
 
                 val path: Optional[Text] =
-                  located0.let { (focus: Tel.Focus) => focus.pointer.components.stdlib.map(_.s).mkString("/").tt }
+                  located0.let: (focus: Tel.Focus) =>
+                    focus.pointer.components.stdlib.map(_.s).mkString("/").tt
 
                 located(file, source, span, error, path)
 
@@ -162,11 +162,14 @@ object Check:
 
     val diagnostic: Block.Diagnostic = Block.Diagnostic.of(error, file.encode, source, span)
     val number: Text = t"E${error.reason.number}"
-    val detail: List[Block] = List(Block.paragraph(path.lay(number) { (path: Text) => t"$number at $path" }))
-    TerminalRenderer().blocks(List(diagnostic.copy(detail = detail)), columns).each { (line: Teletype) => Out.println(line) }
+    val paragraph: Text = path.lay(number): (path: Text) => t"$number at $path"
+    val detail: List[Block] = List(Block.paragraph(paragraph))
+    val blocks: List[Block] = List(diagnostic.copy(detail = detail))
+    TerminalRenderer().blocks(blocks, columns).each: (line: Teletype) => Out.println(line)
 
   // The width a report is laid out at: the terminal's columns, within reason, or a page's.
-  private def columns(using Environment): Int = safely(Environment.columns[Text].s.toInt).lay(100)(_.min(160))
+  private def columns(using Environment): Int =
+    safely(Environment.columns[Text].s.toInt).lay(100)(_.min(160))
 
   private def report(message: Message)(using Stdio): Exit =
     Out.println(t"fury: $message")
