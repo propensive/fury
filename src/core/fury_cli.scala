@@ -79,6 +79,7 @@ object Client uses parasite.threads, surveillance.Watcher:
 // under, where a method's are typed on their own.
 private def dispatch()(using Cli, Resident, Monitor, Environment, Interpreter, Configurator)
 :   Execution =
+
   arguments match
     case ui.Check() :: _ =>
       execute:
