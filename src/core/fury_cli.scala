@@ -38,7 +38,7 @@ import soundness.*
 // wildcard exports (anthology's); `standard` is a package-level extension on it.
 import backstops.silentBackstop
 import interpreters.posixInterpreter
-import pyrocosm.Tool
+import pyrocosm.{ambient, Tool}
 import systems.javaBaseSystem
 import threads.platformThreads
 
@@ -55,10 +55,6 @@ val Fury: Tool =
       prose = t"Fury is the LIRA build tool: it reads a build file, plans a static DAG of steps " +
         t"and runs them through tools, memoized in the content-addressed store, on this " +
         t"machine or across a swarm of them." )
-
-// Exit statuses are declared as objects (soundness#1811), so that an `execute` block's result
-// type documents the precise union in the manpage's EXIT STATUS section.
-object UsageError extends Status(2, t"the command line was not understood")
 
 object ui:
   val Check = Subcommand("check", "parse and validate the build file")
@@ -80,21 +76,12 @@ object Client uses parasite.threads, surveillance.Watcher:
 private def dispatch()(using Cli, Resident, Monitor, Environment, Interpreter, Configurator)
 :   Execution =
 
+  val width: Int = Fury.columns
+
   arguments match
     case ui.Check() :: _ =>
-      execute:
-        given Stdio = summon[Invocation].stdio
-        given Environment = summon[Invocation].environment
-        Check.run(summon[Invocation].workingDirectory.directory())
+      ambient:
+        Check.run(summon[WorkingDirectory].directory(), width)
 
     case _ =>
-      execute:
-        given Stdio = summon[Invocation].stdio
-        Out.println(t"Usage: fury <subcommand>")
-        Out.println(t"")
-        Out.println(t"  check      parse and validate the build file")
-        Out.println(t"  swarm      see the other Pyrocosm tools running, here and elsewhere")
-        Out.println(t"  about      show this tool's name, version and daemon")
-        Out.println(t"  install    install shell tab-completions and the manpage")
-        Out.println(t"  quit       stop the background daemon")
-        UsageError
+      ambient(Fury.usage(List(ui.Check)))

@@ -182,16 +182,6 @@ object Lint:
           val at = t"command ${command.name}: extract to ${extract.path}"
           refuse(t"$at matches source $glob (a feedback loop)")
 
-  // `**` spans directories, `*` a name, `?` a character; everything else is literal.
-  private def globMatches(glob: Text, path: Text): Boolean = path.s.matches(pattern(glob.s))
-
-  private def pattern(glob: String): String =
-    if glob.isEmpty then ""
-    else if glob.startsWith("**") then ".*" + pattern(glob.substring(2).nn)
-    else if glob.startsWith("*") then "[^/]*" + pattern(glob.substring(1).nn)
-    else if glob.startsWith("?") then "[^/]" + pattern(glob.substring(1).nn)
-    else
-      val char: Char = glob.charAt(0)
-      val special: Boolean = "\\.[]{}()+-^$|".indexOf(char.toInt) >= 0
-      val literal: String = if special then "\\" + char else char.toString
-      literal + pattern(glob.substring(1).nn)
+  // `**` spans directories, `*` a name, `?` a character; everything else is literal, as
+  // kaleidoscope reads a glob.
+  private def globMatches(glob: Text, path: Text): Boolean = Glob.parse(glob).matches(path)

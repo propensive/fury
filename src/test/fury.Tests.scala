@@ -37,6 +37,7 @@ import soundness.*
 import codepages.utf8Codepage
 import parsing.trackPositions
 import proscenium.List
+import pyrocosm.Resources
 import strategies.throwUnsafely
 
 // Tests for what `fury check` decides from files alone (fury.md §15, step 1): that every schema
@@ -52,9 +53,8 @@ object Tests extends Suite(m"Fury tests"):
   private def declared(arg: Model.Argument): (Text, Optional[Text]) = (arg.name, arg.default)
 
   private def document(name: Text): Tel =
-    val loader = Thread.currentThread.nn.getContextClassLoader.nn
-    val stream = loader.getResourceAsStream(t"specimens/$name".s).nn
-    String(stream.readAllBytes(), "UTF-8").tt.read[Tel]
+    Resources.text(t"specimens/$name").or(abort(SchemaError(t"$name is not among the specimens")))
+    . read[Tel]
 
   private val milestone: Text = List(
     t"tel 1.0",
