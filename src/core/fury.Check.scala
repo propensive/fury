@@ -39,12 +39,10 @@ import soundness.*
 import charsets.utf8Charset
 import errorDiagnostics.emptyDiagnostics
 import filesystemBackends.javaBaseFilesystem
-import palettes.solarizedDarkGaugePalette
 import parsing.trackPositions
+import pyrocosm.standardRendering.given
 import pyrocosm.{Block, TerminalRenderer}
 import systems.javaBaseSystem
-import tableStyles.thickTableStyle
-import textMetrics.uniformMetric
 import textSanitizers.skipSanitizer
 
 object CheckFailed extends Status(1, t"the build file has errors")
@@ -80,14 +78,14 @@ object Check:
 
   type Outcome = Exit | NoBuildFile.type | CheckFailed.type
 
-  def run(directory: Text)(using Stdio, Environment): Outcome =
+  def run(directory: Text, width: Int)(using Stdio, Environment): Outcome =
     locate(directory).lay[Outcome]:
       Out.println(t"fury: no build.tel at or above $directory")
       NoBuildFile
 
-    . apply(check(_))
+    . apply(check(_, width))
 
-  private def check(file: Path on Local)(using Stdio, Environment): Outcome =
+  private def check(file: Path on Local, width: Int)(using Stdio, Environment): Outcome =
     recover:
       case error: Io.Error         => report(error.message)
       case error: Truncation.Error => report(error.message)
@@ -103,7 +101,7 @@ object Check:
         val parsed: Optional[Tel] =
           recover:
             case error: Tel.Error =>
-              located(file, source, error.span, error, Unset)
+              located(file, source, error.span, error, Unset, width)
               Unset
 
           . protect(data.read[Tel])
@@ -131,7 +129,7 @@ object Check:
                   located0.let: (focus: Tel.Focus) =>
                     focus.pointer.components.stdlib.map(_.s).mkString("/").tt
 
-                located(file, source, span, error, path)
+                located(file, source, span, error, path, width)
 
               CheckFailed
 
@@ -156,7 +154,12 @@ object Check:
   // validation error) highlighted as TEL with the span marked, and, after, the error's number
   // and the keyword path it was found at.
   private def located
-    ( file: Path on Local, source: Text, span: Span, error: Tel.Error, path: Optional[Text] )
+    ( file:   Path on Local,
+      source: Text,
+      span:   Span,
+      error:  Tel.Error,
+      path:   Optional[Text],
+      width:  Int )
     ( using Stdio, Environment )
   :   Unit =
 
@@ -165,15 +168,13 @@ object Check:
     val paragraph: Text = path.lay(number): (path: Text) => t"$number at $path"
     val detail: List[Block] = List(Block.paragraph(paragraph))
     val blocks: List[Block] = List(diagnostic.copy(detail = detail))
-    TerminalRenderer().blocks(blocks, columns).each: (line: Teletype) => Out.println(line)
+    TerminalRenderer().printOut(blocks, width)
 
-  // The width a report is laid out at: the terminal's columns, within reason, or a page's.
-  private def columns(using Environment): Int =
-    safely(Environment.columns[Text].s.toInt).lay(100)(_.min(160))
-
-  private def report(message: Message)(using Stdio): Exit =
+  // A build file that could not be read or checked has errors, as one with findings does; `2`
+  // is a command line that was not understood, which this is not.
+  private def report(message: Message)(using Stdio): CheckFailed.type =
     Out.println(t"fury: $message")
-    Exit.Fail(2)
+    CheckFailed
 
   private def summarize(file: Path on Local, build: Model.Build)(using Stdio): Unit =
     Out.println(t"${file.encode}: valid")
@@ -182,7 +183,7 @@ object Check:
       Out.println(t"  command ${command.name}")
 
     build.toolchains.stdlib.foreach: (toolchain: Model.Toolchain) =>
-      val tools: Text = toolchain.tools.stdlib.map(_.name.s).mkString(", ").tt
+      val tools: Text = toolchain.tools.map(_.name).join(t", ")
       Out.println(t"  toolchain ${toolchain.name}: $tools")
 
     build.projects.stdlib.foreach: (project: Model.Project) =>
@@ -190,5 +191,5 @@ object Check:
 
       project.modules.stdlib.foreach: (module: Model.Module) =>
         val sources: Int = module.sources.stdlib.length
-        val includes: Text = module.includes.stdlib.map(_.module.s).mkString(", ").tt
+        val includes: Text = module.includes.map(_.module).join(t", ")
         Out.println(t"    module ${module.name}: $sources source globs; includes $includes")

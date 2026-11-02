@@ -36,6 +36,7 @@ import soundness.*
 
 import codepages.utf8Codepage
 import errorDiagnostics.emptyDiagnostics
+import pyrocosm.Resources
 
 // A schema Fury ships could not be read: a defect of the build, never of a user's file.
 case class SchemaError(detail: Text)(using Diagnostics) extends Error(m"schema: $detail")
@@ -46,11 +47,7 @@ case class SchemaError(detail: Text)(using Diagnostics) extends Error(m"schema: 
 // demand. Read through the thread-context classloader, never the system one, which under Burdock
 // sees only the slim pre-repackage jar (fume's `Suites` carries the same note).
 object Schemas:
-  private def resource(name: Text): Optional[Text] =
-    val loader = Thread.currentThread.nn.getContextClassLoader.nn
-
-    Optional(loader.getResourceAsStream(name.s)).let: stream =>
-      String(stream.readAllBytes(), "UTF-8").tt
+  private def resource(name: Text): Optional[Text] = Resources.text(name)
 
   // A shipped schema as it was written.
   def source(name: Text): Optional[Text] = resource(t"schemas/$name")

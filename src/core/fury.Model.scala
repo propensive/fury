@@ -145,7 +145,8 @@ object Model:
     compounds.filter(_.keyword == keyword)
 
   private def atom(compound: Tel.Compound, index: Int): Optional[Text] =
-    texts(compound).lift(index).getOrElse(Unset)
+    val atoms: sci.Vector[Text] = texts(compound)
+    if index < atoms.length then atoms(index) else Unset
 
   private def first(compound: Tel.Compound, what: Text): Text raises BuildError =
     atom(compound, 0).or(abort(bad(t"$what needs a name")))
