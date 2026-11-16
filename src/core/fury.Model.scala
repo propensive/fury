@@ -36,7 +36,39 @@ import scala.collection.immutable as sci
 
 import soundness.*
 
-case class BuildError(detail: Text)(using Diagnostics) extends Error(m"build file: $detail")
+// A build file which passed validation, yet does not say what the model needs: ↯/f.33.11, with
+// a variant for each fault.
+object BuildError:
+  object Reason:
+    given communicable: Reason is Communicable =
+      case Unnamed(what)      => m"$what needs a name"
+      case Repeated(keyword)  => m"the $keyword field is repeated"
+      case NotSingle(keyword) => m"the $keyword field needs exactly one value"
+      case Missing(keyword)   => m"the $keyword field is missing"
+      case Empty(keyword)     => m"the $keyword field needs at least one value"
+      case Selection          => m"a selection is `set <option> <case>`"
+      case Setting            => m"a setting is `set <key> <value>`"
+      case Extract            => m"an extract needs three values"
+      case Host               => m"a host is `host [<domain>] <tag>`"
+      case Presumption        => m"a presumption needs a kind and a name"
+      case Artifact           => m"an artifact is `artifact <name> <app-type> [<filename>]`"
+
+  enum Reason(val number: Int):
+    case Unnamed(what: Text)      extends Reason(1)
+    case Repeated(keyword: Text)  extends Reason(2)
+    case NotSingle(keyword: Text) extends Reason(3)
+    case Missing(keyword: Text)   extends Reason(4)
+    case Empty(keyword: Text)     extends Reason(5)
+    case Selection                extends Reason(6)
+    case Setting                  extends Reason(7)
+    case Extract                  extends Reason(8)
+    case Host                     extends Reason(9)
+    case Presumption              extends Reason(10)
+    case Artifact                 extends Reason(11)
+
+case class BuildError(reason: BuildError.Reason)(using Diagnostics)
+extends Error(m"build file: $reason"):
+  override def bolt: fulminate.Bolt = FuryBolts(FuryBolts.core, 11, reason.number)
 
 // The typed model of a build.tel (build.schema.tel), hand-decoded from the validated document in
 // the style `Lira.Manifest.decode` was written in before its derivation — ladder step 1 tests
@@ -126,9 +158,9 @@ object Model:
         projects     = named(top, t"project").map(project).to(List),
         topologies   = named(top, t"topology").map(first(_, t"a topology")).to(List) )
 
-  private def bad(detail: Text): BuildError =
+  private def bad(reason: BuildError.Reason): BuildError =
     import errorDiagnostics.emptyDiagnostics
-    BuildError(detail)
+    BuildError(reason)
 
   private def texts(compound: Tel.Compound): sci.Vector[Text] =
     compound.atoms.stdlib.collect:
@@ -149,7 +181,7 @@ object Model:
     if index < atoms.length then atoms(index) else Unset
 
   private def first(compound: Tel.Compound, what: Text): Text raises BuildError =
-    atom(compound, 0).or(abort(bad(t"$what needs a name")))
+    atom(compound, 0).or(abort(bad(BuildError.Reason.Unnamed(what))))
 
   // A child field with exactly one atom, absent or present at most once.
   private def field(compounds: sci.Vector[Tel.Compound], keyword: Text)
@@ -158,17 +190,17 @@ object Model:
     named(compounds, keyword) match
       case sci.Vector()         => Unset
       case sci.Vector(compound) => single(compound, keyword)
-      case _                    => abort(bad(t"the $keyword field is repeated"))
+      case _                    => abort(bad(BuildError.Reason.Repeated(keyword)))
 
   private def single(compound: Tel.Compound, keyword: Text): Text raises BuildError =
     texts(compound) match
       case sci.Vector(value) => value
-      case _                 => abort(bad(t"the $keyword field needs exactly one value"))
+      case _                 => abort(bad(BuildError.Reason.NotSingle(keyword)))
 
   private def required(compounds: sci.Vector[Tel.Compound], keyword: Text)
   :   Text raises BuildError =
 
-    field(compounds, keyword).or(abort(bad(t"the $keyword field is missing")))
+    field(compounds, keyword).or(abort(bad(BuildError.Reason.Missing(keyword))))
 
   // Every atom of every occurrence of a repeatable single-value field.
   private def repeated(compounds: sci.Vector[Tel.Compound], keyword: Text)
@@ -176,7 +208,7 @@ object Model:
 
     named(compounds, keyword).flatMap: compound =>
       val atoms = texts(compound)
-      if atoms.isEmpty then abort(bad(t"the $keyword field needs at least one value"))
+      if atoms.isEmpty then abort(bad(BuildError.Reason.Empty(keyword)))
       atoms
 
   private def flag(compounds: sci.Vector[Tel.Compound], keyword: Text): Boolean =
@@ -195,7 +227,7 @@ object Model:
     named(compounds, t"set").map: set =>
       texts(set) match
         case sci.Vector(option, choice) => Selection(option, choice)
-        case _                          => abort(bad(t"a selection is `set <option> <case>`"))
+        case _                          => abort(bad(BuildError.Reason.Selection))
 
     . to(List)
 
@@ -203,7 +235,7 @@ object Model:
     named(compounds, t"set").map: set =>
       texts(set) match
         case sci.Vector(key, value) => Setting(key, value)
-        case _                      => abort(bad(t"a setting is `set <key> <value>`"))
+        case _                      => abort(bad(BuildError.Reason.Setting))
 
     . to(List)
 
@@ -226,7 +258,7 @@ object Model:
     val extracts = named(fields, t"extract").map: extract =>
       texts(extract) match
         case sci.Vector(module, entry, path) => Extract(module, entry, path)
-        case _                               => abort(bad(t"an extract needs three values"))
+        case _                               => abort(bad(BuildError.Reason.Extract))
 
     Command
       ( name     = first(compound, t"a command"),
@@ -276,13 +308,13 @@ object Model:
   private def host(compound: Tel.Compound): Host raises BuildError = texts(compound) match
     case sci.Vector(tag)         => Host(Unset, tag)
     case sci.Vector(domain, tag) => Host(domain, tag)
-    case _                       => abort(bad(t"a host is `host [<domain>] <tag>`"))
+    case _                       => abort(bad(BuildError.Reason.Host))
 
   private def presumption(compound: Tel.Compound): Presumption raises BuildError =
     texts(compound) match
       case sci.Vector(kind, name)            => Presumption(kind, name, Unset)
       case sci.Vector(kind, name, predicate) => Presumption(kind, name, predicate)
-      case _                                 => abort(bad(t"a presumption needs a kind and a name"))
+      case _                                 => abort(bad(BuildError.Reason.Presumption))
 
   private def axis(compound: Tel.Compound): Axis raises BuildError =
     val fields = children(compound)
@@ -303,7 +335,7 @@ object Model:
 
     val artifacts = named(fields, t"artifact").map: artifact =>
       val appType = atom(artifact, 1).or:
-        abort(bad(t"an artifact is `artifact <name> <app-type> [<filename>]`"))
+        abort(bad(BuildError.Reason.Artifact))
 
       Product
         ( first(artifact, t"an artifact"),

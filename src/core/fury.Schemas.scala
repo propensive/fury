@@ -38,8 +38,27 @@ import codepages.utf8Codepage
 import errorDiagnostics.emptyDiagnostics
 import pyrocosm.Resources
 
-// A schema Fury ships could not be read: a defect of the build, never of a user's file.
-case class SchemaError(detail: Text)(using Diagnostics) extends Error(m"schema: $detail")
+// A schema Fury ships could not be read: a defect of the build, never of a user's file. It is
+// ↯/f.33.12: one which is absent is its first variant, and one which is malformed carries the
+// code of the TEL error it failed with, in place of a variant: `↯/f.33.12/s.118.1/t.1.7`.
+object SchemaError:
+  object Reason:
+    given communicable: Reason is Communicable =
+      case Absent(name)           => m"$name is not among the shipped schemas"
+      case Malformed(name, error) => m"$name is malformed: ${error.message}"
+
+  enum Reason(val number: Int):
+    case Absent(name: Text)                      extends Reason(1)
+    case Malformed(name: Text, error: Tel.Error) extends Reason(2)
+
+case class SchemaError(reason: SchemaError.Reason)(using Diagnostics)
+extends Error(m"schema: $reason"):
+  override def bolt: fulminate.Bolt = reason match
+    case SchemaError.Reason.Malformed(_, error) =>
+      FuryBolts(FuryBolts.core, 12).carrying(error.bolt)
+
+    case reason =>
+      FuryBolts(FuryBolts.core, 12, reason.number)
 
 // The TEL schemas Fury validates against (fury.md §14): copied by the build from the repository
 // root into the `schemas/` resource directory, and reconstructed into stratiform's `Tels` — the
@@ -54,10 +73,10 @@ object Schemas:
 
   def load(name: Text): Tels raises SchemaError =
     val text: Text =
-      resource(t"schemas/$name").or(abort(SchemaError(t"$name is not among the shipped schemas")))
+      resource(t"schemas/$name").or(abort(SchemaError(SchemaError.Reason.Absent(name))))
 
     mitigate:
-      case error: Tel.Error => SchemaError(t"$name is malformed: ${error.message}")
+      case error: Tel.Error => SchemaError(SchemaError.Reason.Malformed(name, error))
 
     . protect:
         Tels.Validation.validate(text.read[Tel].as[Tels])
