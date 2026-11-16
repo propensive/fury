@@ -3,6 +3,11 @@ name: CI
 # Build and test every pull request and every merge into main, via the shared Soundness-application
 # workflow — see propensive/.github for what it does and what it expects of this repository (the
 # ./mill wrapper, etc/shared, and the pins in etc/refs).
+#
+# The suite runs under plain `java`, through `fury.runTests`, rather than through fume: a fume
+# release reads the test events only of the Soundness it was built with, and fume is built on
+# Pyrocosm, so none reads Soundness 0.76.0's until Pyrocosm has been released against it. Drop
+# `test_main` once etc/tools pins a fume which does.
 
 on:
   pull_request:
@@ -20,3 +25,4 @@ jobs:
       publish_local: fury.__
       assembly:      fury.launcher.assembly
       test_assembly: fury.test.assembly
+      test_main:     fury.runTests
