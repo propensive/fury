@@ -52,6 +52,9 @@ object NoBuildFile extends Status(3, t"no build.tel was found at or above the wo
 // build.schema.tel — accruing every violation rather than stopping at the first — decode it to
 // the typed model, print what it declares, and apply the milestone's refuse/ignore lint. Nothing
 // is resolved and nothing is built.
+//
+// A build file which cannot be found is ↯/f.33.1; the others are the errors of what reads and
+// checks it, each reported with its own code.
 object Check:
   // The accrual accumulator: each violation with its focus, newest first. An `Error`, because a
   // contingency accrual must be a `Hazard`; the position-tracked parse (`trackPositions`) is
@@ -80,17 +83,18 @@ object Check:
 
   def run(directory: Text, width: Int)(using Stdio, Environment): Outcome =
     locate(directory).lay[Outcome]:
-      Out.println(t"fury: no build.tel at or above $directory")
+      val label: Text = FuryBolts(FuryBolts.core, 1).label
+      Out.println(t"fury: $label no build.tel at or above $directory")
       NoBuildFile
 
     . apply(check(_, width))
 
   private def check(file: Path on Local, width: Int)(using Stdio, Environment): Outcome =
     recover:
-      case error: Io.Error         => report(error.message)
-      case error: Truncation.Error => report(error.message)
-      case error: SchemaError      => report(error.message)
-      case error: BuildError       => report(error.message)
+      case error: Io.Error         => report(error)
+      case error: Truncation.Error => report(error)
+      case error: SchemaError      => report(error)
+      case error: BuildError       => report(error)
 
     . protect:
         val data: Data = file.read[Data]
@@ -147,12 +151,12 @@ object Check:
     accrued.items.reverse
 
   private def display(finding: Lint.Finding)(using Stdio): Unit =
-    Out.println(t"${finding.severity}: ${finding.message}")
+    Out.println(t"${finding.severity}: ${finding.code.label} ${finding.message}")
 
-  // A TEL error as Pyrocosm's diagnostic: the file and the position, the message, the lines of
-  // the build file around the span (a parse error's own, or that of the focus accrued with a
-  // validation error) highlighted as TEL with the span marked, and, after, the error's number
-  // and the keyword path it was found at.
+  // A TEL error as Pyrocosm's diagnostic: the file and the position, the error's code, the
+  // message, the lines of the build file around the span (a parse error's own, or that of the
+  // focus accrued with a validation error) highlighted as TEL with the span marked, and, after,
+  // the keyword path it was found at.
   private def located
     ( file:   Path on Local,
       source: Text,
@@ -163,17 +167,39 @@ object Check:
     ( using Stdio, Environment )
   :   Unit =
 
-    val diagnostic: Block.Diagnostic = Block.Diagnostic.of(error, file.encode, source, span)
-    val number: Text = t"E${error.reason.number}"
-    val paragraph: Text = path.lay(number): (path: Text) => t"$number at $path"
-    val detail: List[Block] = List(Block.paragraph(paragraph))
-    val blocks: List[Block] = List(diagnostic.copy(detail = detail))
+    val detail: List[Block] = path.lay(Nil): (path: Text) =>
+      List(Block.paragraph(t"at $path"))
+
+    val coded: Block.Diagnostic = diagnostic(error, file.encode, source, span)
+    val blocks: List[Block] = List(coded.copy(detail = detail))
     TerminalRenderer().printOut(blocks, width)
+
+  // A TEL error's diagnostic, coded as the error is. A value one of Fury's validators rejected
+  // is TEL's error ↯/t.3.10, whose message begins with the label of Fury's own code (see
+  // `Validators`): it moves from the message to the code, which carries it, as
+  // `↯/s.118.1/t.3.10/f.33.13.8`.
+  def diagnostic
+    ( error:  Tel.Error,
+      path:   Optional[Text] = Unset,
+      source: Optional[Text] = Unset,
+      span:   Optional[Span] = Unset )
+  :   Block.Diagnostic =
+
+    error.reason match
+      case Tel.Error.Reason.ValidatorRejected(message) =>
+        val (rejection, length) = fulminate.Bolt.prefix(message)
+        val rest: Text = message.s.substring(length).nn.tt
+        val reason = Tel.Error.Reason.ValidatorRejected(rest)
+        val diagnostic = Block.Diagnostic.of(Tel.Error(reason, error.span), path, source, span)
+        diagnostic.copy(code = error.bolt.carrying(rejection))
+
+      case _ =>
+        Block.Diagnostic.of(error, path, source, span)
 
   // A build file that could not be read or checked has errors, as one with findings does; `2`
   // is a command line that was not understood, which this is not.
-  private def report(message: Message)(using Stdio): CheckFailed.type =
-    Out.println(t"fury: $message")
+  private def report(error: Error)(using Stdio): CheckFailed.type =
+    Out.println(t"fury: ${error.labelled}")
     CheckFailed
 
   private def summarize(file: Path on Local, build: Model.Build)(using Stdio): Unit =

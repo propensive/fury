@@ -37,6 +37,10 @@ import soundness.*
 // The validators the shipped schemas' scalars name (build.schema.tel and its siblings): each is
 // a shape check on one atom, never a resolution — whether a module reference resolves is `fury
 // resolve`'s business, and whether a form is registered is the registry's (fury.md §7).
+//
+// A rejection is ↯/f.33.13, and each validator's is its variant, numbered as they are listed in
+// the registry. `Diagnostic.Scalar` has no field for a code, so a rejection's message begins
+// with its code's label, from which `Check` takes it into the diagnostic's code.
 object Validators:
   import Tel.Validator.{Diagnostic, Registry, Request, Response}
 
@@ -46,25 +50,28 @@ object Validators:
         case Request.Scalar(method, value) => method.s match
           case "module-ref"    => moduleRef(value)
           case "selector"      => selector(value)
-          case "glob"          => nonEmpty(value, t"a glob")
-          case "form"          => form(value, t"a form")
-          case "path"          => nonEmpty(value, t"a path")
+          case "glob"          => nonEmpty(value, 3, t"a glob")
+          case "form"          => form(value, 4, t"a form")
+          case "path"          => nonEmpty(value, 5, t"a path")
           case "address"       => address(value)
-          case "kind"          => kebab(value, t"a presumption kind")
+          case "kind"          => kebab(value, 7, t"a presumption kind")
           case "toolchain-ref" => toolchainRef(value)
-          case "app-type"      => form(value, t"an application type")
-          case "entry"         => form(value, t"an entry")
+          case "app-type"      => form(value, 9, t"an application type")
+          case "entry"         => form(value, 10, t"an entry")
           case "discipline-id" => disciplineId(value)
           case "effect"        => effect(value)
           case _               => unknown(method)
 
         case Request.Struct(method, _) => unknown(method)
 
+  // Not a rejection, and so without a code: `Registry.withFallback` recognizes this message, and
+  // asks stratiform's built-in validators instead.
   private def unknown(method: Text): Response =
     Response.Invalid(Diagnostic.Scalar(t"unknown validator '$method'"))
 
-  private def fail(value: Text, message: Text): Response =
-    Response.Invalid(Diagnostic.Scalar(message, (0, value.s.length)))
+  private def fail(value: Text, variant: Int, message: Text): Response =
+    val label: Text = FuryBolts(FuryBolts.core, 13, variant).label
+    Response.Invalid(Diagnostic.Scalar(t"$label $message", (0, value.s.length)))
 
   private def matches(value: Text, pattern: String): Boolean = value.s.matches(pattern)
 
@@ -78,46 +85,48 @@ object Validators:
   // A DNS-style domain: two or more dotted segments.
   private val domain: String = segment + "(\\." + segment + ")+"
 
-  private def kebab(value: Text, what: Text): Response =
+  private def kebab(value: Text, variant: Int, what: Text): Response =
     if matches(value, segment) then Response.Valid
-    else fail(value, t"$what must be kebab-case: lowercase letters, digits and single hyphens")
+    else
+      val rule: Text = t"lowercase letters, digits and single hyphens"
+      fail(value, variant, t"$what must be kebab-case: $rule")
 
-  private def nonEmpty(value: Text, what: Text): Response =
-    if value.s.isEmpty then fail(value, t"$what must not be empty") else Response.Valid
+  private def nonEmpty(value: Text, variant: Int, what: Text): Response =
+    if value.s.isEmpty then fail(value, variant, t"$what must not be empty") else Response.Valid
 
   // A module name (kebab, or vendor-dotted for a host contract), a project-qualified
   // `<project>/<module>`, or an index coordinate `<domain>/<name>`.
   private def moduleRef(value: Text): Response =
     if matches(value, dotted) || matches(value, dotted + "/" + segment) then Response.Valid
-    else fail(value, t"a module reference is a name, <project>/<module> or <domain>/<name>")
+    else fail(value, 1, t"a module reference is a name, <project>/<module> or <domain>/<name>")
 
   // A version prefix `x[.y[.z]]`, or a tag name where the token is not version-shaped (§12.6): a
   // letter, then letters, digits, `-` and `.`.
   private def selector(value: Text): Response =
     if matches(value, "[0-9]+(\\.[0-9]+){0,2}") || matches(value, "[a-zA-Z][a-zA-Z0-9.-]*")
     then Response.Valid
-    else fail(value, t"a selector is a version prefix x[.y[.z]] or a tag name")
+    else fail(value, 2, t"a selector is a version prefix x[.y[.z]] or a tag name")
 
   // A form name, possibly `<family>/<parameter>` with a bound value (`native-exe/x86_64-linux-gnu`)
   // or an angle-bracket placeholder (`oci-image/<platform>`).
-  private def form(value: Text, what: Text): Response =
+  private def form(value: Text, variant: Int, what: Text): Response =
     if matches(value, segment + "(/([a-z0-9_-]+|<[a-z]+>))?") then Response.Valid
-    else fail(value, t"$what is a kebab-case form, optionally with a /<parameter>")
+    else fail(value, variant, t"$what is a kebab-case form, optionally with a /<parameter>")
 
   private def address(value: Text): Response =
     if matches(value, domain + "(/[a-zA-Z0-9._-]+)*") then Response.Valid
-    else fail(value, t"an address is a DNS name with an optional /-separated path prefix")
+    else fail(value, 6, t"an address is a DNS name with an optional /-separated path prefix")
 
   // A discipline identifier, `<name>/<version>` (spec §11.1): `tasty/1`, `classfile/1`.
   private def disciplineId(value: Text): Response =
     if matches(value, segment + "/[0-9]+") then Response.Valid
-    else fail(value, t"a discipline identifier is <name>/<version>, e.g. tasty/1")
+    else fail(value, 11, t"a discipline identifier is <name>/<version>, e.g. tasty/1")
 
   // A setting's effect classification (tool.schema.tel): `output` or `nothing`.
   private def effect(value: Text): Response =
     if value == t"output" || value == t"nothing" then Response.Valid
-    else fail(value, t"a setting affects `output` or `nothing`")
+    else fail(value, 12, t"a setting affects `output` or `nothing`")
 
   private def toolchainRef(value: Text): Response =
     if matches(value, segment + "(/" + segment + ")*") then Response.Valid
-    else fail(value, t"a toolchain reference is a /-separated path of kebab-case names")
+    else fail(value, 8, t"a toolchain reference is a /-separated path of kebab-case names")

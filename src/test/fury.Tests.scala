@@ -35,6 +35,7 @@ package fury
 import soundness.*
 
 import codepages.utf8Codepage
+import errorDiagnostics.emptyDiagnostics
 import parsing.trackPositions
 import proscenium.List
 import pyrocosm.Resources
@@ -48,12 +49,13 @@ import strategies.throwUnsafely
 // `specimens/` resources the build copies them into, through the thread-context classloader as
 // `Schemas` reads its own, so the suite does not depend on its working directory — stratiform is
 // the validator here because the `tel` command's own `validate` predates the schema headers these
-// files carry.
+// files carry. The bolt codes of a representative few of Fury's errors, findings and diagnostics
+// are checked as they are written.
 object Tests extends Suite(m"Fury tests"):
   private def declared(arg: Model.Argument): (Text, Optional[Text]) = (arg.name, arg.default)
 
   private def document(name: Text): Tel =
-    Resources.text(t"specimens/$name").or(abort(SchemaError(t"$name is not among the specimens")))
+    Resources.text(t"specimens/$name").or(abort(SchemaError(SchemaError.Reason.Absent(name))))
     . read[Tel]
 
   private val milestone: Text = List(
@@ -86,6 +88,17 @@ object Tests extends Suite(m"Fury tests"):
     t"  module lira",
     t"    source src/core/*.scala",
     t"    source dist/*.jar",
+    t"").join(t"\n")
+
+  // A toolchain reference may not be capitalized.
+  private val misapplied: Text = List(
+    t"tel 1.0",
+    t"",
+    t"project lira",
+    t"  apply Tools",
+    t"",
+    t"  module lira",
+    t"    source src/core/*.scala",
     t"").join(t"\n")
 
   def run(): Unit =
@@ -160,3 +173,50 @@ object Tests extends Suite(m"Fury tests"):
       . assert:
           _ == scala.List:
             t"command jar: extract to dist/lira.jar matches source dist/*.jar (a feedback loop)"
+
+      test(m"a feedback loop's finding has its code"):
+        Lint(Model.decode(feedback.read[Tel])).stdlib.filter(_.error).map(_.code.text)
+
+      . assert(_ == scala.List(t"↯/f.33.10"))
+
+    suite(m"Bolt codes"):
+      test(m"a missing field of the build file is a variant of the build file's error"):
+        BuildError(BuildError.Reason.Missing(t"version")).bolt.text
+
+      . assert(_ == t"↯/f.33.11.4")
+
+      test(m"an absent schema is the first variant of the schema error"):
+        SchemaError(SchemaError.Reason.Absent(t"none.schema.tel")).bolt.text
+
+      . assert(_ == t"↯/f.33.12.1")
+
+      test(m"a malformed schema carries the code of its TEL error"):
+        val error = Tel.Error(Tel.Error.Reason.OddIndentation)
+        SchemaError(SchemaError.Reason.Malformed(t"bad.schema.tel", error)).bolt.text
+
+      . assert(_ == t"↯/f.33.12/s.118.1/t.1.7")
+
+      test(m"an error is printed with its label"):
+        BuildError(BuildError.Reason.Extract).labelled.text
+
+      . assert(_ == t"[↯/f.33.11.8] build file: an extract needs three values")
+
+      test(m"a rejected value's diagnostic carries the code of Fury's validator"):
+        val tel = misapplied.read[Tel]
+
+        Check.violations(tel, Schemas.build).map: (_, error) =>
+          val diagnostic = Check.diagnostic(error)
+
+          val message: Text = diagnostic.message.map:
+            case pyrocosm.Block.Paragraph(content) => pyrocosm.Inline.plain(content)
+            case _                                 => t""
+
+          . join
+
+          (diagnostic.code.let(_.text).or(t""), message)
+
+      . assert:
+          _ == scala.List:
+            ( t"↯/s.118.1/t.3.10/f.33.13.8",
+              t"the TEL document is invalid because a scalar value or struct failed a named "+
+                t"validator: a toolchain reference is a /-separated path of kebab-case names" )

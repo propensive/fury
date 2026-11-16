@@ -7,6 +7,6 @@
 #
 # Fury is a Pyrocosm tool, built on the store and the manifest types of the `lira` jar and on the
 # `lira.tool` contract of the `lira-tool` jar, both of a propensive/lira release.
-propensive/soundness	0.75.0
-propensive/pyrocosm	0.11.0
-propensive/lira	0.3.2
+propensive/soundness	0.76.0
+propensive/pyrocosm	0.13.0
+propensive/lira	0.4.0
