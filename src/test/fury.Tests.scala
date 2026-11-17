@@ -177,7 +177,7 @@ object Tests extends Suite(m"Fury tests"):
       test(m"a feedback loop's finding has its code"):
         Lint(Model.decode(feedback.read[Tel])).stdlib.filter(_.error).map(_.code.text)
 
-      . assert(_ == scala.List(t"↯/f.33.10"))
+      . assert(_ == scala.List(t"↯/f.35.9"))
 
     suite(m"Bolt codes"):
       test(m"a missing field of the build file is a variant of the build file's error"):
