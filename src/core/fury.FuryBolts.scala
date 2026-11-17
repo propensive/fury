@@ -37,8 +37,13 @@ package fury
 // those of the tools before it; the record of what every code means is `f.tel` in
 // propensive/bolt.
 object FuryBolts:
+  // Errors 2 to 10 of `core` are retired: they were the lint's findings, released as such, and
+  // are now those of `lint`, ↯/f.35.*. A code is never reused, so no new error takes them.
   final val core     = 33
   final val launcher = 34
+
+  // The findings of the lint, which once were errors of `core`.
+  final val lint     = 35
 
   // The code of the `error`th error of `subdivision`, or of its `variant`th variant.
   def apply(subdivision: Int, error: Int, variant: Int = 0): fulminate.Bolt =

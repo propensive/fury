@@ -42,7 +42,7 @@ import soundness.*
 // out. Includes that no source satisfies are `fury resolve`'s finding, not this one's.
 //
 // Each finding has a bolt code: one error for each kind of construct the lint looks at, from
-// ↯/f.33.2 to ↯/f.33.10 in the order they are checked below, and one variant for each thing it
+// ↯/f.35.1 to ↯/f.35.9 in the order they are checked below, and one variant for each thing it
 // finds in that construct, where it finds more than one.
 object Lint:
   case class Finding(error: Boolean, code: fulminate.Bolt, message: Text):
@@ -58,13 +58,13 @@ object Lint:
 
   def apply(build: Model.Build): List[Finding] =
     val registries = build.registries.stdlib.map: registry =>
-      refuse(code(2), t"registry layer ${registry.coordinate}: registry layers are not supported")
+      refuse(code(1), t"registry layer ${registry.coordinate}: registry layers are not supported")
 
     val repositories = build.repositories.stdlib.map: repository =>
-      ignore(code(3), t"repository ${repository.name}: repositories are ignored")
+      ignore(code(2), t"repository ${repository.name}: repositories are ignored")
 
     val topologies = build.topologies.stdlib.map: name =>
-      ignore(code(4), t"topology $name: topologies are ignored")
+      ignore(code(3), t"topology $name: topologies are ignored")
 
     val all: sci.List[Finding] =
       registries ++
@@ -78,7 +78,7 @@ object Lint:
     List.from(all)
 
   private def code(error: Int, variant: Int = 0): fulminate.Bolt =
-    FuryBolts(FuryBolts.core, error, variant)
+    FuryBolts(FuryBolts.lint, error, variant)
 
   private def refuse(code: fulminate.Bolt, message: Text): Finding = Finding(true, code, message)
   private def ignore(code: fulminate.Bolt, message: Text): Finding = Finding(false, code, message)
@@ -89,21 +89,21 @@ object Lint:
     val builds = command.builds.stdlib.flatMap: build =>
       val selections = build.selections.stdlib.map: selection =>
         val set = t"set ${selection.option} ${selection.choice}"
-        refuse(code(5, 1), t"$at: $set: selections are not supported")
+        refuse(code(4, 1), t"$at: $set: selections are not supported")
 
       val artifacts = build.artifacts.stdlib.map: artifact =>
-        refuse(code(5, 2), t"$at: artifact $artifact: artifacts are not supported")
+        refuse(code(4, 2), t"$at: artifact $artifact: artifacts are not supported")
 
       selections ++ artifacts
 
     val args = command.args.stdlib.map: arg =>
-      ignore(code(5, 3), t"$at: argument ${arg.name} is ignored")
+      ignore(code(4, 3), t"$at: argument ${arg.name} is ignored")
 
     val runs = command.runs.stdlib.map: run =>
-      refuse(code(5, 4), t"$at: run ${run.module}: running is not supported")
+      refuse(code(4, 4), t"$at: run ${run.module}: running is not supported")
 
     val watches = command.watches.stdlib.map: _ =>
-      refuse(code(5, 5), t"$at: watch is not supported")
+      refuse(code(4, 5), t"$at: watch is not supported")
 
     args ++ runs ++ watches ++ builds
 
@@ -111,34 +111,34 @@ object Lint:
     val at = t"toolchain ${toolchain.name}"
 
     val children = toolchain.children.stdlib.map: child =>
-      refuse(code(6), t"$at: toolchain ${child.name}: child toolchains are not supported")
+      refuse(code(5), t"$at: toolchain ${child.name}: child toolchains are not supported")
 
     val tools = toolchain.tools.stdlib.flatMap: tool =>
       val here = t"$at: tool ${tool.name}"
 
       if !outputSettings.contains(tool.name)
-      then sci.List(refuse(code(7, 1), t"$here: only scalac and javac exist"))
+      then sci.List(refuse(code(6, 1), t"$here: only scalac and javac exist"))
       else
         val distributed =
           tool.module.let: _ =>
-            sci.List(refuse(code(7, 2), t"$here: LIRA-distributed tools are not supported"))
+            sci.List(refuse(code(6, 2), t"$here: LIRA-distributed tools are not supported"))
 
           . or(sci.Nil)
 
         val edges = tool.edges.stdlib.map: edge =>
-          refuse(code(7, 3), t"$here: edge ${edge.name}: edge blocks are not supported")
+          refuse(code(6, 3), t"$here: edge ${edge.name}: edge blocks are not supported")
 
         val flags = tool.flags.stdlib.map: flag =>
-          refuse(code(7, 4), t"$here: flag $flag is unknown")
+          refuse(code(6, 4), t"$here: flag $flag is unknown")
 
         val settings = tool.settings.stdlib.flatMap: setting =>
           if outputSettings(tool.name).contains(setting.key) then sci.Nil
           else if sideEffectSettings(tool.name).contains(setting.key)
           then
             sci.List:
-              ignore(code(7, 5), t"$here: set ${setting.key}: side-effect settings are ignored")
+              ignore(code(6, 5), t"$here: set ${setting.key}: side-effect settings are ignored")
 
-          else sci.List(refuse(code(7, 6), t"$here: set ${setting.key} is unknown"))
+          else sci.List(refuse(code(6, 6), t"$here: set ${setting.key} is unknown"))
 
         distributed ++ edges ++ flags ++ settings
 
@@ -148,43 +148,43 @@ object Lint:
     val at = t"project ${project.id}"
 
     val host =
-      project.host.let(_ => sci.List(ignore(code(8), t"$at: host is ignored"))).or(sci.Nil)
+      project.host.let(_ => sci.List(ignore(code(7), t"$at: host is ignored"))).or(sci.Nil)
 
     val modules = project.modules.stdlib.flatMap: module =>
       val here = t"$at: module ${module.name}"
 
       val universes = module.universes.stdlib.filter(_.name != t"jvm").map: universe =>
-        refuse(code(9, 1), t"$here: universe ${universe.name}: only jvm is supported")
+        refuse(code(8, 1), t"$here: universe ${universe.name}: only jvm is supported")
 
       val integrations = module.integrations.stdlib.map: axis =>
-        refuse(code(9, 2), t"$here: integration ${axis.name}: axes are not supported")
+        refuse(code(8, 2), t"$here: integration ${axis.name}: axes are not supported")
 
       val options = module.options.stdlib.map: axis =>
-        refuse(code(9, 3), t"$here: option ${axis.name}: axes are not supported")
+        refuse(code(8, 3), t"$here: option ${axis.name}: axes are not supported")
 
       val assemble =
         module.assemble.let: _ =>
-          sci.List(refuse(code(9, 4), t"$here: assemble is not supported"))
+          sci.List(refuse(code(8, 4), t"$here: assemble is not supported"))
 
         . or(sci.Nil)
 
       val artifacts = module.artifacts.stdlib.map: artifact =>
-        refuse(code(9, 5), t"$here: artifact ${artifact.name}: artifacts are not supported")
+        refuse(code(8, 5), t"$here: artifact ${artifact.name}: artifacts are not supported")
 
       val generates = module.generates.stdlib.map: tool =>
-        refuse(code(9, 6), t"$here: generate $tool: codegen is not supported")
+        refuse(code(8, 6), t"$here: generate $tool: codegen is not supported")
 
       val presumes = module.presumes.stdlib.map: presumption =>
-        ignore(code(9, 7), t"$here: presume ${presumption.kind} ${presumption.name} is ignored")
+        ignore(code(8, 7), t"$here: presume ${presumption.kind} ${presumption.name} is ignored")
 
       val guarantees = module.guarantees.stdlib.map: guarantee =>
-        ignore(code(9, 8), t"$here: guarantee ${guarantee.kind} ${guarantee.name} is ignored")
+        ignore(code(8, 8), t"$here: guarantee ${guarantee.kind} ${guarantee.name} is ignored")
 
       val requires = module.requires.stdlib.map: requirement =>
-        ignore(code(9, 9), t"$here: require $requirement is ignored")
+        ignore(code(8, 9), t"$here: require $requirement is ignored")
 
       val moduleHost =
-        module.host.let(_ => sci.List(ignore(code(9, 10), t"$here: host is ignored"))).or(sci.Nil)
+        module.host.let(_ => sci.List(ignore(code(8, 10), t"$here: host is ignored"))).or(sci.Nil)
 
       universes ++ integrations ++ options ++ assemble ++ artifacts ++ generates ++ presumes ++
         guarantees ++ requires ++ moduleHost
@@ -201,7 +201,7 @@ object Lint:
       command.extracts.stdlib.flatMap: extract =>
         globs.filter { glob => globMatches(glob, extract.path) }.map: glob =>
           val at = t"command ${command.name}: extract to ${extract.path}"
-          refuse(code(10), t"$at matches source $glob (a feedback loop)")
+          refuse(code(9), t"$at matches source $glob (a feedback loop)")
 
   // `**` spans directories, `*` a name, `?` a character; everything else is literal, as
   // kaleidoscope reads a glob.
