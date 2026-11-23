@@ -34,8 +34,8 @@ package fury
 
 // The bolt codes of Fury, which begin `↯/f`, as those of Pyrocosm and its other tools do
 // (`pyrocosm.Bolts`). Each module of Fury is a subdivision, numbered after Pyrocosm's own and
-// those of the tools before it; the record of what every code means is `f.tel` in
-// propensive/bolt.
+// those of the tools before it; the record of what every code means is `bolt.tel` in
+// propensive/pyrocosm.
 object FuryBolts:
   // Errors 2 to 10 of `core` are retired: they were the lint's findings, released as such, and
   // are now those of `lint`, ↯/f.35.*. A code is never reused, so no new error takes them.
